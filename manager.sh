@@ -213,7 +213,14 @@ enter_ui_mode() {
 fetch() {
   local src="$1"
   local dst="$2"
-  curl -fsSL "${RAW_BASE}/${src}" -o "$dst"
+  local url="${RAW_BASE}/${src}"
+  local sep="?"
+
+  if [[ "$url" == *\?* ]]; then
+    sep="&"
+  fi
+
+  curl -fsSL "${url}${sep}v=$(date +%s)" -o "$dst"
 }
 
 is_interactive() {
