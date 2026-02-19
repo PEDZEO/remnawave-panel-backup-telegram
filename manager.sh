@@ -23,7 +23,7 @@ TMP_DIR="$(mktemp -d /tmp/panel-backup-install.XXXXXX)"
 SUDO=""
 COLOR=0
 UI_ACTIVE=0
-APP_VERSION="v3.0"
+APP_VERSION="1.1.1"
 CLR_RESET=""
 CLR_TITLE=""
 CLR_ACCENT=""
@@ -139,6 +139,20 @@ memory_usage_label() {
   echo "n/a"
 }
 
+memory_usage_percent() {
+  local total_kb=0
+  local avail_kb=0
+  local used_kb=0
+  total_kb="$(awk '/MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)"
+  avail_kb="$(awk '/MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)"
+  if [[ "$total_kb" =~ ^[0-9]+$ && "$avail_kb" =~ ^[0-9]+$ && "$total_kb" -gt 0 ]]; then
+    used_kb=$((total_kb - avail_kb))
+    echo $((used_kb * 100 / total_kb))
+    return 0
+  fi
+  echo "-1"
+}
+
 disk_usage_label() {
   local line=""
   local used=""
@@ -155,6 +169,42 @@ disk_usage_label() {
   echo "${used} / ${total} (${percent})"
 }
 
+disk_usage_percent() {
+  local raw=""
+  raw="$(df -P / 2>/dev/null | awk 'NR==2 {gsub(/%/, "", $5); print $5}' || true)"
+  if [[ "$raw" =~ ^[0-9]+$ ]]; then
+    echo "$raw"
+  else
+    echo "-1"
+  fi
+}
+
+metric_color() {
+  local percent="$1"
+  if [[ "$percent" =~ ^[0-9]+$ ]]; then
+    if (( percent >= 90 )); then
+      echo "$CLR_DANGER"
+      return 0
+    fi
+    if (( percent >= 80 )); then
+      echo "$CLR_WARN"
+      return 0
+    fi
+    echo "$CLR_OK"
+    return 0
+  fi
+  echo "$CLR_MUTED"
+}
+
+state_color() {
+  local state="$1"
+  case "$state" in
+    running|active) echo "$CLR_OK" ;;
+    restarting|created|paused) echo "$CLR_WARN" ;;
+    *) echo "$CLR_DANGER" ;;
+  esac
+}
+
 draw_header() {
   local title="$1"
   local subtitle="${2:-}"
@@ -167,6 +217,12 @@ draw_header() {
   local sub_state=""
   local ram_label=""
   local disk_label=""
+  local ram_percent=""
+  local disk_percent=""
+  local ram_color=""
+  local disk_color=""
+  local panel_color=""
+  local sub_color=""
 
   clear
   timer_state="$($SUDO systemctl is-active panel-backup.timer 2>/dev/null || echo "inactive")"
@@ -176,6 +232,12 @@ draw_header() {
   sub_state="$(container_state remnawave-subscription-page)"
   ram_label="$(memory_usage_label)"
   disk_label="$(disk_usage_label)"
+  ram_percent="$(memory_usage_percent)"
+  disk_percent="$(disk_usage_percent)"
+  ram_color="$(metric_color "$ram_percent")"
+  disk_color="$(metric_color "$disk_percent")"
+  panel_color="$(state_color "$panel_state")"
+  sub_color="$(state_color "$sub_state")"
   latest_backup="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz 2>/dev/null | head -n1 || true)"
   if [[ -n "$latest_backup" ]]; then
     latest_label="$(basename "$latest_backup")"
@@ -184,12 +246,15 @@ draw_header() {
   fi
 
   paint "$CLR_TITLE" "============================================================"
-  paint "$CLR_OK" "  ${title} (${APP_VERSION})"
+  paint "$CLR_ACCENT" "  ${title}"
+  paint "$CLR_OK" "  Version: ${APP_VERSION}"
   if [[ -n "$subtitle" ]]; then
     paint "$CLR_MUTED" "  ${subtitle}"
   fi
-  paint "$CLR_MUTED" "  $(tr_text "Панель(remnawave):" "Panel(remnawave):") ${panel_state}   |   $(tr_text "Подписка:" "Subscription:") ${sub_state}"
-  paint "$CLR_MUTED" "  RAM: ${ram_label}   |   $(tr_text "Диск /:" "Disk /:") ${disk_label}"
+  paint "$panel_color" "  $(tr_text "Панель(remnawave):" "Panel(remnawave):") ${panel_state}"
+  paint "$sub_color" "  $(tr_text "Подписка:" "Subscription:") ${sub_state}"
+  paint "$ram_color" "  RAM: ${ram_label}"
+  paint "$disk_color" "  $(tr_text "Диск /:" "Disk /:") ${disk_label}"
   paint "$CLR_MUTED" "  $(tr_text "Таймер:" "Timer:") ${timer_state}   |   $(tr_text "Расписание:" "Schedule:") ${schedule_label}"
   paint "$CLR_MUTED" "  $(tr_text "Последний backup:" "Latest backup:") $(short_backup_label "$latest_label")"
   paint "$CLR_TITLE" "============================================================"
