@@ -462,22 +462,42 @@ install_files() {
 }
 
 write_env() {
+  local escaped_bot=""
+  local escaped_admin=""
+  local escaped_thread=""
+  local escaped_dir=""
+  local escaped_calendar=""
   load_existing_env_defaults
+
+  escaped_bot="$(escape_env_value "${TELEGRAM_BOT_TOKEN:-}")"
+  escaped_admin="$(escape_env_value "${TELEGRAM_ADMIN_ID:-}")"
+  escaped_thread="$(escape_env_value "${TELEGRAM_THREAD_ID:-}")"
+  escaped_dir="$(escape_env_value "${REMNAWAVE_DIR:-}")"
+  escaped_calendar="$(escape_env_value "${BACKUP_ON_CALENDAR:-}")"
 
   paint "$CLR_ACCENT" "[3/5] $(tr_text "Запись /etc/panel-backup.env" "Writing /etc/panel-backup.env")"
   $SUDO install -d -m 755 /etc
   $SUDO bash -c "cat > /etc/panel-backup.env <<ENV
-${TELEGRAM_BOT_TOKEN:+TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}}
-${TELEGRAM_ADMIN_ID:+TELEGRAM_ADMIN_ID=${TELEGRAM_ADMIN_ID}}
-${TELEGRAM_THREAD_ID:+TELEGRAM_THREAD_ID=${TELEGRAM_THREAD_ID}}
-${REMNAWAVE_DIR:+REMNAWAVE_DIR=${REMNAWAVE_DIR}}
-${BACKUP_ON_CALENDAR:+BACKUP_ON_CALENDAR=${BACKUP_ON_CALENDAR}}
+${TELEGRAM_BOT_TOKEN:+TELEGRAM_BOT_TOKEN=\"${escaped_bot}\"}
+${TELEGRAM_ADMIN_ID:+TELEGRAM_ADMIN_ID=\"${escaped_admin}\"}
+${TELEGRAM_THREAD_ID:+TELEGRAM_THREAD_ID=\"${escaped_thread}\"}
+${REMNAWAVE_DIR:+REMNAWAVE_DIR=\"${escaped_dir}\"}
+${BACKUP_ON_CALENDAR:+BACKUP_ON_CALENDAR=\"${escaped_calendar}\"}
 ENV"
   $SUDO chmod 600 /etc/panel-backup.env
   $SUDO chown root:root /etc/panel-backup.env
 
   paint "$CLR_MUTED" "REMNAWAVE_DIR=${REMNAWAVE_DIR:-not-detected}"
   paint "$CLR_MUTED" "BACKUP_ON_CALENDAR=${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}"
+}
+
+escape_env_value() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//\$/\\$}"
+  value="${value//\`/\\\`}"
+  printf '%s' "$value"
 }
 
 write_timer_unit() {
