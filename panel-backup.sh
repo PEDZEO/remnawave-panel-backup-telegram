@@ -67,6 +67,32 @@ detect_remnawave_dir() {
   [[ -n "$guessed" ]] && echo "$guessed"
 }
 
+container_image_ref() {
+  local name="$1"
+  docker inspect -f '{{.Config.Image}}' "$name" 2>/dev/null || true
+}
+
+container_version_label() {
+  local image_ref="$1"
+  local tail=""
+
+  if [[ -z "$image_ref" ]]; then
+    printf '%s' "unknown"
+    return 0
+  fi
+
+  tail="${image_ref##*/}"
+  if [[ "$tail" == *:* ]]; then
+    printf '%s' "${tail##*:}"
+    return 0
+  fi
+  if [[ "$tail" == *@* ]]; then
+    printf '%s' "${tail##*@}"
+    return 0
+  fi
+  printf '%s' "$tail"
+}
+
 send_telegram_text() {
   local text="$1"
   local thread_args=()
@@ -140,6 +166,8 @@ build_caption() {
 $(t "Хост" "Host"): ${HOSTNAME_FQDN}
 $(t "Время" "Time"): ${TIMESTAMP_LOCAL}
 $(t "Размер" "Size"): ${ARCHIVE_SIZE_HUMAN}
+$(t "Версия панели" "Panel version"): ${PANEL_VERSION}
+$(t "Версия подписки" "Subscription version"): ${SUBSCRIPTION_VERSION}
 $(t "Состав" "Contents"): PostgreSQL, Redis, .env, compose, caddy, subscription"
 }
 
@@ -151,6 +179,10 @@ fi
 normalize_backup_lang
 
 REMNAWAVE_DIR="${REMNAWAVE_DIR:-$(detect_remnawave_dir || true)}"
+PANEL_IMAGE_REF="$(container_image_ref remnawave)"
+SUBSCRIPTION_IMAGE_REF="$(container_image_ref remnawave-subscription-page)"
+PANEL_VERSION="$(container_version_label "$PANEL_IMAGE_REF")"
+SUBSCRIPTION_VERSION="$(container_version_label "$SUBSCRIPTION_IMAGE_REF")"
 
 [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]] || fail "не найден TELEGRAM_BOT_TOKEN в ${BACKUP_ENV_PATH}"
 [[ -n "${TELEGRAM_ADMIN_ID:-}" ]] || fail "не найден TELEGRAM_ADMIN_ID в ${BACKUP_ENV_PATH}"
@@ -196,6 +228,8 @@ postgres_db=${POSTGRES_DB}
 postgres_user=${POSTGRES_USER}
 remnawave_image=$(docker inspect remnawave --format '{{.Config.Image}}' 2>/dev/null || echo unknown)
 remnawave_caddy_image=$(docker inspect remnawave-caddy --format '{{.Config.Image}}' 2>/dev/null || echo unknown)
+panel_version=${PANEL_VERSION}
+subscription_version=${SUBSCRIPTION_VERSION}
 INFO
 
 {
@@ -217,6 +251,8 @@ $(t "Файл" "File"): $(basename "$ARCHIVE_PATH")
 $(t "Размер" "Size"): ${ARCHIVE_SIZE_HUMAN}
 $(t "Время (локальное)" "Time (local)"): ${TIMESTAMP_LOCAL}
 $(t "Время (UTC)" "Time (UTC)"): ${TIMESTAMP_UTC_HUMAN}
+$(t "Версия панели" "Panel version"): ${PANEL_VERSION}
+$(t "Версия подписки" "Subscription version"): ${SUBSCRIPTION_VERSION}
 $(t "Описание" "Description"): PostgreSQL + Redis + Remnawave configs
 
 $(t "Состав бэкапа" "Backup contents"):
@@ -241,4 +277,6 @@ $(t "Хост" "Host"): ${HOSTNAME_FQDN}
 $(t "Размер" "Size"): ${ARCHIVE_SIZE_HUMAN}
 $(t "Время (локальное)" "Time (local)"): ${TIMESTAMP_LOCAL}
 $(t "Время (UTC)" "Time (UTC)"): ${TIMESTAMP_UTC_HUMAN}
+$(t "Версия панели" "Panel version"): ${PANEL_VERSION}
+$(t "Версия подписки" "Subscription version"): ${SUBSCRIPTION_VERSION}
 $(t "Описание" "Description"): $(t "архив отправлен в Telegram" "archive was sent to Telegram")"
