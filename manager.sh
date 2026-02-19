@@ -9,6 +9,8 @@ MODE="${MODE:-install}"
 INTERACTIVE="${INTERACTIVE:-auto}"
 UI_LANG="${UI_LANG:-auto}"
 BACKUP_LANG="${BACKUP_LANG:-}"
+BACKUP_ENCRYPT="${BACKUP_ENCRYPT:-}"
+BACKUP_PASSWORD="${BACKUP_PASSWORD:-}"
 BACKUP_FILE="${BACKUP_FILE:-}"
 BACKUP_URL="${BACKUP_URL:-}"
 RESTORE_ONLY="${RESTORE_ONLY:-all}"
@@ -542,6 +544,8 @@ mask_secret() {
 
 show_settings_preview() {
   local token_view=""
+  local encrypt_view=""
+  local password_view=""
   if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
     token_view="$(mask_secret "$TELEGRAM_BOT_TOKEN")"
   else
@@ -555,6 +559,18 @@ show_settings_preview() {
   paint "$CLR_MUTED" "  REMNAWAVE_DIR: ${REMNAWAVE_DIR:-$(tr_text "не задан" "not set")}"
   paint "$CLR_MUTED" "  BACKUP_ON_CALENDAR: ${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}"
   paint "$CLR_MUTED" "  BACKUP_LANG: ${BACKUP_LANG:-$(tr_text "не задан" "not set")}"
+  if [[ "${BACKUP_ENCRYPT:-0}" == "1" ]]; then
+    encrypt_view="$(tr_text "включено" "enabled")"
+  else
+    encrypt_view="$(tr_text "выключено" "disabled")"
+  fi
+  if [[ -n "${BACKUP_PASSWORD:-}" ]]; then
+    password_view="$(mask_secret "$BACKUP_PASSWORD")"
+  else
+    password_view="$(tr_text "не задан" "not set")"
+  fi
+  paint "$CLR_MUTED" "  BACKUP_ENCRYPT: ${encrypt_view}"
+  paint "$CLR_MUTED" "  BACKUP_PASSWORD: ${password_view}"
 }
 
 wait_for_enter() {
@@ -657,6 +673,16 @@ normalize_env_value_raw() {
   done
 
   printf '%s' "$value"
+}
+
+normalize_backup_encrypt_raw() {
+  local value="$1"
+  value="$(normalize_env_value_raw "$value")"
+  case "${value,,}" in
+    1|true|yes|on|y|да) printf '1' ;;
+    0|false|no|off|n|нет|"") printf '0' ;;
+    *) printf '0' ;;
+  esac
 }
 
 format_schedule_label() {
@@ -810,6 +836,8 @@ load_existing_env_defaults() {
   local old_dir=""
   local old_calendar=""
   local old_backup_lang=""
+  local old_backup_encrypt=""
+  local old_backup_password=""
   local detected=""
 
   if [[ -f /etc/panel-backup.env ]]; then
@@ -820,11 +848,15 @@ load_existing_env_defaults() {
     old_calendar="$(grep -E '^BACKUP_ON_CALENDAR=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
     old_calendar="$(normalize_calendar_raw "$old_calendar")"
     old_backup_lang="$(grep -E '^BACKUP_LANG=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
+    old_backup_encrypt="$(grep -E '^BACKUP_ENCRYPT=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
+    old_backup_password="$(grep -E '^BACKUP_PASSWORD=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
     old_bot="$(normalize_env_value_raw "$old_bot")"
     old_admin="$(normalize_env_value_raw "$old_admin")"
     old_thread="$(normalize_env_value_raw "$old_thread")"
     old_dir="$(normalize_env_value_raw "$old_dir")"
     old_backup_lang="$(normalize_env_value_raw "$old_backup_lang")"
+    old_backup_encrypt="$(normalize_backup_encrypt_raw "$old_backup_encrypt")"
+    old_backup_password="$(normalize_env_value_raw "$old_backup_password")"
   fi
 
   TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-$old_bot}"
@@ -833,6 +865,8 @@ load_existing_env_defaults() {
   REMNAWAVE_DIR="${REMNAWAVE_DIR:-$old_dir}"
   BACKUP_ON_CALENDAR="${BACKUP_ON_CALENDAR:-$old_calendar}"
   BACKUP_LANG="${BACKUP_LANG:-$old_backup_lang}"
+  BACKUP_ENCRYPT="${BACKUP_ENCRYPT:-$old_backup_encrypt}"
+  BACKUP_PASSWORD="${BACKUP_PASSWORD:-$old_backup_password}"
 
   detected="$(detect_remnawave_dir || true)"
   REMNAWAVE_DIR="${REMNAWAVE_DIR:-$detected}"
@@ -843,6 +877,7 @@ load_existing_env_defaults() {
   if [[ "$BACKUP_LANG" == "auto" || -z "$BACKUP_LANG" ]]; then
     BACKUP_LANG="ru"
   fi
+  BACKUP_ENCRYPT="$(normalize_backup_encrypt_raw "${BACKUP_ENCRYPT:-0}")"
 }
 
 ask_value() {

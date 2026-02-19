@@ -13,7 +13,7 @@ run_restore() {
   fi
 
   if [[ -z "$from_path" ]]; then
-    from_path="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz 2>/dev/null | head -n1 || true)"
+    from_path="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/pb-*.tar.gz.gpg /var/backups/panel/panel-backup-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz.gpg 2>/dev/null | head -n1 || true)"
   fi
 
   if [[ -z "$from_path" || ! -f "$from_path" ]]; then
@@ -202,7 +202,7 @@ show_status() {
     paint "$CLR_WARN" "$(tr_text "Сервис backup: недоступен" "Backup service: not available")"
   fi
 
-  latest_backup="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz 2>/dev/null | head -n1 || true)"
+  latest_backup="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/pb-*.tar.gz.gpg /var/backups/panel/panel-backup-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz.gpg 2>/dev/null | head -n1 || true)"
   print_separator
   paint "$CLR_TITLE" "$(tr_text "Последний backup" "Latest backup")"
   if [[ -n "$latest_backup" && -f "$latest_backup" ]]; then
@@ -222,6 +222,15 @@ show_status() {
     paint "$CLR_MUTED" "  Telegram: $(tr_text "настроен" "configured")"
   else
     paint "$CLR_WARN" "  Telegram: $(tr_text "настроен не полностью" "not fully configured")"
+  fi
+  if [[ "${BACKUP_ENCRYPT:-0}" == "1" ]]; then
+    if [[ -n "${BACKUP_PASSWORD:-}" ]]; then
+      paint "$CLR_MUTED" "  $(tr_text "Шифрование backup:" "Backup encryption:") $(tr_text "включено (GPG)" "enabled (GPG)")"
+    else
+      paint "$CLR_WARN" "  $(tr_text "Шифрование backup:" "Backup encryption:") $(tr_text "включено, но пароль не задан" "enabled, but password is not set")"
+    fi
+  else
+    paint "$CLR_MUTED" "  $(tr_text "Шифрование backup:" "Backup encryption:") $(tr_text "выключено" "disabled")"
   fi
   paint "$CLR_MUTED" "  $(tr_text "Путь Remnawave:" "Remnawave path:") ${REMNAWAVE_DIR:-not-detected}"
   print_separator

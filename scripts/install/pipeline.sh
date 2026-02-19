@@ -9,6 +9,7 @@ prompt_install_settings() {
   draw_header "$(tr_text "Настройка параметров бэкапа" "Configure backup settings")"
   show_back_hint
   paint "$CLR_MUTED" "$(tr_text "Сейчас вы настраиваете: Telegram-уведомления и путь к панели." "You are configuring: Telegram notifications and panel path.")"
+  paint "$CLR_MUTED" "$(tr_text "Также можно включить шифрование backup-архива." "You can also enable backup archive encryption.")"
   paint "$CLR_MUTED" "$(tr_text "Пустое значение оставляет текущее (если есть)." "Empty input keeps current value (if any).")"
   echo
   detected_path="$(detect_remnawave_dir || true)"
@@ -18,29 +19,41 @@ prompt_install_settings() {
   fi
   echo
 
-  val="$(ask_value "$(tr_text "[1/5] Токен Telegram-бота (пример: 123456:ABCDEF...)" "[1/5] Telegram bot token (example: 123456:ABCDEF...)")" "$TELEGRAM_BOT_TOKEN")"
+  val="$(ask_value "$(tr_text "[1/7] Токен Telegram-бота (пример: 123456:ABCDEF...)" "[1/7] Telegram bot token (example: 123456:ABCDEF...)")" "$TELEGRAM_BOT_TOKEN")"
   [[ "$val" == "__PBM_BACK__" ]] && return 1
   TELEGRAM_BOT_TOKEN="$val"
 
-  val="$(ask_value "$(tr_text "[2/5] ID чата/канала Telegram (пример: 123456789 или -1001234567890)" "[2/5] Telegram chat/channel ID (example: 123456789 or -1001234567890)")" "$TELEGRAM_ADMIN_ID")"
+  val="$(ask_value "$(tr_text "[2/7] ID чата/канала Telegram (пример: 123456789 или -1001234567890)" "[2/7] Telegram chat/channel ID (example: 123456789 or -1001234567890)")" "$TELEGRAM_ADMIN_ID")"
   [[ "$val" == "__PBM_BACK__" ]] && return 1
   TELEGRAM_ADMIN_ID="$val"
 
-  val="$(ask_value "$(tr_text "[3/5] ID темы (topic), если нужен (иначе оставьте пусто)" "[3/5] Topic/thread ID if needed (otherwise leave empty)")" "$TELEGRAM_THREAD_ID")"
+  val="$(ask_value "$(tr_text "[3/7] ID темы (topic), если нужен (иначе оставьте пусто)" "[3/7] Topic/thread ID if needed (otherwise leave empty)")" "$TELEGRAM_THREAD_ID")"
   [[ "$val" == "__PBM_BACK__" ]] && return 1
   TELEGRAM_THREAD_ID="$val"
 
-  val="$(ask_value "$(tr_text "[4/5] Путь к папке панели Remnawave (пример: /opt/remnawave)" "[4/5] Path to Remnawave panel directory (example: /opt/remnawave)")" "$REMNAWAVE_DIR")"
+  val="$(ask_value "$(tr_text "[4/7] Путь к папке панели Remnawave (пример: /opt/remnawave)" "[4/7] Path to Remnawave panel directory (example: /opt/remnawave)")" "$REMNAWAVE_DIR")"
   [[ "$val" == "__PBM_BACK__" ]] && return 1
   REMNAWAVE_DIR="$val"
 
-  val="$(ask_value "$(tr_text "[5/5] Язык описания backup в Telegram (ru/en)" "[5/5] Backup description language in Telegram (ru/en)")" "$BACKUP_LANG")"
+  val="$(ask_value "$(tr_text "[5/7] Язык описания backup в Telegram (ru/en)" "[5/7] Backup description language in Telegram (ru/en)")" "$BACKUP_LANG")"
   [[ "$val" == "__PBM_BACK__" ]] && return 1
   case "${val,,}" in
     en|eu) BACKUP_LANG="en" ;;
     ru|"") BACKUP_LANG="ru" ;;
     *) BACKUP_LANG="$val" ;;
   esac
+
+  val="$(ask_value "$(tr_text "[6/7] Шифровать backup-архив (0/1, no/yes)" "[6/7] Encrypt backup archive (0/1, no/yes)")" "$BACKUP_ENCRYPT")"
+  [[ "$val" == "__PBM_BACK__" ]] && return 1
+  BACKUP_ENCRYPT="$(normalize_backup_encrypt_raw "$val")"
+
+  if [[ "$BACKUP_ENCRYPT" == "1" ]]; then
+    val="$(ask_value "$(tr_text "[7/7] Пароль шифрования (GPG symmetric)" "[7/7] Encryption password (GPG symmetric)")" "$BACKUP_PASSWORD")"
+    [[ "$val" == "__PBM_BACK__" ]] && return 1
+    BACKUP_PASSWORD="$val"
+  else
+    BACKUP_PASSWORD=""
+  fi
 
   return 0
 }
@@ -66,6 +79,7 @@ write_env() {
   local escaped_dir=""
   local escaped_calendar=""
   local escaped_backup_lang=""
+  local escaped_backup_password=""
   load_existing_env_defaults
 
   escaped_bot="$(escape_env_value "${TELEGRAM_BOT_TOKEN:-}")"
@@ -74,6 +88,7 @@ write_env() {
   escaped_dir="$(escape_env_value "${REMNAWAVE_DIR:-}")"
   escaped_calendar="$(escape_env_value "${BACKUP_ON_CALENDAR:-}")"
   escaped_backup_lang="$(escape_env_value "${BACKUP_LANG:-}")"
+  escaped_backup_password="$(escape_env_value "${BACKUP_PASSWORD:-}")"
 
   paint "$CLR_ACCENT" "[3/5] $(tr_text "Запись /etc/panel-backup.env" "Writing /etc/panel-backup.env")"
   $SUDO install -d -m 755 /etc
@@ -84,6 +99,8 @@ ${TELEGRAM_THREAD_ID:+TELEGRAM_THREAD_ID=\"${escaped_thread}\"}
 ${REMNAWAVE_DIR:+REMNAWAVE_DIR=\"${escaped_dir}\"}
 ${BACKUP_ON_CALENDAR:+BACKUP_ON_CALENDAR=\"${escaped_calendar}\"}
 ${BACKUP_LANG:+BACKUP_LANG=\"${escaped_backup_lang}\"}
+BACKUP_ENCRYPT=\"${BACKUP_ENCRYPT:-0}\"
+${BACKUP_PASSWORD:+BACKUP_PASSWORD=\"${escaped_backup_password}\"}
 ENV"
   $SUDO chmod 600 /etc/panel-backup.env
   $SUDO chown root:root /etc/panel-backup.env
@@ -91,6 +108,7 @@ ENV"
   paint "$CLR_MUTED" "REMNAWAVE_DIR=${REMNAWAVE_DIR:-not-detected}"
   paint "$CLR_MUTED" "BACKUP_ON_CALENDAR=${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}"
   paint "$CLR_MUTED" "BACKUP_LANG=${BACKUP_LANG:-ru}"
+  paint "$CLR_MUTED" "BACKUP_ENCRYPT=${BACKUP_ENCRYPT:-0}"
 }
 
 escape_env_value() {

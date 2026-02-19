@@ -3,6 +3,8 @@ set -euo pipefail
 
 REMNAWAVE_DIR="${REMNAWAVE_DIR:-}"
 PRE_RESTORE_BACKUP_ROOT="${PRE_RESTORE_BACKUP_ROOT:-/var/backups/panel-restore-pre}"
+BACKUP_ENV_PATH="${BACKUP_ENV_PATH:-/etc/panel-backup.env}"
+BACKUP_PASSWORD="${BACKUP_PASSWORD:-}"
 NO_RESTART=0
 DRY_RUN=0
 ARCHIVE_PATH=""
@@ -12,7 +14,7 @@ declare -A WANT=()
 usage() {
   cat <<USAGE
 Usage:
-  panel-restore.sh --from /path/to/panel-backup-*.tar.gz [--only COMPONENT] [--dry-run] [--no-restart]
+  panel-restore.sh --from /path/to/panel-backup-*.tar.gz|*.tar.gz.gpg [--only COMPONENT] [--dry-run] [--no-restart]
 
 Components:
   all           restore everything (db + redis + env + compose + caddy + subscription)
@@ -26,7 +28,7 @@ Components:
 
 Examples:
   sudo /usr/local/bin/panel-restore.sh --from /var/backups/panel/panel-backup-host-20260219T120000Z.tar.gz
-  sudo /usr/local/bin/panel-restore.sh --from /var/backups/panel/panel-backup-host-20260219T120000Z.tar.gz --only db --only redis
+  sudo /usr/local/bin/panel-restore.sh --from /var/backups/panel/panel-backup-host-20260219T120000Z.tar.gz.gpg --only db --only redis
   sudo /usr/local/bin/panel-restore.sh --from /var/backups/panel/panel-backup-host-20260219T120000Z.tar.gz --only configs --dry-run
 USAGE
 }
@@ -124,6 +126,10 @@ done
 
 [[ -n "$ARCHIVE_PATH" ]] || { echo "--from is required" >&2; usage; exit 1; }
 [[ -f "$ARCHIVE_PATH" ]] || { echo "Archive not found: $ARCHIVE_PATH" >&2; exit 1; }
+if [[ -f "$BACKUP_ENV_PATH" ]]; then
+  # shellcheck disable=SC1090
+  source "$BACKUP_ENV_PATH"
+fi
 REMNAWAVE_DIR="${REMNAWAVE_DIR:-$(detect_remnawave_dir || true)}"
 [[ -d "$REMNAWAVE_DIR" ]] || { echo "Directory not found: $REMNAWAVE_DIR" >&2; exit 1; }
 
@@ -148,8 +154,22 @@ trap cleanup EXIT
 EXTRACT_DIR="$TMP_DIR/extracted"
 mkdir -p "$EXTRACT_DIR"
 
-log "Extract archive: $ARCHIVE_PATH"
-run_cmd "tar -xzf \"$ARCHIVE_PATH\" -C \"$EXTRACT_DIR\""
+ARCHIVE_TO_EXTRACT="$ARCHIVE_PATH"
+if [[ "$ARCHIVE_PATH" == *.gpg ]]; then
+  [[ -n "${BACKUP_PASSWORD:-}" ]] || { echo "BACKUP_PASSWORD is required for encrypted archive" >&2; exit 1; }
+  command -v gpg >/dev/null 2>&1 || { echo "gpg command is required for encrypted archive" >&2; exit 1; }
+  ARCHIVE_TO_EXTRACT="$TMP_DIR/decrypted.tar.gz"
+  log "Decrypt archive: $ARCHIVE_PATH"
+  if (( DRY_RUN == 1 )); then
+    echo "[dry-run] gpg --batch --yes --pinentry-mode loopback --passphrase ***** --decrypt \"$ARCHIVE_PATH\" > \"$ARCHIVE_TO_EXTRACT\""
+  else
+    gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_PASSWORD" \
+      --decrypt "$ARCHIVE_PATH" > "$ARCHIVE_TO_EXTRACT"
+  fi
+fi
+
+log "Extract archive: $ARCHIVE_TO_EXTRACT"
+run_cmd "tar -xzf \"$ARCHIVE_TO_EXTRACT\" -C \"$EXTRACT_DIR\""
 
 DB_DUMP="$EXTRACT_DIR/remnawave-db.dump"
 REDIS_DUMP="$EXTRACT_DIR/remnawave-redis.rdb"

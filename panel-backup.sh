@@ -8,6 +8,8 @@ TG_SINGLE_LIMIT_BYTES="${TG_SINGLE_LIMIT_BYTES:-50331648}"
 REMNAWAVE_DIR="${REMNAWAVE_DIR:-}"
 BACKUP_ENV_PATH="${BACKUP_ENV_PATH:-/etc/panel-backup.env}"
 BACKUP_LANG="${BACKUP_LANG:-ru}"
+BACKUP_ENCRYPT="${BACKUP_ENCRYPT:-0}"
+BACKUP_PASSWORD="${BACKUP_PASSWORD:-}"
 
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 TIMESTAMP_SHORT="$(date -u +%m%d-%H%M%S)"
@@ -35,6 +37,13 @@ normalize_backup_lang() {
   case "${BACKUP_LANG,,}" in
     en|eu) BACKUP_LANG="en" ;;
     *) BACKUP_LANG="ru" ;;
+  esac
+}
+
+normalize_backup_encrypt() {
+  case "${BACKUP_ENCRYPT,,}" in
+    1|true|yes|on|y|да) BACKUP_ENCRYPT="1" ;;
+    *) BACKUP_ENCRYPT="0" ;;
   esac
 }
 
@@ -217,6 +226,9 @@ ensure_dependencies() {
   for cmd in docker tar curl split du stat find awk grep sed flock; do
     command -v "$cmd" >/dev/null 2>&1 || fail "$(t "не найдена команда" "missing command"): $cmd"
   done
+  if [[ "${BACKUP_ENCRYPT:-0}" == "1" ]]; then
+    command -v gpg >/dev/null 2>&1 || fail "$(t "не найдена команда" "missing command"): gpg"
+  fi
 }
 
 check_container_present() {
@@ -285,6 +297,7 @@ if [[ -f "$BACKUP_ENV_PATH" ]]; then
   source "$BACKUP_ENV_PATH"
 fi
 normalize_backup_lang
+normalize_backup_encrypt
 
 exec 9>"$LOCK_FILE"
 if ! flock -n 9; then
@@ -351,11 +364,22 @@ INFO
 
 log "Упаковываю архив"
 tar -C "$WORKDIR/payload" -czf "$ARCHIVE_PATH" . || fail "ошибка упаковки архива"
+
+if [[ "$BACKUP_ENCRYPT" == "1" ]]; then
+  [[ -n "${BACKUP_PASSWORD:-}" ]] || fail "$(t "включено шифрование, но не задан BACKUP_PASSWORD" "encryption is enabled but BACKUP_PASSWORD is not set")"
+  log "$(t "Шифрую архив (GPG symmetric)" "Encrypting archive (GPG symmetric)")"
+  gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_PASSWORD" \
+    --cipher-algo AES256 --symmetric --output "${ARCHIVE_PATH}.gpg" "$ARCHIVE_PATH" \
+    || fail "$(t "ошибка шифрования архива" "archive encryption failed")"
+  rm -f "$ARCHIVE_PATH"
+  ARCHIVE_PATH="${ARCHIVE_PATH}.gpg"
+fi
+
 ARCHIVE_SIZE_BYTES="$(stat -c '%s' "$ARCHIVE_PATH")"
 ARCHIVE_SIZE_HUMAN="$(du -h "$ARCHIVE_PATH" | awk '{print $1}')"
 
 log "Удаляю старые бэкапы (>${KEEP_DAYS} дней)"
-find "$BACKUP_ROOT" -type f \( -name 'pb-*.tar.gz' -o -name 'pb-*.tar.gz.part.*' -o -name 'panel-backup-*.tar.gz' -o -name 'panel-backup-*.tar.gz.part.*' \) -mtime +"$KEEP_DAYS" -delete || true
+find "$BACKUP_ROOT" -type f \( -name 'pb-*.tar.gz' -o -name 'pb-*.tar.gz.gpg' -o -name 'pb-*.tar.gz.part.*' -o -name 'pb-*.tar.gz.gpg.part.*' -o -name 'panel-backup-*.tar.gz' -o -name 'panel-backup-*.tar.gz.gpg' -o -name 'panel-backup-*.tar.gz.part.*' -o -name 'panel-backup-*.tar.gz.gpg.part.*' \) -mtime +"$KEEP_DAYS" -delete || true
 
 send_telegram_text "INFO: $(t "Backup панели создан" "Panel backup created")
 $(t "Хост" "Host"): ${HOSTNAME_FQDN}
@@ -366,6 +390,7 @@ $(t "Время (UTC)" "Time (UTC)"): ${TIMESTAMP_UTC_HUMAN}
 $(t "Версия панели" "Panel version"): ${PANEL_VERSION}
 $(t "Версия подписки" "Subscription version"): ${SUBSCRIPTION_VERSION}
 $(t "Описание" "Description"): PostgreSQL + Redis + Remnawave configs
+$(t "Шифрование" "Encryption"): $( [[ "$BACKUP_ENCRYPT" == "1" ]] && t "включено (GPG)" "enabled (GPG)" || t "выключено" "disabled" )
 
 $(t "Состав бэкапа" "Backup contents"):
 $(printf '%s\n' "${BACKUP_ITEMS[@]}")"
@@ -391,4 +416,5 @@ $(t "Время (локальное)" "Time (local)"): ${TIMESTAMP_LOCAL}
 $(t "Время (UTC)" "Time (UTC)"): ${TIMESTAMP_UTC_HUMAN}
 $(t "Версия панели" "Panel version"): ${PANEL_VERSION}
 $(t "Версия подписки" "Subscription version"): ${SUBSCRIPTION_VERSION}
+$(t "Шифрование" "Encryption"): $( [[ "$BACKUP_ENCRYPT" == "1" ]] && t "включено (GPG)" "enabled (GPG)" || t "выключено" "disabled" )
 $(t "Описание" "Description"): $(t "архив отправлен в Telegram" "archive was sent to Telegram")"
