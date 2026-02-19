@@ -99,7 +99,8 @@ humanize_systemd_state() {
     running) echo "$(tr_text "выполняется" "running")" ;;
     exited) echo "$(tr_text "завершен" "exited")" ;;
     failed) echo "$(tr_text "ошибка" "failed")" ;;
-    dead) echo "$(tr_text "недоступен" "dead")" ;;
+    dead) echo "$(tr_text "завершен" "completed")" ;;
+    success) echo "$(tr_text "успешно" "success")" ;;
     exit-code) echo "$(tr_text "код завершения" "exit code")" ;;
     n/a|"") echo "n/a" ;;
     *) echo "$value" ;;
@@ -125,9 +126,10 @@ show_status() {
   local service_started=""
   local service_finished=""
   local schedule_now=""
-  local backup_installed="no"
-  local restore_installed="no"
-  local config_present="no"
+  local backup_installed="$(tr_text "нет" "no")"
+  local restore_installed="$(tr_text "нет" "no")"
+  local config_present="$(tr_text "нет" "no")"
+  local service_execution=""
 
   draw_header "$(tr_text "Статус panel backup" "Panel backup status")"
 
@@ -184,9 +186,14 @@ show_status() {
     service_started="$(echo "$service_show" | awk -F= '/^ExecMainStartTimestamp=/{print $2}')"
     service_finished="$(echo "$service_show" | awk -F= '/^ExecMainExitTimestamp=/{print $2}')"
     print_separator
+    if [[ "${service_result:-}" == "success" && "${service_status:-}" == "0" ]]; then
+      service_execution="$(tr_text "успешно" "successful")"
+    else
+      service_execution="$(humanize_systemd_state "${service_result:-unknown}")"
+    fi
     paint "$CLR_TITLE" "$(tr_text "Сервис backup" "Backup service")"
     paint "$CLR_MUTED" "  $(tr_text "Статус:" "Status:") $(humanize_systemd_state "${service_active:-unknown}") / $(humanize_systemd_state "${service_sub:-unknown}")"
-    paint "$CLR_MUTED" "  $(tr_text "Результат:" "Result:") $(humanize_systemd_state "${service_result:-unknown}")"
+    paint "$CLR_MUTED" "  $(tr_text "Результат:" "Result:") ${service_execution}"
     paint "$CLR_MUTED" "  $(tr_text "Код завершения:" "Exit code:") ${service_status:-unknown}"
     paint "$CLR_MUTED" "  $(tr_text "Последний старт:" "Last start:") ${service_started:-n/a}"
     paint "$CLR_MUTED" "  $(tr_text "Последнее завершение:" "Last finish:") ${service_finished:-n/a}"
