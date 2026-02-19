@@ -118,6 +118,32 @@ container_state() {
   fi
 }
 
+container_image_ref() {
+  local name="$1"
+  docker inspect -f '{{.Config.Image}}' "$name" 2>/dev/null || true
+}
+
+container_version_label() {
+  local image_ref="$1"
+  local tail=""
+
+  if [[ -z "$image_ref" ]]; then
+    echo "unknown"
+    return 0
+  fi
+
+  tail="${image_ref##*/}"
+  if [[ "$tail" == *:* ]]; then
+    echo "${tail##*:}"
+    return 0
+  fi
+  if [[ "$tail" == *@* ]]; then
+    echo "${tail##*@}"
+    return 0
+  fi
+  echo "$tail"
+}
+
 memory_usage_label() {
   local total_kb=0
   local avail_kb=0
@@ -251,6 +277,10 @@ draw_header() {
   local disk_color=""
   local panel_color=""
   local sub_color=""
+  local panel_version=""
+  local sub_version=""
+  local panel_image=""
+  local sub_image=""
 
   clear
   timer_state="$($SUDO systemctl is-active panel-backup.timer 2>/dev/null || echo "inactive")"
@@ -258,6 +288,10 @@ draw_header() {
   schedule_label="$(format_schedule_label "$schedule_now")"
   panel_state="$(container_state remnawave)"
   sub_state="$(container_state remnawave-subscription-page)"
+  panel_image="$(container_image_ref remnawave)"
+  sub_image="$(container_image_ref remnawave-subscription-page)"
+  panel_version="$(container_version_label "$panel_image")"
+  sub_version="$(container_version_label "$sub_image")"
   ram_label="$(memory_usage_label)"
   disk_label="$(disk_usage_label)"
   ram_percent="$(memory_usage_percent)"
@@ -281,7 +315,9 @@ draw_header() {
   fi
   print_separator
   paint_labeled_value "$(tr_text "Панель (remnawave):" "Panel (remnawave):")" "$panel_state" "$panel_color"
+  paint_labeled_value "$(tr_text "Версия панели:" "Panel version:")" "$panel_version" "$CLR_ACCENT"
   paint_labeled_value "$(tr_text "Подписка:" "Subscription:")" "$sub_state" "$sub_color"
+  paint_labeled_value "$(tr_text "Версия подписки:" "Subscription version:")" "$sub_version" "$CLR_ACCENT"
   paint_labeled_value "RAM:" "$ram_label" "$ram_color"
   paint_labeled_value "$(tr_text "Диск:" "Disk:")" "$disk_label" "$disk_color"
   print_separator
