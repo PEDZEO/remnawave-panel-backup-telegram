@@ -96,6 +96,13 @@ paint() {
   fi
 }
 
+wait_for_enter() {
+  local msg
+  msg="$(tr_text "Нажмите Enter для продолжения..." "Press Enter to continue...")"
+  paint "$CLR_MUTED" "$msg"
+  read -r
+}
+
 enter_ui_mode() {
   [[ -t 0 && -t 1 ]] || return 0
   tput smcup >/dev/null 2>&1 || true
@@ -228,10 +235,15 @@ ask_value() {
   local input=""
 
   if [[ -n "$current" ]]; then
-    read -r -p "${prompt} [${current}]: " input
+    paint "$CLR_MUTED" "${prompt} [${current}]"
   else
-    read -r -p "${prompt}: " input
+    paint "$CLR_MUTED" "${prompt}"
   fi
+  read -r -p "> " input
+
+  case "${input,,}" in
+    /back|/b|back|b|назад) echo "__PBM_BACK__"; return 0 ;;
+  esac
 
   if [[ -n "$input" ]]; then
     echo "$input"
@@ -247,40 +259,59 @@ ask_yes_no() {
 
   while true; do
     if [[ "$default" == "y" ]]; then
-      read -r -p "${prompt} [Y/n]: " answer
+      paint "$CLR_MUTED" "${prompt} [Y/n]"
+      read -r -p "> " answer
       answer="${answer:-y}"
     else
-      read -r -p "${prompt} [y/N]: " answer
+      paint "$CLR_MUTED" "${prompt} [y/N]"
+      read -r -p "> " answer
       answer="${answer:-n}"
     fi
 
     case "${answer,,}" in
       y|yes|д|да) return 0 ;;
       n|no|н|нет) return 1 ;;
+      /back|/b|back|b|назад) return 2 ;;
       *) echo "$(tr_text "Введите y/n (или д/н)." "Please answer y or n.")" ;;
     esac
   done
 }
 
 prompt_install_settings() {
+  local val=""
   load_existing_env_defaults
 
   echo
-  echo "$(tr_text "Настройка параметров бэкапа:" "Configure backup settings:")"
-  TELEGRAM_BOT_TOKEN="$(ask_value "$(tr_text "TELEGRAM_BOT_TOKEN (пусто = без Telegram уведомлений)" "TELEGRAM_BOT_TOKEN (empty disables Telegram notifications)")" "$TELEGRAM_BOT_TOKEN")"
-  TELEGRAM_ADMIN_ID="$(ask_value "$(tr_text "TELEGRAM_ADMIN_ID (ID чата)" "TELEGRAM_ADMIN_ID (chat ID)")" "$TELEGRAM_ADMIN_ID")"
-  TELEGRAM_THREAD_ID="$(ask_value "$(tr_text "TELEGRAM_THREAD_ID (опционально)" "TELEGRAM_THREAD_ID (optional)")" "$TELEGRAM_THREAD_ID")"
-  REMNAWAVE_DIR="$(ask_value "$(tr_text "REMNAWAVE_DIR (путь к панели)" "REMNAWAVE_DIR (path to panel)")" "$REMNAWAVE_DIR")"
+  paint "$CLR_TITLE" "$(tr_text "Настройка параметров бэкапа" "Configure backup settings")"
+  paint "$CLR_MUTED" "$(tr_text "Подсказка: введите /back для возврата в меню." "Hint: type /back to return to menu.")"
+
+  val="$(ask_value "$(tr_text "TELEGRAM_BOT_TOKEN (пусто = без Telegram уведомлений)" "TELEGRAM_BOT_TOKEN (empty disables Telegram notifications)")" "$TELEGRAM_BOT_TOKEN")"
+  [[ "$val" == "__PBM_BACK__" ]] && return 1
+  TELEGRAM_BOT_TOKEN="$val"
+
+  val="$(ask_value "$(tr_text "TELEGRAM_ADMIN_ID (ID чата)" "TELEGRAM_ADMIN_ID (chat ID)")" "$TELEGRAM_ADMIN_ID")"
+  [[ "$val" == "__PBM_BACK__" ]] && return 1
+  TELEGRAM_ADMIN_ID="$val"
+
+  val="$(ask_value "$(tr_text "TELEGRAM_THREAD_ID (опционально)" "TELEGRAM_THREAD_ID (optional)")" "$TELEGRAM_THREAD_ID")"
+  [[ "$val" == "__PBM_BACK__" ]] && return 1
+  TELEGRAM_THREAD_ID="$val"
+
+  val="$(ask_value "$(tr_text "REMNAWAVE_DIR (путь к панели)" "REMNAWAVE_DIR (path to panel)")" "$REMNAWAVE_DIR")"
+  [[ "$val" == "__PBM_BACK__" ]] && return 1
+  REMNAWAVE_DIR="$val"
+
+  return 0
 }
 
 install_files() {
-  echo "[1/5] Downloading files from ${RAW_BASE}"
+  paint "$CLR_ACCENT" "[1/5] $(tr_text "Загрузка файлов" "Downloading files")"
   fetch "panel-backup.sh" "$TMP_DIR/panel-backup.sh"
   fetch "panel-restore.sh" "$TMP_DIR/panel-restore.sh"
   fetch "systemd/panel-backup.service" "$TMP_DIR/panel-backup.service"
   fetch "systemd/panel-backup.timer" "$TMP_DIR/panel-backup.timer"
 
-  echo "[2/5] Installing scripts and systemd units"
+  paint "$CLR_ACCENT" "[2/5] $(tr_text "Установка скриптов и systemd-юнитов" "Installing scripts and systemd units")"
   $SUDO install -m 755 "$TMP_DIR/panel-backup.sh" /usr/local/bin/panel-backup.sh
   $SUDO install -m 755 "$TMP_DIR/panel-restore.sh" /usr/local/bin/panel-restore.sh
   $SUDO install -m 644 "$TMP_DIR/panel-backup.service" /etc/systemd/system/panel-backup.service
@@ -290,7 +321,7 @@ install_files() {
 write_env() {
   load_existing_env_defaults
 
-  echo "[3/5] Writing /etc/panel-backup.env"
+  paint "$CLR_ACCENT" "[3/5] $(tr_text "Запись /etc/panel-backup.env" "Writing /etc/panel-backup.env")"
   $SUDO install -d -m 755 /etc
   $SUDO bash -c "cat > /etc/panel-backup.env <<ENV
 ${TELEGRAM_BOT_TOKEN:+TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}}
@@ -301,15 +332,15 @@ ENV"
   $SUDO chmod 600 /etc/panel-backup.env
   $SUDO chown root:root /etc/panel-backup.env
 
-  echo "      REMNAWAVE_DIR=${REMNAWAVE_DIR:-not-detected}"
+  paint "$CLR_MUTED" "REMNAWAVE_DIR=${REMNAWAVE_DIR:-not-detected}"
 }
 
 enable_timer() {
-  echo "[4/5] Reloading systemd and enabling timer"
+  paint "$CLR_ACCENT" "[4/5] $(tr_text "Перезагрузка systemd и включение таймера" "Reloading systemd and enabling timer")"
   $SUDO systemctl daemon-reload
   $SUDO systemctl enable --now panel-backup.timer
 
-  echo "[5/5] Done"
+  paint "$CLR_OK" "[5/5] $(tr_text "Готово" "Done")"
   $SUDO systemctl status --no-pager panel-backup.timer | sed -n '1,12p'
 }
 
@@ -466,7 +497,7 @@ interactive_menu() {
   choose_ui_lang
 
   while true; do
-    echo
+    clear
     paint "$CLR_TITLE" "============================================"
     paint "$CLR_TITLE" "  $(tr_text "Менеджер бэкапа панели" "Panel Backup Manager")"
     paint "$CLR_TITLE" "============================================"
@@ -482,41 +513,59 @@ interactive_menu() {
 
     case "$action" in
       1)
-        prompt_install_settings
+        if ! prompt_install_settings; then
+          paint "$CLR_WARN" "$(tr_text "Возврат в меню без изменений." "Returned to menu without changes.")"
+          wait_for_enter
+          continue
+        fi
         install_files
         write_env
-        if ask_yes_no "$(tr_text "Включить таймер backup сейчас?" "Enable backup timer now?")" "y"; then
-          enable_timer
-        else
-          echo "$(tr_text "Таймер не включен. Позже можно включить так:" "Timer was not enabled. You can enable later with:")"
-          echo "  sudo systemctl enable --now panel-backup.timer"
+        if ask_yes_no "$(tr_text "Включить таймер backup сейчас?" "Enable backup timer now?")" "y"; then enable_timer; else
+          case $? in
+            1)
+              paint "$CLR_WARN" "$(tr_text "Таймер не включен. Позже можно включить так:" "Timer was not enabled. You can enable later with:")"
+              paint "$CLR_MUTED" "  sudo systemctl enable --now panel-backup.timer"
+              ;;
+            2) paint "$CLR_WARN" "$(tr_text "Пропущено." "Skipped.")" ;;
+          esac
         fi
-        break
+        wait_for_enter
         ;;
       2)
-        prompt_install_settings
+        if ! prompt_install_settings; then
+          paint "$CLR_WARN" "$(tr_text "Возврат в меню без изменений." "Returned to menu without changes.")"
+          wait_for_enter
+          continue
+        fi
         write_env
-        echo "$(tr_text "Настройки обновлены." "Settings updated.")"
-        break
+        paint "$CLR_OK" "$(tr_text "Настройки обновлены." "Settings updated.")"
+        wait_for_enter
         ;;
       3)
         enable_timer
-        break
+        wait_for_enter
         ;;
       4)
         disable_timer
-        break
+        wait_for_enter
         ;;
       5)
         MODE="restore"
         BACKUP_FILE="$(ask_value "$(tr_text "BACKUP_FILE (путь, можно пусто если задан BACKUP_URL)" "BACKUP_FILE (path, optional if BACKUP_URL is set)")" "$BACKUP_FILE")"
+        [[ "$BACKUP_FILE" == "__PBM_BACK__" ]] && continue
         BACKUP_URL="$(ask_value "$(tr_text "BACKUP_URL (опционально)" "BACKUP_URL (optional)")" "$BACKUP_URL")"
+        [[ "$BACKUP_URL" == "__PBM_BACK__" ]] && continue
         RESTORE_ONLY="$(ask_value "$(tr_text "RESTORE_ONLY (all/db/redis/configs/...)" "RESTORE_ONLY (all/db/redis/configs/...)")" "$RESTORE_ONLY")"
+        [[ "$RESTORE_ONLY" == "__PBM_BACK__" ]] && continue
         if ask_yes_no "$(tr_text "Запустить restore в dry-run режиме?" "Run restore in dry-run mode?")" "n"; then
           RESTORE_DRY_RUN=1
+        else
+          [[ "$?" == "2" ]] && continue
         fi
         if ask_yes_no "$(tr_text "Пропустить перезапуск сервисов после restore?" "Skip service restart after restore?")" "n"; then
           RESTORE_NO_RESTART=1
+        else
+          [[ "$?" == "2" ]] && continue
         fi
         if [[ ! -x /usr/local/bin/panel-restore.sh ]]; then
           install_files
@@ -524,12 +573,11 @@ interactive_menu() {
           $SUDO systemctl daemon-reload
         fi
         run_restore
-        break
+        wait_for_enter
         ;;
       6)
         show_status
-        echo
-        read -r -p "$(tr_text "Нажмите Enter для возврата в меню..." "Press Enter to return to menu...")" _
+        wait_for_enter
         ;;
       7)
         echo "$(tr_text "Выход." "Cancelled.")"
