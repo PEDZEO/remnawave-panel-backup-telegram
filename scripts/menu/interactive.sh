@@ -702,6 +702,8 @@ menu_section_operations() {
           continue
         fi
         draw_restore_step "3" "4" "$(tr_text "Параметры запуска" "Execution options")"
+        paint "$CLR_MUTED" "$(tr_text "Подсказка: тестовый режим только проверяет шаги, боевой режим реально применяет изменения." "Tip: test mode only validates steps, real mode actually applies changes.")"
+        paint "$CLR_MUTED" "$(tr_text "Если отключить перезапуски, сервисы не будут автоматически перезапущены после восстановления." "If restarts are disabled, services will not be restarted automatically after restore.")"
         if ask_yes_no "$(tr_text "Запустить restore в dry-run режиме?" "Run restore in dry-run mode?")" "n"; then
           RESTORE_DRY_RUN=1
         else
