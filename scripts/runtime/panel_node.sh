@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Panel/node install and update operations for manager.sh
+# update: panel/node install and update operations for manager.sh
 
 ensure_docker_available() {
   if command -v docker >/dev/null 2>&1; then

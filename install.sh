@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # update: bootstrap launcher resolves pinned manager script and executes it.
+# update: repository root entry kept in sync.
 set -euo pipefail
 
 RAW_BASE="${RAW_BASE:-https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main}"

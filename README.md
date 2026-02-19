@@ -1,6 +1,7 @@
 # Remnawave Panel Backup Manager
 
 [English](README.en.md) | [Русский](README.md)
+Update: repository structure synchronized.
 
 Скрипт для установки и управления backup/restore Remnawave через единый интерактивный менеджер (RU/EN).
 

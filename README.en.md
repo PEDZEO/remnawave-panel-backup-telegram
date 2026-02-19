@@ -1,6 +1,7 @@
 # Remnawave Panel Backup Manager
 
 [English](README.en.md) | [Русский](README.md)
+Update: repository structure synchronized.
 
 A script-based manager for backup/restore of Remnawave with a unified interactive UI (RU/EN).
 
