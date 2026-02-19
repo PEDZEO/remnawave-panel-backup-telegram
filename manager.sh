@@ -731,99 +731,95 @@ show_status() {
   echo "$(tr_text "Путь Remnawave: ${REMNAWAVE_DIR:-not-detected}" "Remnawave dir: ${REMNAWAVE_DIR:-not-detected}")"
 }
 
-interactive_menu() {
-  local action=""
+menu_flow_install_and_setup() {
+  draw_header "$(tr_text "Установка и настройка" "Install and configure")"
+  paint "$CLR_MUTED" "$(tr_text "Используйте этот пункт при первом запуске или обновлении скриптов." "Use this on first run or when updating scripts.")"
+  if ! prompt_install_settings; then
+    return 0
+  fi
+  show_settings_preview
+  if ! ask_yes_no "$(tr_text "Применить эти настройки и продолжить установку?" "Apply these settings and continue installation?")" "y"; then
+    [[ "$?" == "2" ]] && return 0
+    paint "$CLR_WARN" "$(tr_text "Отменено пользователем." "Cancelled by user.")"
+    wait_for_enter
+    return 0
+  fi
+  install_files
+  write_env
+  if ask_yes_no "$(tr_text "Включить таймер backup сейчас?" "Enable backup timer now?")" "y"; then
+    enable_timer
+  else
+    case $? in
+      1)
+        paint "$CLR_WARN" "$(tr_text "Таймер не включен. Позже можно включить так:" "Timer was not enabled. You can enable later with:")"
+        paint "$CLR_MUTED" "  sudo systemctl enable --now panel-backup.timer"
+        ;;
+      2) paint "$CLR_WARN" "$(tr_text "Пропущено." "Skipped.")" ;;
+    esac
+  fi
+  wait_for_enter
+}
 
-  setup_colors
-  enter_ui_mode
-  choose_ui_lang
+menu_flow_edit_settings_only() {
+  draw_header "$(tr_text "Настройка Telegram и пути" "Configure Telegram and path")"
+  paint "$CLR_MUTED" "$(tr_text "Скрипты не переустанавливаются: меняется только /etc/panel-backup.env." "Scripts are not reinstalled: only /etc/panel-backup.env will be changed.")"
+  if ! prompt_install_settings; then
+    return 0
+  fi
+  show_settings_preview
+  if ! ask_yes_no "$(tr_text "Сохранить эти настройки?" "Save these settings?")" "y"; then
+    [[ "$?" == "2" ]] && return 0
+    paint "$CLR_WARN" "$(tr_text "Изменения не сохранены." "Changes were not saved.")"
+    wait_for_enter
+    return 0
+  fi
+  write_env
+  paint "$CLR_OK" "$(tr_text "Настройки обновлены." "Settings updated.")"
+  wait_for_enter
+}
 
+menu_section_setup() {
+  local choice=""
   while true; do
-    draw_header "$(tr_text "Менеджер бэкапа панели" "Panel Backup Manager")"
+    draw_header "$(tr_text "Раздел: Установка и настройка" "Section: Setup and configuration")"
     show_back_hint
-    paint "$CLR_MUTED" "$(tr_text "Выберите действие:" "Select action:")"
+    paint "$CLR_MUTED" "$(tr_text "Здесь первичная установка и изменение конфигурации." "Use this section for initial install and config changes.")"
     paint "$CLR_ACCENT" "  1) $(tr_text "Установить/обновить файлы + первичная настройка" "Install/update files + initial setup")"
-    paint "$CLR_ACCENT" "  2) $(tr_text "Изменить только текущие настройки (без переустановки)" "Edit current settings only (no reinstall)")"
-    paint "$CLR_ACCENT" "  3) $(tr_text "Включить таймер backup" "Enable scheduled backup timer")"
-    paint "$CLR_ACCENT" "  4) $(tr_text "Выключить таймер backup" "Disable scheduled backup timer")"
-    paint "$CLR_ACCENT" "  5) $(tr_text "Настроить периодичность backup" "Configure backup schedule")"
-    paint "$CLR_ACCENT" "  6) $(tr_text "Восстановить backup" "Restore backup")"
-    paint "$CLR_ACCENT" "  7) $(tr_text "Создать backup сейчас" "Create backup now")"
-    paint "$CLR_ACCENT" "  8) $(tr_text "Показать статус" "Show status")"
-    paint "$CLR_ACCENT" "  9) $(tr_text "Выход" "Exit")"
-    read -r -p "$(tr_text "Выбор [1-9]: " "Choice [1-9]: ")" action
-    if is_back_command "$action"; then
-      echo "$(tr_text "Выход." "Cancelled.")"
+    paint "$CLR_ACCENT" "  2) $(tr_text "Изменить только текущие настройки" "Edit current settings only")"
+    paint "$CLR_ACCENT" "  3) $(tr_text "Назад" "Back")"
+    read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
+    if is_back_command "$choice"; then
       break
     fi
+    case "$choice" in
+      1) menu_flow_install_and_setup ;;
+      2) menu_flow_edit_settings_only ;;
+      3) break ;;
+      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+    esac
+  done
+}
 
-    case "$action" in
+menu_section_operations() {
+  local choice=""
+  while true; do
+    draw_header "$(tr_text "Раздел: Операции backup/restore" "Section: Backup/restore operations")"
+    show_back_hint
+    paint "$CLR_MUTED" "$(tr_text "Создание и восстановление backup вручную." "Run manual backup and restore operations.")"
+    paint "$CLR_ACCENT" "  1) $(tr_text "Создать backup сейчас" "Create backup now")"
+    paint "$CLR_ACCENT" "  2) $(tr_text "Восстановить backup" "Restore backup")"
+    paint "$CLR_ACCENT" "  3) $(tr_text "Назад" "Back")"
+    read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
+    if is_back_command "$choice"; then
+      break
+    fi
+    case "$choice" in
       1)
-        draw_header "$(tr_text "Установка и настройка" "Install and configure")"
-        paint "$CLR_MUTED" "$(tr_text "Используйте этот пункт при первом запуске или обновлении скриптов." "Use this on first run or when updating scripts.")"
-        if ! prompt_install_settings; then
-          continue
-        fi
-        show_settings_preview
-        if ! ask_yes_no "$(tr_text "Применить эти настройки и продолжить установку?" "Apply these settings and continue installation?")" "y"; then
-          [[ "$?" == "2" ]] && continue
-          paint "$CLR_WARN" "$(tr_text "Отменено пользователем." "Cancelled by user.")"
-          wait_for_enter
-          continue
-        fi
-        install_files
-        write_env
-        if ask_yes_no "$(tr_text "Включить таймер backup сейчас?" "Enable backup timer now?")" "y"; then enable_timer; else
-          case $? in
-            1)
-              paint "$CLR_WARN" "$(tr_text "Таймер не включен. Позже можно включить так:" "Timer was not enabled. You can enable later with:")"
-              paint "$CLR_MUTED" "  sudo systemctl enable --now panel-backup.timer"
-              ;;
-            2) paint "$CLR_WARN" "$(tr_text "Пропущено." "Skipped.")" ;;
-          esac
-        fi
+        draw_header "$(tr_text "Создание backup" "Create backup")"
+        run_backup_now
         wait_for_enter
         ;;
       2)
-        draw_header "$(tr_text "Настройка Telegram и пути" "Configure Telegram and path")"
-        paint "$CLR_MUTED" "$(tr_text "Скрипты не переустанавливаются: меняется только /etc/panel-backup.env." "Scripts are not reinstalled: only /etc/panel-backup.env will be changed.")"
-        if ! prompt_install_settings; then
-          continue
-        fi
-        show_settings_preview
-        if ! ask_yes_no "$(tr_text "Сохранить эти настройки?" "Save these settings?")" "y"; then
-          [[ "$?" == "2" ]] && continue
-          paint "$CLR_WARN" "$(tr_text "Изменения не сохранены." "Changes were not saved.")"
-          wait_for_enter
-          continue
-        fi
-        write_env
-        paint "$CLR_OK" "$(tr_text "Настройки обновлены." "Settings updated.")"
-        wait_for_enter
-        ;;
-      3)
-        draw_header "$(tr_text "Включение таймера backup" "Enable backup timer")"
-        enable_timer
-        wait_for_enter
-        ;;
-      4)
-        draw_header "$(tr_text "Отключение таймера backup" "Disable backup timer")"
-        disable_timer
-        wait_for_enter
-        ;;
-      5)
-        if configure_schedule_menu; then
-          write_env
-          write_timer_unit
-          $SUDO systemctl daemon-reload
-          paint "$CLR_OK" "$(tr_text "Периодичность backup сохранена." "Backup schedule saved.")"
-          if $SUDO systemctl is-enabled --quiet panel-backup.timer 2>/dev/null; then
-            $SUDO systemctl restart panel-backup.timer || true
-          fi
-        fi
-        wait_for_enter
-        ;;
-      6)
         draw_header "$(tr_text "Восстановление backup" "Restore backup")"
         show_back_hint
         MODE="restore"
@@ -851,16 +847,105 @@ interactive_menu() {
         run_restore
         wait_for_enter
         ;;
-      7)
-        draw_header "$(tr_text "Создание backup" "Create backup")"
-        run_backup_now
+      3) break ;;
+      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+    esac
+  done
+}
+
+menu_section_timer() {
+  local choice=""
+  local schedule_now=""
+  while true; do
+    draw_header "$(tr_text "Раздел: Таймер и периодичность" "Section: Timer and schedule")"
+    show_back_hint
+    schedule_now="$(get_current_timer_calendar || true)"
+    paint "$CLR_MUTED" "$(tr_text "Текущее расписание:" "Current schedule:") ${schedule_now:-unknown}"
+    paint "$CLR_ACCENT" "  1) $(tr_text "Включить таймер backup" "Enable backup timer")"
+    paint "$CLR_ACCENT" "  2) $(tr_text "Выключить таймер backup" "Disable backup timer")"
+    paint "$CLR_ACCENT" "  3) $(tr_text "Настроить периодичность backup" "Configure backup schedule")"
+    paint "$CLR_ACCENT" "  4) $(tr_text "Назад" "Back")"
+    read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
+    if is_back_command "$choice"; then
+      break
+    fi
+    case "$choice" in
+      1)
+        draw_header "$(tr_text "Включение таймера backup" "Enable backup timer")"
+        enable_timer
         wait_for_enter
         ;;
-      8)
-        show_status
+      2)
+        draw_header "$(tr_text "Отключение таймера backup" "Disable backup timer")"
+        disable_timer
         wait_for_enter
         ;;
-      9)
+      3)
+        if configure_schedule_menu; then
+          write_env
+          write_timer_unit
+          $SUDO systemctl daemon-reload
+          paint "$CLR_OK" "$(tr_text "Периодичность backup сохранена." "Backup schedule saved.")"
+          if $SUDO systemctl is-enabled --quiet panel-backup.timer 2>/dev/null; then
+            $SUDO systemctl restart panel-backup.timer || true
+          fi
+        fi
+        wait_for_enter
+        ;;
+      4) break ;;
+      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+    esac
+  done
+}
+
+menu_section_status() {
+  local choice=""
+  while true; do
+    draw_header "$(tr_text "Раздел: Статус и диагностика" "Section: Status and diagnostics")"
+    show_back_hint
+    paint "$CLR_MUTED" "$(tr_text "Проверка состояния скриптов, таймера и последних backup." "Check scripts, timer and latest backup details.")"
+    paint "$CLR_ACCENT" "  1) $(tr_text "Показать полный статус" "Show full status")"
+    paint "$CLR_ACCENT" "  2) $(tr_text "Назад" "Back")"
+    read -r -p "$(tr_text "Выбор [1-2]: " "Choice [1-2]: ")" choice
+    if is_back_command "$choice"; then
+      break
+    fi
+    case "$choice" in
+      1) show_status; wait_for_enter ;;
+      2) break ;;
+      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+    esac
+  done
+}
+
+interactive_menu() {
+  local action=""
+
+  setup_colors
+  enter_ui_mode
+  choose_ui_lang
+
+  while true; do
+    draw_header "$(tr_text "Менеджер бэкапа панели" "Panel Backup Manager")"
+    show_back_hint
+    paint "$CLR_MUTED" "$(tr_text "Главные разделы:" "Main sections:")"
+    paint "$CLR_ACCENT" "  1) $(tr_text "Установка и настройка" "Setup and configuration")"
+    paint "$CLR_ACCENT" "  2) $(tr_text "Операции backup/restore" "Backup/restore operations")"
+    paint "$CLR_ACCENT" "  3) $(tr_text "Таймер и периодичность" "Timer and schedule")"
+    paint "$CLR_ACCENT" "  4) $(tr_text "Статус и диагностика" "Status and diagnostics")"
+    paint "$CLR_ACCENT" "  q) $(tr_text "Выход" "Exit")"
+    read -r -p "$(tr_text "Выбор [1-4/q]: " "Choice [1-4/q]: ")" action
+    if is_back_command "$action"; then
+      echo "$(tr_text "Выход." "Cancelled.")"
+      break
+    fi
+
+    case "$action" in
+      1) menu_section_setup ;;
+      2) menu_section_operations ;;
+      3) menu_section_timer ;;
+      4) menu_section_status ;;
+      q|Q)
         echo "$(tr_text "Выход." "Cancelled.")"
         break
         ;;
