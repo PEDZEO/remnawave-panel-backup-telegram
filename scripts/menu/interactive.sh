@@ -54,6 +54,88 @@ menu_flow_edit_settings_only() {
   wait_for_enter
 }
 
+menu_flow_encryption_settings() {
+  local choice=""
+  local val=""
+  local encrypt_state=""
+  local password_state=""
+
+  while true; do
+    load_existing_env_defaults
+    if [[ "${BACKUP_ENCRYPT:-0}" == "1" ]]; then
+      encrypt_state="$(tr_text "включено (GPG)" "enabled (GPG)")"
+    else
+      encrypt_state="$(tr_text "выключено" "disabled")"
+    fi
+    if [[ -n "${BACKUP_PASSWORD:-}" ]]; then
+      password_state="$(mask_secret "$BACKUP_PASSWORD")"
+    else
+      password_state="$(tr_text "не задан" "not set")"
+    fi
+
+    draw_header "$(tr_text "Настройки шифрования backup" "Backup encryption settings")"
+    show_back_hint
+    paint "$CLR_MUTED" "  $(tr_text "Шифрование:" "Encryption:") ${encrypt_state}"
+    paint "$CLR_MUTED" "  $(tr_text "Пароль:" "Password:") ${password_state}"
+    print_separator
+    menu_option "1" "$(tr_text "Включить шифрование и задать пароль" "Enable encryption and set password")"
+    menu_option "2" "$(tr_text "Изменить пароль шифрования" "Change encryption password")"
+    menu_option "3" "$(tr_text "Выключить шифрование" "Disable encryption")"
+    menu_option "4" "$(tr_text "Назад" "Back")"
+    print_separator
+    read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
+    if is_back_command "$choice"; then
+      break
+    fi
+
+    case "$choice" in
+      1)
+        val="$(ask_value "$(tr_text "Введите пароль шифрования (минимум 8 символов)" "Enter encryption password (minimum 8 characters)")" "$BACKUP_PASSWORD")"
+        [[ "$val" == "__PBM_BACK__" ]] && continue
+        if [[ ${#val} -lt 8 ]]; then
+          paint "$CLR_WARN" "$(tr_text "Пароль должен быть не короче 8 символов." "Password must be at least 8 characters long.")"
+          wait_for_enter
+          continue
+        fi
+        BACKUP_ENCRYPT="1"
+        BACKUP_PASSWORD="$val"
+        write_env
+        paint "$CLR_OK" "$(tr_text "Шифрование включено, пароль сохранен." "Encryption enabled, password saved.")"
+        wait_for_enter
+        ;;
+      2)
+        if [[ "${BACKUP_ENCRYPT:-0}" != "1" ]]; then
+          paint "$CLR_WARN" "$(tr_text "Сначала включите шифрование." "Enable encryption first.")"
+          wait_for_enter
+          continue
+        fi
+        val="$(ask_value "$(tr_text "Новый пароль шифрования (минимум 8 символов)" "New encryption password (minimum 8 characters)")" "$BACKUP_PASSWORD")"
+        [[ "$val" == "__PBM_BACK__" ]] && continue
+        if [[ ${#val} -lt 8 ]]; then
+          paint "$CLR_WARN" "$(tr_text "Пароль должен быть не короче 8 символов." "Password must be at least 8 characters long.")"
+          wait_for_enter
+          continue
+        fi
+        BACKUP_PASSWORD="$val"
+        write_env
+        paint "$CLR_OK" "$(tr_text "Пароль шифрования обновлен." "Encryption password updated.")"
+        wait_for_enter
+        ;;
+      3)
+        if ask_yes_no "$(tr_text "Выключить шифрование и удалить пароль из конфигурации?" "Disable encryption and remove password from config?")" "y"; then
+          BACKUP_ENCRYPT="0"
+          BACKUP_PASSWORD=""
+          write_env
+          paint "$CLR_OK" "$(tr_text "Шифрование выключено." "Encryption disabled.")"
+        fi
+        wait_for_enter
+        ;;
+      4) break ;;
+      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+    esac
+  done
+}
+
 menu_section_setup() {
   local choice=""
   while true; do
@@ -62,23 +144,25 @@ menu_section_setup() {
     paint "$CLR_MUTED" "$(tr_text "Здесь первичная установка и изменение конфигурации." "Use this section for initial install and config changes.")"
     menu_option "1" "$(tr_text "Установить/обновить файлы + первичная настройка" "Install/update files + initial setup")"
     menu_option "2" "$(tr_text "Изменить только текущие настройки" "Edit current settings only")"
-    menu_option "3" "$(tr_text "Назад" "Back")"
+    menu_option "3" "$(tr_text "Настройки шифрования backup" "Backup encryption settings")"
+    menu_option "4" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
     case "$choice" in
       1) menu_flow_install_and_setup ;;
       2) menu_flow_edit_settings_only ;;
-      3) break ;;
+      3) menu_flow_encryption_settings ;;
+      4) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
 }
 
 list_local_backups() {
-  ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz 2>/dev/null || true
+  ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/pb-*.tar.gz.gpg /var/backups/panel/panel-backup-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz.gpg 2>/dev/null || true
 }
 
 render_backup_list() {
@@ -145,7 +229,7 @@ select_restore_source() {
         wait_for_enter
         ;;
       2)
-        path="$(ask_value "$(tr_text "Путь к backup-архиву (.tar.gz)" "Path to backup archive (.tar.gz)")" "$BACKUP_FILE")"
+        path="$(ask_value "$(tr_text "Путь к backup-архиву (.tar.gz или .tar.gz.gpg)" "Path to backup archive (.tar.gz or .tar.gz.gpg)")" "$BACKUP_FILE")"
         [[ "$path" == "__PBM_BACK__" ]] && continue
         if [[ -f "$path" ]]; then
           BACKUP_FILE="$path"
