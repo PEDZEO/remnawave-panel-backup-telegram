@@ -30,6 +30,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backu
 - установить/обновить и настроить
 - включить или выключить timer backup
 - отдельно обновить Telegram/путь
+- посмотреть статус (установлено ли, timer/service, последний backup)
 - запустить restore
 
 С Telegram:
@@ -120,4 +121,10 @@ sudo journalctl -u panel-backup.service -n 100 --no-pager
 
 ```bash
 INTERACTIVE=0 MODE=install bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
+```
+
+Показать статус без меню:
+
+```bash
+INTERACTIVE=0 MODE=status bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
 ```
