@@ -109,13 +109,15 @@ draw_header() {
   local subtitle="${2:-}"
   local timer_state=""
   local schedule_now=""
+  local schedule_label=""
   local latest_backup=""
   local latest_label=""
 
   clear
   timer_state="$($SUDO systemctl is-active panel-backup.timer 2>/dev/null || echo "inactive")"
   schedule_now="$(get_current_timer_calendar || true)"
-  latest_backup="$(ls -1t /var/backups/panel/panel-backup-*.tar.gz 2>/dev/null | head -n1 || true)"
+  schedule_label="$(format_schedule_label "$schedule_now")"
+  latest_backup="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz 2>/dev/null | head -n1 || true)"
   if [[ -n "$latest_backup" ]]; then
     latest_label="$(basename "$latest_backup")"
   else
@@ -134,8 +136,8 @@ draw_header() {
   if [[ -n "$subtitle" ]]; then
     paint "$CLR_MUTED" "  ${subtitle}"
   fi
-  paint "$CLR_MUTED" "  $(tr_text "Таймер:" "Timer:") ${timer_state}   |   $(tr_text "Расписание:" "Schedule:") ${schedule_now:-unknown}"
-  paint "$CLR_MUTED" "  $(tr_text "Последний backup:" "Latest backup:") ${latest_label}"
+  paint "$CLR_MUTED" "  $(tr_text "Таймер:" "Timer:") ${timer_state}   |   $(tr_text "Расписание:" "Schedule:") ${schedule_label}"
+  paint "$CLR_MUTED" "  $(tr_text "Последний backup:" "Latest backup:") $(short_backup_label "$latest_label")"
   paint "$CLR_TITLE" "============================================================"
   paint "$CLR_MUTED" "$(tr_text "Чё делать будем, босс?" "What are we doing, boss?")"
   echo
@@ -242,6 +244,37 @@ tr_text() {
   else
     echo "$ru"
   fi
+}
+
+normalize_calendar_raw() {
+  local value="$1"
+  value="${value%\"}"
+  value="${value#\"}"
+  printf '%s' "$value"
+}
+
+format_schedule_label() {
+  local raw="$1"
+  local cal=""
+  cal="$(normalize_calendar_raw "$raw")"
+
+  case "$cal" in
+    "*-*-* 03:40:00 UTC") echo "$(tr_text "Ежедневно 03:40 UTC" "Daily 03:40 UTC")" ;;
+    "*-*-* 00,12:00:00 UTC") echo "$(tr_text "Каждые 12 часов" "Every 12 hours")" ;;
+    "*-*-* 00,06,12,18:00:00 UTC") echo "$(tr_text "Каждые 6 часов" "Every 6 hours")" ;;
+    "hourly") echo "$(tr_text "Каждый час" "Every hour")" ;;
+    "") echo "unknown" ;;
+    *) echo "$(tr_text "Кастом: " "Custom: ")${cal}" ;;
+  esac
+}
+
+short_backup_label() {
+  local full_name="$1"
+  if [[ ${#full_name} -le 48 ]]; then
+    echo "$full_name"
+    return 0
+  fi
+  echo "${full_name:0:22}...${full_name: -22}"
 }
 
 choose_ui_lang() {
@@ -376,6 +409,7 @@ load_existing_env_defaults() {
     old_thread="$(grep -E '^TELEGRAM_THREAD_ID=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
     old_dir="$(grep -E '^REMNAWAVE_DIR=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
     old_calendar="$(grep -E '^BACKUP_ON_CALENDAR=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
+    old_calendar="$(normalize_calendar_raw "$old_calendar")"
   fi
 
   TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-$old_bot}"
@@ -387,6 +421,7 @@ load_existing_env_defaults() {
   detected="$(detect_remnawave_dir || true)"
   REMNAWAVE_DIR="${REMNAWAVE_DIR:-$detected}"
   BACKUP_ON_CALENDAR="${BACKUP_ON_CALENDAR:-$(get_current_timer_calendar || true)}"
+  BACKUP_ON_CALENDAR="$(normalize_calendar_raw "$BACKUP_ON_CALENDAR")"
   BACKUP_ON_CALENDAR="${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}"
 }
 
@@ -567,7 +602,7 @@ configure_schedule_menu() {
   while true; do
     draw_header "$(tr_text "Периодичность backup" "Backup schedule")"
     show_back_hint
-    paint "$CLR_MUTED" "$(tr_text "Текущее расписание:" "Current schedule:") ${current}"
+    paint "$CLR_MUTED" "$(tr_text "Текущее расписание:" "Current schedule:") $(format_schedule_label "$current")"
     menu_option "1" "$(tr_text "🕒 Ежедневно 03:40 UTC (по умолчанию)" "🕒 Daily at 03:40 UTC (default)")"
     menu_option "2" "$(tr_text "🕛 Каждые 12 часов" "🕛 Every 12 hours")"
     menu_option "3" "$(tr_text "⌚ Каждые 6 часов" "⌚ Every 6 hours")"
@@ -627,7 +662,7 @@ run_restore() {
   fi
 
   if [[ -z "$from_path" ]]; then
-    from_path="$(ls -1t /var/backups/panel/panel-backup-*.tar.gz 2>/dev/null | head -n1 || true)"
+    from_path="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz 2>/dev/null | head -n1 || true)"
   fi
 
   if [[ -z "$from_path" || ! -f "$from_path" ]]; then
@@ -758,7 +793,7 @@ show_status() {
     echo "$(tr_text "Таймер: недоступен" "Timer: not available")"
   fi
   schedule_now="$(get_current_timer_calendar || true)"
-  echo "$(tr_text "Периодичность backup (OnCalendar): ${schedule_now:-unknown}" "Backup schedule (OnCalendar): ${schedule_now:-unknown}")"
+  echo "$(tr_text "Периодичность backup: $(format_schedule_label "$schedule_now")" "Backup schedule: $(format_schedule_label "$schedule_now")")"
 
   service_show="$($SUDO systemctl show panel-backup.service \
     -p ActiveState -p SubState -p Result -p ExecMainStatus \
@@ -777,7 +812,7 @@ show_status() {
     echo "$(tr_text "Сервис: недоступен" "Service: not available")"
   fi
 
-  latest_backup="$(ls -1t /var/backups/panel/panel-backup-*.tar.gz 2>/dev/null | head -n1 || true)"
+  latest_backup="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz 2>/dev/null | head -n1 || true)"
   if [[ -n "$latest_backup" && -f "$latest_backup" ]]; then
     latest_backup_time="$(date -u -r "$latest_backup" '+%Y-%m-%d %H:%M:%S UTC' 2>/dev/null || stat -c '%y' "$latest_backup" 2>/dev/null || echo n/a)"
     latest_backup_size="$(du -h "$latest_backup" 2>/dev/null | awk '{print $1}' || echo n/a)"
@@ -928,7 +963,7 @@ menu_section_timer() {
     draw_header "$(tr_text "Раздел: Таймер и периодичность" "Section: Timer and schedule")"
     show_back_hint
     schedule_now="$(get_current_timer_calendar || true)"
-    paint "$CLR_MUTED" "$(tr_text "Текущее расписание:" "Current schedule:") ${schedule_now:-unknown}"
+    paint "$CLR_MUTED" "$(tr_text "Текущее расписание:" "Current schedule:") $(format_schedule_label "$schedule_now")"
     menu_option "1" "$(tr_text "🟢 Включить таймер backup" "🟢 Enable backup timer")"
     menu_option "2" "$(tr_text "🟠 Выключить таймер backup" "🟠 Disable backup timer")"
     menu_option "3" "$(tr_text "⏱ Настроить периодичность backup" "⏱ Configure backup schedule")"

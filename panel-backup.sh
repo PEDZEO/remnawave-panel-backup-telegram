@@ -12,8 +12,9 @@ TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 TIMESTAMP_LOCAL="$(date '+%Y-%m-%d %H:%M:%S %Z')"
 TIMESTAMP_UTC_HUMAN="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 HOSTNAME_FQDN="$(hostname -f 2>/dev/null || hostname)"
+HOSTNAME_SHORT="$(hostname -s 2>/dev/null || hostname)"
 WORKDIR="$(mktemp -d /tmp/panel-backup.XXXXXX)"
-ARCHIVE_BASE="panel-backup-${HOSTNAME_FQDN}-${TIMESTAMP}"
+ARCHIVE_BASE="pb-${HOSTNAME_SHORT}-${TIMESTAMP}"
 ARCHIVE_PATH="${BACKUP_ROOT}/${ARCHIVE_BASE}.tar.gz"
 LOG_TAG="panel-backup"
 declare -a BACKUP_ITEMS=()
@@ -188,7 +189,7 @@ ARCHIVE_SIZE_BYTES="$(stat -c '%s' "$ARCHIVE_PATH")"
 ARCHIVE_SIZE_HUMAN="$(du -h "$ARCHIVE_PATH" | awk '{print $1}')"
 
 log "Удаляю старые бэкапы (>${KEEP_DAYS} дней)"
-find "$BACKUP_ROOT" -type f \( -name 'panel-backup-*.tar.gz' -o -name 'panel-backup-*.tar.gz.part.*' \) -mtime +"$KEEP_DAYS" -delete || true
+find "$BACKUP_ROOT" -type f \( -name 'pb-*.tar.gz' -o -name 'pb-*.tar.gz.part.*' -o -name 'panel-backup-*.tar.gz' -o -name 'panel-backup-*.tar.gz.part.*' \) -mtime +"$KEEP_DAYS" -delete || true
 
 send_telegram_text "📦 Бэкап панели создан
 Хост: ${HOSTNAME_FQDN}
