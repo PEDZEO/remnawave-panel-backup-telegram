@@ -254,6 +254,48 @@ detect_remnawave_dir() {
   return 1
 }
 
+show_remnawave_autodetect() {
+  local candidate="$1"
+  local env_file=""
+  local compose_file=""
+  local caddy_dir=""
+  local subscription_dir=""
+
+  paint "$CLR_TITLE" "$(tr_text "Автопоиск путей Remnawave" "Remnawave path autodetect")"
+
+  if [[ -z "$candidate" ]]; then
+    paint "$CLR_WARN" "$(tr_text "Путь не найден автоматически. Укажите вручную." "Path was not auto-detected. Please provide it manually.")"
+    return 0
+  fi
+
+  env_file="${candidate}/.env"
+  compose_file="${candidate}/docker-compose.yml"
+  caddy_dir="${candidate}/caddy"
+  subscription_dir="${candidate}/subscription"
+
+  paint "$CLR_OK" "$(tr_text "Найден путь панели" "Detected panel path"): ${candidate}"
+  if [[ -f "$env_file" ]]; then
+    paint "$CLR_OK" "  - .env: $(tr_text "найден" "found")"
+  else
+    paint "$CLR_WARN" "  - .env: $(tr_text "не найден" "not found")"
+  fi
+  if [[ -f "$compose_file" ]]; then
+    paint "$CLR_OK" "  - docker-compose.yml: $(tr_text "найден" "found")"
+  else
+    paint "$CLR_WARN" "  - docker-compose.yml: $(tr_text "не найден" "not found")"
+  fi
+  if [[ -d "$caddy_dir" ]]; then
+    paint "$CLR_OK" "  - caddy/: $(tr_text "найден" "found")"
+  else
+    paint "$CLR_WARN" "  - caddy/: $(tr_text "не найден (будет пропущен в backup)" "not found (will be skipped in backup)")"
+  fi
+  if [[ -d "$subscription_dir" ]]; then
+    paint "$CLR_OK" "  - subscription/: $(tr_text "найден" "found")"
+  else
+    paint "$CLR_WARN" "  - subscription/: $(tr_text "не найден (будет пропущен в backup)" "not found (will be skipped in backup)")"
+  fi
+}
+
 load_existing_env_defaults() {
   local old_bot=""
   local old_admin=""
@@ -340,12 +382,19 @@ ask_yes_no() {
 
 prompt_install_settings() {
   local val=""
+  local detected_path=""
   load_existing_env_defaults
 
   draw_header "$(tr_text "Настройка параметров бэкапа" "Configure backup settings")"
   show_back_hint
   paint "$CLR_MUTED" "$(tr_text "Сейчас вы настраиваете: Telegram-уведомления и путь к панели." "You are configuring: Telegram notifications and panel path.")"
   paint "$CLR_MUTED" "$(tr_text "Пустое значение оставляет текущее (если есть)." "Empty input keeps current value (if any).")"
+  echo
+  detected_path="$(detect_remnawave_dir || true)"
+  show_remnawave_autodetect "$detected_path"
+  if [[ -z "${REMNAWAVE_DIR:-}" && -n "$detected_path" ]]; then
+    REMNAWAVE_DIR="$detected_path"
+  fi
   echo
 
   val="$(ask_value "$(tr_text "[1/4] Токен Telegram-бота (пример: 123456:ABCDEF...)" "[1/4] Telegram bot token (example: 123456:ABCDEF...)")" "$TELEGRAM_BOT_TOKEN")"
