@@ -979,7 +979,7 @@ run_restore() {
 
   if [[ -z "$from_path" || ! -f "$from_path" ]]; then
     echo "[restore] Backup archive not found. Set BACKUP_FILE or BACKUP_URL." >&2
-    exit 1
+    return 1
   fi
 
   IFS=',' read -r -a only_list <<< "$RESTORE_ONLY"
@@ -1354,6 +1354,32 @@ show_restore_summary() {
   paint "$CLR_MUTED" "  RESTORE_NO_RESTART: ${RESTORE_NO_RESTART:-0}"
 }
 
+draw_restore_step() {
+  local step="$1"
+  local total="$2"
+  local title="$3"
+  draw_header "$(tr_text "Мастер восстановления backup" "Backup restore wizard")" "$(tr_text "Шаг" "Step") ${step}/${total}: ${title}"
+}
+
+confirm_restore_phrase() {
+  local expected=""
+  local input=""
+
+  if [[ "$UI_LANG" == "en" ]]; then
+    expected="RESTORE"
+  else
+    expected="ВОССТАНОВИТЬ"
+  fi
+
+  paint "$CLR_DANGER" "$(tr_text "Внимание: восстановление изменит текущую систему." "Warning: restore will modify the current system.")"
+  paint "$CLR_MUTED" "$(tr_text "Для подтверждения введите слово:" "To confirm, type this word:") ${expected}"
+  read -r -p "> " input
+  if is_back_command "$input"; then
+    return 1
+  fi
+  [[ "$input" == "$expected" ]]
+}
+
 menu_section_operations() {
   local choice=""
   while true; do
@@ -1371,11 +1397,15 @@ menu_section_operations() {
     case "$choice" in
       1)
         draw_header "$(tr_text "Создание backup" "Create backup")"
-        run_backup_now
+        if run_backup_now; then
+          paint "$CLR_OK" "$(tr_text "Backup выполнен успешно." "Backup completed successfully.")"
+        else
+          paint "$CLR_DANGER" "$(tr_text "Ошибка создания backup. Проверьте лог выше." "Backup failed. Check the log above.")"
+        fi
         wait_for_enter
         ;;
       2)
-        draw_header "$(tr_text "Восстановление backup" "Restore backup")"
+        draw_restore_step "1" "4" "$(tr_text "Выбор источника backup" "Select backup source")"
         MODE="restore"
         RESTORE_DRY_RUN=0
         RESTORE_NO_RESTART=0
@@ -1383,9 +1413,11 @@ menu_section_operations() {
         if ! select_restore_source; then
           continue
         fi
+        draw_restore_step "2" "4" "$(tr_text "Выбор компонентов" "Select components")"
         if ! select_restore_components; then
           continue
         fi
+        draw_restore_step "3" "4" "$(tr_text "Параметры запуска" "Execution options")"
         if ask_yes_no "$(tr_text "Запустить restore в dry-run режиме?" "Run restore in dry-run mode?")" "n"; then
           RESTORE_DRY_RUN=1
         else
@@ -1396,20 +1428,32 @@ menu_section_operations() {
         else
           [[ "$?" == "2" ]] && continue
         fi
-        draw_header "$(tr_text "Подтверждение восстановления" "Restore confirmation")"
+        draw_restore_step "4" "4" "$(tr_text "Подтверждение и запуск" "Confirm and run")"
         show_restore_summary
+        print_separator
         if ! ask_yes_no "$(tr_text "Запустить восстановление с этими параметрами?" "Run restore with these parameters?")" "y"; then
           [[ "$?" == "2" ]] && continue
           paint "$CLR_WARN" "$(tr_text "Восстановление отменено." "Restore cancelled.")"
           wait_for_enter
           continue
         fi
+        if [[ "$RESTORE_DRY_RUN" != "1" ]]; then
+          if ! confirm_restore_phrase; then
+            paint "$CLR_WARN" "$(tr_text "Подтверждение не пройдено. Восстановление отменено." "Confirmation failed. Restore cancelled.")"
+            wait_for_enter
+            continue
+          fi
+        fi
         if [[ ! -x /usr/local/bin/panel-restore.sh ]]; then
           install_files
           write_env
           $SUDO systemctl daemon-reload
         fi
-        run_restore
+        if run_restore; then
+          paint "$CLR_OK" "$(tr_text "Восстановление завершено." "Restore completed.")"
+        else
+          paint "$CLR_DANGER" "$(tr_text "Ошибка восстановления. Проверьте лог выше." "Restore failed. Check the log above.")"
+        fi
         wait_for_enter
         ;;
       3) break ;;
