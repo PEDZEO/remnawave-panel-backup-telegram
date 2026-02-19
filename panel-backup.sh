@@ -163,10 +163,10 @@ cp -a "${REMNAWAVE_DIR}/docker-compose.yml" "$WORKDIR/payload/remnawave/" 2>/dev
 cp -a "${REMNAWAVE_DIR}/.env" "$WORKDIR/payload/remnawave/" 2>/dev/null || true
 cp -a "${REMNAWAVE_DIR}/caddy" "$WORKDIR/payload/remnawave/" 2>/dev/null || true
 cp -a "${REMNAWAVE_DIR}/subscription" "$WORKDIR/payload/remnawave/" 2>/dev/null || true
-add_backup_item "remnawave/docker-compose.yml" "$WORKDIR/payload/remnawave/docker-compose.yml"
-add_backup_item "remnawave/.env" "$WORKDIR/payload/remnawave/.env"
-add_backup_item "remnawave/caddy" "$WORKDIR/payload/remnawave/caddy"
-add_backup_item "remnawave/subscription" "$WORKDIR/payload/remnawave/subscription"
+add_backup_item "Docker Compose (remnawave/docker-compose.yml)" "$WORKDIR/payload/remnawave/docker-compose.yml"
+add_backup_item "ENV (remnawave/.env)" "$WORKDIR/payload/remnawave/.env"
+add_backup_item "Caddy config (remnawave/caddy)" "$WORKDIR/payload/remnawave/caddy"
+add_backup_item "Subscription page (remnawave/subscription)" "$WORKDIR/payload/remnawave/subscription"
 
 cat > "$WORKDIR/payload/backup-info.txt" <<INFO
 timestamp_utc=${TIMESTAMP}
