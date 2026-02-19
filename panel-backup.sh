@@ -80,21 +80,10 @@ container_version_label() {
   local image_id=""
   local version=""
   local revision=""
-  local env_versions=""
+  local env_version=""
 
   image_ref="$(container_image_ref "$name")"
   image_id="$(docker inspect -f '{{.Image}}' "$name" 2>/dev/null || true)"
-
-  env_versions="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$name" 2>/dev/null | awk -F= '
-    $1=="REMNAWAVE_VERSION" {print $2; exit}
-    $1=="SUBSCRIPTION_VERSION" {print $2; exit}
-    $1=="APP_VERSION" {print $2; exit}
-    $1=="VERSION" {print $2; exit}
-  ' || true)"
-  if [[ -n "$env_versions" ]]; then
-    printf '%s' "$env_versions"
-    return 0
-  fi
 
   if [[ -n "$image_id" ]]; then
     version="$(docker image inspect -f '{{ index .Config.Labels "org.opencontainers.image.version" }}' "$image_id" 2>/dev/null || true)"
@@ -123,6 +112,17 @@ container_version_label() {
       if [[ "$version" == "latest" ]]; then
         version=""
       fi
+    fi
+  fi
+
+  if [[ -z "$version" ]]; then
+    env_version="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$name" 2>/dev/null | awk -F= '
+      $1=="REMNAWAVE_VERSION" {print $2; exit}
+      $1=="SUBSCRIPTION_VERSION" {print $2; exit}
+      $1=="APP_VERSION" {print $2; exit}
+    ' || true)"
+    if [[ -n "$env_version" ]]; then
+      version="$env_version"
     fi
   fi
 
