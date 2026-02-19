@@ -166,7 +166,7 @@ disk_usage_label() {
   used="$(echo "$line" | awk '{print $1}')"
   total="$(echo "$line" | awk '{print $2}')"
   percent="$(echo "$line" | awk '{print $3}')"
-  echo "${used} / ${total} (${percent})"
+  echo "$(tr_text "${used} из ${total} (${percent})" "${used} of ${total} (${percent})")"
 }
 
 disk_usage_percent() {
@@ -179,14 +179,31 @@ disk_usage_percent() {
   fi
 }
 
-metric_color() {
+metric_color_ram() {
   local percent="$1"
   if [[ "$percent" =~ ^[0-9]+$ ]]; then
     if (( percent >= 90 )); then
       echo "$CLR_DANGER"
       return 0
     fi
-    if (( percent >= 80 )); then
+    if (( percent >= 75 )); then
+      echo "$CLR_WARN"
+      return 0
+    fi
+    echo "$CLR_OK"
+    return 0
+  fi
+  echo "$CLR_MUTED"
+}
+
+metric_color_disk() {
+  local percent="$1"
+  if [[ "$percent" =~ ^[0-9]+$ ]]; then
+    if (( percent >= 85 )); then
+      echo "$CLR_DANGER"
+      return 0
+    fi
+    if (( percent >= 70 )); then
       echo "$CLR_WARN"
       return 0
     fi
@@ -203,6 +220,17 @@ state_color() {
     restarting|created|paused) echo "$CLR_WARN" ;;
     *) echo "$CLR_DANGER" ;;
   esac
+}
+
+paint_labeled_value() {
+  local label="$1"
+  local value="$2"
+  local value_color="$3"
+  if [[ "$COLOR" == "1" ]]; then
+    printf "%b  %s%b %b%s%b\n" "$CLR_MUTED" "$label" "$CLR_RESET" "$value_color" "$value" "$CLR_RESET"
+  else
+    printf "  %s %s\n" "$label" "$value"
+  fi
 }
 
 draw_header() {
@@ -234,8 +262,8 @@ draw_header() {
   disk_label="$(disk_usage_label)"
   ram_percent="$(memory_usage_percent)"
   disk_percent="$(disk_usage_percent)"
-  ram_color="$(metric_color "$ram_percent")"
-  disk_color="$(metric_color "$disk_percent")"
+  ram_color="$(metric_color_ram "$ram_percent")"
+  disk_color="$(metric_color_disk "$disk_percent")"
   panel_color="$(state_color "$panel_state")"
   sub_color="$(state_color "$sub_state")"
   latest_backup="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz 2>/dev/null | head -n1 || true)"
@@ -251,10 +279,12 @@ draw_header() {
   if [[ -n "$subtitle" ]]; then
     paint "$CLR_MUTED" "  ${subtitle}"
   fi
-  paint "$panel_color" "  $(tr_text "Панель(remnawave):" "Panel(remnawave):") ${panel_state}"
-  paint "$sub_color" "  $(tr_text "Подписка:" "Subscription:") ${sub_state}"
-  paint "$ram_color" "  RAM: ${ram_label}"
-  paint "$disk_color" "  $(tr_text "Диск /:" "Disk /:") ${disk_label}"
+  print_separator
+  paint_labeled_value "$(tr_text "Панель (remnawave):" "Panel (remnawave):")" "$panel_state" "$panel_color"
+  paint_labeled_value "$(tr_text "Подписка:" "Subscription:")" "$sub_state" "$sub_color"
+  paint_labeled_value "RAM:" "$ram_label" "$ram_color"
+  paint_labeled_value "$(tr_text "Диск:" "Disk:")" "$disk_label" "$disk_color"
+  print_separator
   paint "$CLR_MUTED" "  $(tr_text "Таймер:" "Timer:") ${timer_state}   |   $(tr_text "Расписание:" "Schedule:") ${schedule_label}"
   paint "$CLR_MUTED" "  $(tr_text "Последний backup:" "Latest backup:") $(short_backup_label "$latest_label")"
   paint "$CLR_TITLE" "============================================================"
