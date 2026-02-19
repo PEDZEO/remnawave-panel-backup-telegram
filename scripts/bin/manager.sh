@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Main entrypoint: interactive manager + non-interactive runtime modes.
+# update: main entrypoint for interactive and non-interactive manager modes.
 set -euo pipefail
 
 RAW_BASE="${RAW_BASE:-https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main}"

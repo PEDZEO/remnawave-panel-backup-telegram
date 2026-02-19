@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runtime restore script: restore selected components from backup archive.
+# update: runtime restore flow applies selected components from backup archive.
 set -euo pipefail
 
 REMNAWAVE_DIR="${REMNAWAVE_DIR:-}"
