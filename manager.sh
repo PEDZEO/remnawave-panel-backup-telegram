@@ -96,6 +96,18 @@ paint() {
   fi
 }
 
+draw_header() {
+  local title="$1"
+  local subtitle="${2:-}"
+  clear
+  paint "$CLR_TITLE" "============================================"
+  paint "$CLR_TITLE" "  ${title}"
+  if [[ -n "$subtitle" ]]; then
+    paint "$CLR_MUTED" "  ${subtitle}"
+  fi
+  paint "$CLR_TITLE" "============================================"
+}
+
 wait_for_enter() {
   local msg
   msg="$(tr_text "Нажмите Enter для продолжения..." "Press Enter to continue...")"
@@ -161,11 +173,7 @@ choose_ui_lang() {
     UI_LANG="en"
   fi
 
-  echo
-  paint "$CLR_TITLE" "============================================"
-  paint "$CLR_TITLE" "  Panel Backup Manager"
-  paint "$CLR_TITLE" "  Выберите язык / Choose language"
-  paint "$CLR_TITLE" "============================================"
+  draw_header "Panel Backup Manager" "Выберите язык / Choose language"
   paint "$CLR_ACCENT" "  1) Русский"
   paint "$CLR_ACCENT" "  2) English (EU)"
   read -r -p "Choice [1-2]: " choice
@@ -281,8 +289,7 @@ prompt_install_settings() {
   local val=""
   load_existing_env_defaults
 
-  echo
-  paint "$CLR_TITLE" "$(tr_text "Настройка параметров бэкапа" "Configure backup settings")"
+  draw_header "$(tr_text "Настройка параметров бэкапа" "Configure backup settings")"
   paint "$CLR_MUTED" "$(tr_text "Подсказка: введите /back для возврата в меню." "Hint: type /back to return to menu.")"
 
   val="$(ask_value "$(tr_text "TELEGRAM_BOT_TOKEN (пусто = без Telegram уведомлений)" "TELEGRAM_BOT_TOKEN (empty disables Telegram notifications)")" "$TELEGRAM_BOT_TOKEN")"
@@ -413,9 +420,7 @@ show_status() {
   local service_started=""
   local service_finished=""
 
-  echo
-  paint "$CLR_TITLE" "$(tr_text "Статус panel backup" "Panel backup status")"
-  paint "$CLR_TITLE" "==================="
+  draw_header "$(tr_text "Статус panel backup" "Panel backup status")"
 
   if [[ -x /usr/local/bin/panel-backup.sh ]]; then
     paint "$CLR_OK" "$(tr_text "Скрипт backup: установлен (/usr/local/bin/panel-backup.sh)" "Backup script: installed (/usr/local/bin/panel-backup.sh)")"
@@ -497,10 +502,7 @@ interactive_menu() {
   choose_ui_lang
 
   while true; do
-    clear
-    paint "$CLR_TITLE" "============================================"
-    paint "$CLR_TITLE" "  $(tr_text "Менеджер бэкапа панели" "Panel Backup Manager")"
-    paint "$CLR_TITLE" "============================================"
+    draw_header "$(tr_text "Менеджер бэкапа панели" "Panel Backup Manager")"
     paint "$CLR_MUTED" "$(tr_text "Выберите действие:" "Select action:")"
     paint "$CLR_ACCENT" "  1) $(tr_text "Установить/обновить + настроить backup" "Install/update + configure backup")"
     paint "$CLR_ACCENT" "  2) $(tr_text "Только обновить Telegram/путь" "Configure Telegram/path only")"
@@ -513,6 +515,7 @@ interactive_menu() {
 
     case "$action" in
       1)
+        draw_header "$(tr_text "Установка и настройка" "Install and configure")"
         if ! prompt_install_settings; then
           paint "$CLR_WARN" "$(tr_text "Возврат в меню без изменений." "Returned to menu without changes.")"
           wait_for_enter
@@ -532,6 +535,7 @@ interactive_menu() {
         wait_for_enter
         ;;
       2)
+        draw_header "$(tr_text "Настройка Telegram и пути" "Configure Telegram and path")"
         if ! prompt_install_settings; then
           paint "$CLR_WARN" "$(tr_text "Возврат в меню без изменений." "Returned to menu without changes.")"
           wait_for_enter
@@ -542,14 +546,17 @@ interactive_menu() {
         wait_for_enter
         ;;
       3)
+        draw_header "$(tr_text "Включение таймера backup" "Enable backup timer")"
         enable_timer
         wait_for_enter
         ;;
       4)
+        draw_header "$(tr_text "Отключение таймера backup" "Disable backup timer")"
         disable_timer
         wait_for_enter
         ;;
       5)
+        draw_header "$(tr_text "Восстановление backup" "Restore backup")"
         MODE="restore"
         BACKUP_FILE="$(ask_value "$(tr_text "BACKUP_FILE (путь, можно пусто если задан BACKUP_URL)" "BACKUP_FILE (path, optional if BACKUP_URL is set)")" "$BACKUP_FILE")"
         [[ "$BACKUP_FILE" == "__PBM_BACK__" ]] && continue
