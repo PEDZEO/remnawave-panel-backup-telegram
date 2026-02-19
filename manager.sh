@@ -118,13 +118,13 @@ is_back_command() {
   local cleaned=""
   cleaned="$(echo "$raw" | xargs 2>/dev/null || echo "$raw")"
   case "${cleaned,,}" in
-    b|/b|back|/back|назад) return 0 ;;
+    b|/b|и|/и|back|/back|назад) return 0 ;;
     *) return 1 ;;
   esac
 }
 
 show_back_hint() {
-  paint "$CLR_MUTED" "$(tr_text "Подсказка: b = назад" "Hint: b = back")"
+  paint "$CLR_MUTED" "$(tr_text "Подсказка: b/и = назад" "Hint: b = back")"
 }
 
 mask_secret() {
@@ -220,9 +220,13 @@ choose_ui_lang() {
   fi
 
   draw_header "Panel Backup Manager" "Выберите язык / Choose language"
+  show_back_hint
   paint "$CLR_ACCENT" "  1) Русский"
   paint "$CLR_ACCENT" "  2) English (EU)"
   read -r -p "Choice [1-2]: " choice
+  if is_back_command "$choice"; then
+    return 0
+  fi
   case "$choice" in
     1) UI_LANG="ru" ;;
     2) UI_LANG="en" ;;
@@ -511,6 +515,9 @@ configure_schedule_menu() {
     paint "$CLR_ACCENT" "  5) $(tr_text "Свой OnCalendar" "Custom OnCalendar")"
     paint "$CLR_ACCENT" "  6) $(tr_text "Назад" "Back")"
     read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice
+    if is_back_command "$choice"; then
+      return 1
+    fi
 
     case "$choice" in
       1) BACKUP_ON_CALENDAR="*-*-* 03:40:00 UTC"; return 0 ;;
@@ -713,6 +720,7 @@ interactive_menu() {
 
   while true; do
     draw_header "$(tr_text "Менеджер бэкапа панели" "Panel Backup Manager")"
+    show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Выберите действие:" "Select action:")"
     paint "$CLR_ACCENT" "  1) $(tr_text "Установить/обновить файлы + первичная настройка" "Install/update files + initial setup")"
     paint "$CLR_ACCENT" "  2) $(tr_text "Изменить только текущие настройки (без переустановки)" "Edit current settings only (no reinstall)")"
@@ -724,6 +732,10 @@ interactive_menu() {
     paint "$CLR_ACCENT" "  8) $(tr_text "Показать статус" "Show status")"
     paint "$CLR_ACCENT" "  9) $(tr_text "Выход" "Exit")"
     read -r -p "$(tr_text "Выбор [1-9]: " "Choice [1-9]: ")" action
+    if is_back_command "$action"; then
+      echo "$(tr_text "Выход." "Cancelled.")"
+      break
+    fi
 
     case "$action" in
       1)
