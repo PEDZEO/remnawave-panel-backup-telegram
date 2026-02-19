@@ -1091,6 +1091,7 @@ load_manager_module() {
 load_manager_modules() {
   load_manager_module "scripts/install/pipeline.sh"
   load_manager_module "scripts/runtime/operations.sh"
+  load_manager_module "scripts/runtime/panel_node.sh"
   load_manager_module "scripts/menu/interactive.sh"
 }
 
