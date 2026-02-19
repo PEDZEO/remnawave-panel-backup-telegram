@@ -31,44 +31,57 @@ prompt_install_settings() {
   fi
   echo
 
-  val="$(ask_value "$(tr_text "[1/7] Токен Telegram-бота (пример: 123456:ABCDEF...)" "[1/7] Telegram bot token (example: 123456:ABCDEF...)")" "$TELEGRAM_BOT_TOKEN")"
-  [[ "$val" == "__PBM_BACK__" ]] && return 1
-  if [[ -n "$val" ]] && ! is_valid_telegram_token "$val"; then
-    paint "$CLR_WARN" "$(tr_text "Похоже на некорректный токен Telegram. Формат: digits:token" "Looks like an invalid Telegram token. Format: digits:token")"
-    wait_for_enter
-    return 1
-  fi
-  TELEGRAM_BOT_TOKEN="$val"
+  while true; do
+    val="$(ask_value "$(tr_text "[1/7] Токен Telegram-бота (пример: 123456:ABCDEF...)" "[1/7] Telegram bot token (example: 123456:ABCDEF...)")" "$TELEGRAM_BOT_TOKEN")"
+    [[ "$val" == "__PBM_BACK__" ]] && return 1
+    if [[ -n "$val" ]] && ! is_valid_telegram_token "$val"; then
+      paint "$CLR_WARN" "$(tr_text "Похоже на некорректный токен Telegram. Формат: digits:token" "Looks like an invalid Telegram token. Format: digits:token")"
+      continue
+    fi
+    TELEGRAM_BOT_TOKEN="$val"
+    break
+  done
 
-  val="$(ask_value "$(tr_text "[2/7] ID чата/канала Telegram (пример: 123456789 или -1001234567890)" "[2/7] Telegram chat/channel ID (example: 123456789 or -1001234567890)")" "$TELEGRAM_ADMIN_ID")"
-  [[ "$val" == "__PBM_BACK__" ]] && return 1
-  if [[ -n "$val" ]] && ! is_valid_telegram_id "$val"; then
-    paint "$CLR_WARN" "$(tr_text "ID чата должен быть числом (например 123456789 или -1001234567890)." "Chat ID must be numeric (for example 123456789 or -1001234567890).")"
-    wait_for_enter
-    return 1
-  fi
-  TELEGRAM_ADMIN_ID="$val"
+  while true; do
+    val="$(ask_value "$(tr_text "[2/7] ID чата/канала Telegram (пример: 123456789 или -1001234567890)" "[2/7] Telegram chat/channel ID (example: 123456789 or -1001234567890)")" "$TELEGRAM_ADMIN_ID")"
+    [[ "$val" == "__PBM_BACK__" ]] && return 1
+    if [[ -n "$val" ]] && ! is_valid_telegram_id "$val"; then
+      paint "$CLR_WARN" "$(tr_text "ID чата должен быть числом (например 123456789 или -1001234567890)." "Chat ID must be numeric (for example 123456789 or -1001234567890).")"
+      continue
+    fi
+    TELEGRAM_ADMIN_ID="$val"
+    break
+  done
 
-  val="$(ask_value "$(tr_text "[3/7] ID темы (topic), если нужен (иначе оставьте пусто)" "[3/7] Topic/thread ID if needed (otherwise leave empty)")" "$TELEGRAM_THREAD_ID")"
-  [[ "$val" == "__PBM_BACK__" ]] && return 1
-  if [[ -n "$val" ]] && ! is_valid_telegram_id "$val"; then
-    paint "$CLR_WARN" "$(tr_text "ID темы должен быть числом." "Thread ID must be numeric.")"
-    wait_for_enter
-    return 1
-  fi
-  TELEGRAM_THREAD_ID="$val"
+  while true; do
+    val="$(ask_value "$(tr_text "[3/7] ID темы (topic), если нужен (иначе оставьте пусто)" "[3/7] Topic/thread ID if needed (otherwise leave empty)")" "$TELEGRAM_THREAD_ID")"
+    [[ "$val" == "__PBM_BACK__" ]] && return 1
+    if [[ -n "$val" ]] && ! is_valid_telegram_id "$val"; then
+      paint "$CLR_WARN" "$(tr_text "ID темы должен быть числом." "Thread ID must be numeric.")"
+      continue
+    fi
+    TELEGRAM_THREAD_ID="$val"
+    break
+  done
 
-  val="$(ask_value "$(tr_text "[4/7] Путь к папке панели Remnawave (пример: /opt/remnawave)" "[4/7] Path to Remnawave panel directory (example: /opt/remnawave)")" "$REMNAWAVE_DIR")"
-  [[ "$val" == "__PBM_BACK__" ]] && return 1
-  REMNAWAVE_DIR="$val"
+  while true; do
+    val="$(ask_value "$(tr_text "[4/7] Путь к папке панели Remnawave (пример: /opt/remnawave)" "[4/7] Path to Remnawave panel directory (example: /opt/remnawave)")" "$REMNAWAVE_DIR")"
+    [[ "$val" == "__PBM_BACK__" ]] && return 1
+    REMNAWAVE_DIR="$val"
+    break
+  done
 
-  val="$(ask_value "$(tr_text "[5/7] Язык описания backup в Telegram (ru/en)" "[5/7] Backup description language in Telegram (ru/en)")" "$BACKUP_LANG")"
-  [[ "$val" == "__PBM_BACK__" ]] && return 1
-  case "${val,,}" in
-    en|eu) BACKUP_LANG="en" ;;
-    ru|"") BACKUP_LANG="ru" ;;
-    *) BACKUP_LANG="$val" ;;
-  esac
+  while true; do
+    val="$(ask_value "$(tr_text "[5/7] Язык описания backup в Telegram (ru/en)" "[5/7] Backup description language in Telegram (ru/en)")" "$BACKUP_LANG")"
+    [[ "$val" == "__PBM_BACK__" ]] && return 1
+    case "${val,,}" in
+      en|eu) BACKUP_LANG="en"; break ;;
+      ru|"") BACKUP_LANG="ru"; break ;;
+      *)
+        paint "$CLR_WARN" "$(tr_text "Допустимые значения: ru или en." "Allowed values: ru or en.")"
+        ;;
+    esac
+  done
 
   draw_header "$(tr_text "Режим шифрования backup" "Backup encryption mode")"
   show_back_hint
@@ -76,36 +89,37 @@ prompt_install_settings() {
   menu_option "1" "$(tr_text "Включить шифрование (GPG)" "Enable encryption (GPG)")"
   menu_option "2" "$(tr_text "Выключить шифрование" "Disable encryption")"
   print_separator
-  read -r -p "$(tr_text "[6/7] Выбор [1-2]: " "[6/7] Choice [1-2]: ")" encrypt_choice
-  if is_back_command "$encrypt_choice"; then
-    return 1
-  fi
-  case "$encrypt_choice" in
-    1) BACKUP_ENCRYPT="1" ;;
-    2) BACKUP_ENCRYPT="0" ;;
-    *)
-      paint "$CLR_WARN" "$(tr_text "Некорректный выбор режима шифрования." "Invalid encryption mode choice.")"
-      wait_for_enter
+  while true; do
+    read -r -p "$(tr_text "[6/7] Выбор [1-2]: " "[6/7] Choice [1-2]: ")" encrypt_choice
+    if is_back_command "$encrypt_choice"; then
       return 1
-      ;;
-  esac
+    fi
+    case "$encrypt_choice" in
+      1) BACKUP_ENCRYPT="1"; break ;;
+      2) BACKUP_ENCRYPT="0"; break ;;
+      *)
+        paint "$CLR_WARN" "$(tr_text "Некорректный выбор режима шифрования." "Invalid encryption mode choice.")"
+        ;;
+    esac
+  done
 
   if [[ "$BACKUP_ENCRYPT" == "1" ]]; then
-    val="$(ask_secret_value "$(tr_text "[7/7] Пароль шифрования (GPG symmetric)" "[7/7] Encryption password (GPG symmetric)")" "$BACKUP_PASSWORD")"
-    [[ "$val" == "__PBM_BACK__" ]] && return 1
-    if [[ ${#val} -lt 8 ]]; then
-      paint "$CLR_WARN" "$(tr_text "Пароль шифрования должен быть не короче 8 символов." "Encryption password must be at least 8 characters long.")"
-      wait_for_enter
-      return 1
-    fi
-    confirm_val="$(ask_secret_value "$(tr_text "Подтвердите пароль шифрования" "Confirm encryption password")" "")"
-    [[ "$confirm_val" == "__PBM_BACK__" ]] && return 1
-    if [[ "$confirm_val" != "$val" ]]; then
-      paint "$CLR_WARN" "$(tr_text "Пароли не совпадают." "Passwords do not match.")"
-      wait_for_enter
-      return 1
-    fi
-    BACKUP_PASSWORD="$val"
+    while true; do
+      val="$(ask_secret_value "$(tr_text "[7/7] Пароль шифрования (GPG symmetric)" "[7/7] Encryption password (GPG symmetric)")" "$BACKUP_PASSWORD")"
+      [[ "$val" == "__PBM_BACK__" ]] && return 1
+      if [[ ${#val} -lt 8 ]]; then
+        paint "$CLR_WARN" "$(tr_text "Пароль шифрования должен быть не короче 8 символов." "Encryption password must be at least 8 characters long.")"
+        continue
+      fi
+      confirm_val="$(ask_secret_value "$(tr_text "Подтвердите пароль шифрования" "Confirm encryption password")" "")"
+      [[ "$confirm_val" == "__PBM_BACK__" ]] && return 1
+      if [[ "$confirm_val" != "$val" ]]; then
+        paint "$CLR_WARN" "$(tr_text "Пароли не совпадают." "Passwords do not match.")"
+        continue
+      fi
+      BACKUP_PASSWORD="$val"
+      break
+    done
   else
     BACKUP_PASSWORD=""
   fi
