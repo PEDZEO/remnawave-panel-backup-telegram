@@ -234,6 +234,7 @@ container_version_label() {
   local image_ref=""
   local image_id=""
   local version=""
+  local version_from_tag=""
   local revision=""
   local env_version=""
 
@@ -263,20 +264,25 @@ container_version_label() {
   if [[ -z "$version" && -n "$image_ref" ]]; then
     tail="${image_ref##*/}"
     if [[ "$tail" == *:* ]]; then
-      version="${tail##*:}"
-      if [[ "$version" == "latest" ]]; then
-        version=""
+      version_from_tag="${tail##*:}"
+      if [[ "$version_from_tag" != "latest" ]]; then
+        version="$version_from_tag"
       fi
     fi
   fi
 
-  if [[ -z "$version" ]]; then
-    env_version="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$name" 2>/dev/null | awk -F= '
-      $1=="REMNAWAVE_VERSION" {print $2; exit}
-      $1=="SUBSCRIPTION_VERSION" {print $2; exit}
-      $1=="APP_VERSION" {print $2; exit}
-    ' || true)"
-    if [[ -n "$env_version" ]]; then
+  env_version="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$name" 2>/dev/null | awk -F= '
+    $1=="REMNAWAVE_VERSION" {print $2; exit}
+    $1=="SUBSCRIPTION_VERSION" {print $2; exit}
+    $1=="APP_VERSION" {print $2; exit}
+  ' || true)"
+
+  # Если tag слишком грубый (например "2"), а env содержит более точную версию
+  # (например "2.5.5"), показываем более информативное значение.
+  if [[ -n "$env_version" ]]; then
+    if [[ -z "$version" ]]; then
+      version="$env_version"
+    elif [[ "$version" =~ ^[0-9]+$ ]] && [[ "$env_version" =~ [.-] ]]; then
       version="$env_version"
     fi
   fi
