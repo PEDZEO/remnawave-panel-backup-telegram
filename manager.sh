@@ -122,6 +122,32 @@ show_back_hint() {
   paint "$CLR_MUTED" "$(tr_text "Подсказка: b = назад" "Hint: b = back")"
 }
 
+mask_secret() {
+  local value="$1"
+  local len=0
+  len="${#value}"
+  if [[ "$len" -le 8 ]]; then
+    echo "********"
+    return 0
+  fi
+  echo "${value:0:4}****${value: -4}"
+}
+
+show_settings_preview() {
+  local token_view=""
+  if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
+    token_view="$(mask_secret "$TELEGRAM_BOT_TOKEN")"
+  else
+    token_view="$(tr_text "не задан" "not set")"
+  fi
+
+  paint "$CLR_TITLE" "$(tr_text "Проверка настроек перед применением" "Settings preview before apply")"
+  paint "$CLR_MUTED" "  TELEGRAM_BOT_TOKEN: ${token_view}"
+  paint "$CLR_MUTED" "  TELEGRAM_ADMIN_ID: ${TELEGRAM_ADMIN_ID:-$(tr_text "не задан" "not set")}"
+  paint "$CLR_MUTED" "  TELEGRAM_THREAD_ID: ${TELEGRAM_THREAD_ID:-$(tr_text "не задан" "not set")}"
+  paint "$CLR_MUTED" "  REMNAWAVE_DIR: ${REMNAWAVE_DIR:-$(tr_text "не задан" "not set")}"
+}
+
 wait_for_enter() {
   local msg
   msg="$(tr_text "Нажмите Enter для продолжения..." "Press Enter to continue...")"
@@ -311,19 +337,19 @@ prompt_install_settings() {
   draw_header "$(tr_text "Настройка параметров бэкапа" "Configure backup settings")"
   show_back_hint
 
-  val="$(ask_value "$(tr_text "TELEGRAM_BOT_TOKEN (пусто = без Telegram уведомлений)" "TELEGRAM_BOT_TOKEN (empty disables Telegram notifications)")" "$TELEGRAM_BOT_TOKEN")"
+  val="$(ask_value "$(tr_text "Токен Telegram-бота (пусто = без уведомлений)" "Telegram bot token (empty = disable notifications)")" "$TELEGRAM_BOT_TOKEN")"
   [[ "$val" == "__PBM_BACK__" ]] && return 1
   TELEGRAM_BOT_TOKEN="$val"
 
-  val="$(ask_value "$(tr_text "TELEGRAM_ADMIN_ID (ID чата)" "TELEGRAM_ADMIN_ID (chat ID)")" "$TELEGRAM_ADMIN_ID")"
+  val="$(ask_value "$(tr_text "ID чата/канала Telegram (например: 123456789 или -100...)" "Telegram chat/channel ID (example: 123456789 or -100...)")" "$TELEGRAM_ADMIN_ID")"
   [[ "$val" == "__PBM_BACK__" ]] && return 1
   TELEGRAM_ADMIN_ID="$val"
 
-  val="$(ask_value "$(tr_text "TELEGRAM_THREAD_ID (опционально)" "TELEGRAM_THREAD_ID (optional)")" "$TELEGRAM_THREAD_ID")"
+  val="$(ask_value "$(tr_text "ID темы (topic) в Telegram, опционально" "Telegram topic/thread ID, optional")" "$TELEGRAM_THREAD_ID")"
   [[ "$val" == "__PBM_BACK__" ]] && return 1
   TELEGRAM_THREAD_ID="$val"
 
-  val="$(ask_value "$(tr_text "REMNAWAVE_DIR (путь к панели)" "REMNAWAVE_DIR (path to panel)")" "$REMNAWAVE_DIR")"
+  val="$(ask_value "$(tr_text "Путь к папке панели Remnawave" "Path to Remnawave panel directory")" "$REMNAWAVE_DIR")"
   [[ "$val" == "__PBM_BACK__" ]] && return 1
   REMNAWAVE_DIR="$val"
 
@@ -523,8 +549,8 @@ interactive_menu() {
   while true; do
     draw_header "$(tr_text "Менеджер бэкапа панели" "Panel Backup Manager")"
     paint "$CLR_MUTED" "$(tr_text "Выберите действие:" "Select action:")"
-    paint "$CLR_ACCENT" "  1) $(tr_text "Установить/обновить + настроить backup" "Install/update + configure backup")"
-    paint "$CLR_ACCENT" "  2) $(tr_text "Только обновить Telegram/путь" "Configure Telegram/path only")"
+    paint "$CLR_ACCENT" "  1) $(tr_text "Установить/обновить файлы + первичная настройка" "Install/update files + initial setup")"
+    paint "$CLR_ACCENT" "  2) $(tr_text "Изменить только текущие настройки (без переустановки)" "Edit current settings only (no reinstall)")"
     paint "$CLR_ACCENT" "  3) $(tr_text "Включить таймер backup" "Enable scheduled backup timer")"
     paint "$CLR_ACCENT" "  4) $(tr_text "Выключить таймер backup" "Disable scheduled backup timer")"
     paint "$CLR_ACCENT" "  5) $(tr_text "Восстановить backup" "Restore backup")"
@@ -535,7 +561,15 @@ interactive_menu() {
     case "$action" in
       1)
         draw_header "$(tr_text "Установка и настройка" "Install and configure")"
+        paint "$CLR_MUTED" "$(tr_text "Используйте этот пункт при первом запуске или обновлении скриптов." "Use this on first run or when updating scripts.")"
         if ! prompt_install_settings; then
+          continue
+        fi
+        show_settings_preview
+        if ! ask_yes_no "$(tr_text "Применить эти настройки и продолжить установку?" "Apply these settings and continue installation?")" "y"; then
+          [[ "$?" == "2" ]] && continue
+          paint "$CLR_WARN" "$(tr_text "Отменено пользователем." "Cancelled by user.")"
+          wait_for_enter
           continue
         fi
         install_files
@@ -553,7 +587,15 @@ interactive_menu() {
         ;;
       2)
         draw_header "$(tr_text "Настройка Telegram и пути" "Configure Telegram and path")"
+        paint "$CLR_MUTED" "$(tr_text "Скрипты не переустанавливаются: меняется только /etc/panel-backup.env." "Scripts are not reinstalled: only /etc/panel-backup.env will be changed.")"
         if ! prompt_install_settings; then
+          continue
+        fi
+        show_settings_preview
+        if ! ask_yes_no "$(tr_text "Сохранить эти настройки?" "Save these settings?")" "y"; then
+          [[ "$?" == "2" ]] && continue
+          paint "$CLR_WARN" "$(tr_text "Изменения не сохранены." "Changes were not saved.")"
+          wait_for_enter
           continue
         fi
         write_env
