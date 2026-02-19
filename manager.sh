@@ -396,6 +396,27 @@ normalize_calendar_raw() {
   printf '%s' "$value"
 }
 
+normalize_env_value_raw() {
+  local value="$1"
+  local i=0
+
+  value="$(printf '%s' "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  for i in 1 2 3 4; do
+    value="${value//\\\"/\"}"
+    value="${value//\\\\/\\}"
+    if [[ ${#value} -ge 2 ]]; then
+      if [[ "${value:0:1}" == "\"" && "${value: -1}" == "\"" ]]; then
+        value="${value:1:${#value}-2}"
+      elif [[ "${value:0:1}" == "'" && "${value: -1}" == "'" ]]; then
+        value="${value:1:${#value}-2}"
+      fi
+    fi
+    value="$(printf '%s' "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  done
+
+  printf '%s' "$value"
+}
+
 format_schedule_label() {
   local raw="$1"
   local cal=""
@@ -557,7 +578,11 @@ load_existing_env_defaults() {
     old_calendar="$(grep -E '^BACKUP_ON_CALENDAR=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
     old_calendar="$(normalize_calendar_raw "$old_calendar")"
     old_backup_lang="$(grep -E '^BACKUP_LANG=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
-    old_backup_lang="$(normalize_calendar_raw "$old_backup_lang")"
+    old_bot="$(normalize_env_value_raw "$old_bot")"
+    old_admin="$(normalize_env_value_raw "$old_admin")"
+    old_thread="$(normalize_env_value_raw "$old_thread")"
+    old_dir="$(normalize_env_value_raw "$old_dir")"
+    old_backup_lang="$(normalize_env_value_raw "$old_backup_lang")"
   fi
 
   TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-$old_bot}"
