@@ -441,9 +441,9 @@ menu_section_setup() {
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Здесь первичная установка и изменение конфигурации." "Use this section for initial install and config changes.")"
     paint "$CLR_MUTED" "$(tr_text "Текущее состояние:" "Current state:") Telegram=${tg_state}, $(tr_text "шифрование" "encryption")=${enc_state}, $(tr_text "состав" "scope")=${include_state}"
-    menu_option "1" "$(tr_text "Установить/обновить файлы + первичная настройка" "Install/update files + initial setup")"
-    menu_option "2" "$(tr_text "Быстрая настройка (3 шага)" "Quick setup (3 steps)")"
-    menu_option "3" "$(tr_text "Настройки шифрования backup" "Backup encryption settings")"
+    menu_option "1" "$(tr_text "Установка/обновление" "Install/update")"
+    menu_option "2" "$(tr_text "Быстрая настройка" "Quick setup")"
+    menu_option "3" "$(tr_text "Шифрование" "Encryption")"
     menu_option "4" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
@@ -638,6 +638,75 @@ show_restore_summary() {
   paint "$CLR_MUTED" "  $(tr_text "Перезапуски:" "Restarts:") ${restart_label}"
 }
 
+show_restore_safety_checklist() {
+  local source_ok=0
+  local source_label=""
+  local latest_local=""
+  local latest_age_h="n/a"
+  local db_snapshot=""
+
+  if [[ -n "${BACKUP_FILE:-}" && -f "${BACKUP_FILE:-}" ]]; then
+    source_ok=1
+    source_label="$(tr_text "локальный файл доступен" "local file is available")"
+  elif [[ -n "${BACKUP_URL:-}" ]]; then
+    source_ok=1
+    source_label="$(tr_text "URL указан (файл будет скачан)" "URL is set (file will be downloaded)")"
+  else
+    source_label="$(tr_text "источник не выбран" "source is not selected")"
+  fi
+
+  latest_local="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/pb-*.tar.gz.gpg /var/backups/panel/panel-backup-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz.gpg 2>/dev/null | head -n1 || true)"
+  if [[ -n "$latest_local" && -f "$latest_local" ]]; then
+    latest_age_h="$(( ( $(date +%s) - $(date -r "$latest_local" +%s) ) / 3600 ))"
+  fi
+
+  db_snapshot="$(ls -1t /var/backups/panel/manual-db-snapshots/remnawave-db-pretest-*.dump 2>/dev/null | head -n1 || true)"
+
+  paint "$CLR_TITLE" "$(tr_text "Чеклист перед запуском" "Pre-run checklist")"
+  if (( source_ok == 1 )); then
+    paint "$CLR_OK" "  [OK] $(tr_text "Источник:" "Source:") ${source_label}"
+  else
+    paint "$CLR_WARN" "  [WARN] $(tr_text "Источник:" "Source:") ${source_label}"
+  fi
+  if [[ -n "$latest_local" ]]; then
+    paint "$CLR_MUTED" "  [OK] $(tr_text "Последний локальный backup:" "Latest local backup:") $(basename "$latest_local") ($(tr_text "возраст, ч:" "age, h:") ${latest_age_h})"
+  else
+    paint "$CLR_WARN" "  [WARN] $(tr_text "Локальные backup-файлы не найдены." "No local backup files found.")"
+  fi
+  if [[ -n "$db_snapshot" ]]; then
+    paint "$CLR_MUTED" "  [OK] $(tr_text "Ручной snapshot БД:" "Manual DB snapshot:") $(basename "$db_snapshot")"
+  else
+    paint "$CLR_WARN" "  [WARN] $(tr_text "Нет ручного snapshot БД в /var/backups/panel/manual-db-snapshots." "No manual DB snapshot in /var/backups/panel/manual-db-snapshots.")"
+  fi
+  if [[ "${RESTORE_DRY_RUN:-0}" == "1" ]]; then
+    paint "$CLR_OK" "  [SAFE] $(tr_text "Выбран тестовый режим (без изменений)." "Test mode selected (no changes).")"
+  else
+    paint "$CLR_WARN" "  [RISK] $(tr_text "Выбран боевой режим (изменения будут применены)." "Real mode selected (changes will be applied).")"
+  fi
+}
+
+show_operation_result_summary() {
+  local action="$1"
+  local ok="$2"
+  local latest_local=""
+  local status_text=""
+
+  latest_local="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/pb-*.tar.gz.gpg /var/backups/panel/panel-backup-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz.gpg 2>/dev/null | head -n1 || true)"
+  if [[ "$ok" == "1" ]]; then
+    status_text="$(tr_text "успешно" "success")"
+    paint "$CLR_OK" "$(tr_text "Итог операции" "Operation summary")"
+  else
+    status_text="$(tr_text "ошибка" "failed")"
+    paint "$CLR_DANGER" "$(tr_text "Итог операции" "Operation summary")"
+  fi
+  paint "$CLR_MUTED" "  $(tr_text "Операция:" "Action:") ${action}"
+  paint "$CLR_MUTED" "  $(tr_text "Статус:" "Status:") ${status_text}"
+  if [[ -n "$latest_local" ]]; then
+    paint "$CLR_MUTED" "  $(tr_text "Последний backup:" "Latest backup:") $(basename "$latest_local")"
+  fi
+  paint "$CLR_MUTED" "  $(tr_text "Дальше:" "Next:") $(tr_text "можно открыть раздел \"Статус и диагностика\"." "you can open \"Status and diagnostics\".")"
+}
+
 draw_restore_step() {
   local step="$1"
   local total="$2"
@@ -683,8 +752,10 @@ menu_section_operations() {
         draw_header "$(tr_text "Создание backup" "Create backup")"
         if run_backup_now; then
           paint "$CLR_OK" "$(tr_text "Backup выполнен успешно." "Backup completed successfully.")"
+          show_operation_result_summary "$(tr_text "Создание backup" "Create backup")" "1"
         else
           paint "$CLR_DANGER" "$(tr_text "Ошибка создания backup. Проверьте лог выше." "Backup failed. Check the log above.")"
+          show_operation_result_summary "$(tr_text "Создание backup" "Create backup")" "0"
         fi
         wait_for_enter
         ;;
@@ -704,18 +775,37 @@ menu_section_operations() {
         draw_restore_step "3" "4" "$(tr_text "Параметры запуска" "Execution options")"
         paint "$CLR_MUTED" "$(tr_text "Подсказка: тестовый режим только проверяет шаги, боевой режим реально применяет изменения." "Tip: test mode only validates steps, real mode actually applies changes.")"
         paint "$CLR_MUTED" "$(tr_text "Если отключить перезапуски, сервисы не будут автоматически перезапущены после восстановления." "If restarts are disabled, services will not be restarted automatically after restore.")"
-        if ask_yes_no "$(tr_text "Запустить в тестовом режиме dry-run (без применения изменений)?" "Run in dry-run test mode (without applying changes)?")" "n"; then
-          RESTORE_DRY_RUN=1
-        else
-          [[ "$?" == "2" ]] && continue
-        fi
-        if ask_yes_no "$(tr_text "Отключить автоматический перезапуск сервисов после restore?" "Disable automatic service restart after restore?")" "n"; then
-          RESTORE_NO_RESTART=1
-        else
-          [[ "$?" == "2" ]] && continue
-        fi
+        while true; do
+          menu_option "1" "$(tr_text "Тестовый режим (без изменений, безопасно)" "Test mode (no changes, safe)")"
+          menu_option "2" "$(tr_text "Боевой режим (вносит изменения, риск)" "Real mode (applies changes, risk)")"
+          print_separator
+          read -r -p "$(tr_text "Выбор режима [1-2]: " "Select mode [1-2]: ")" choice
+          if is_back_command "$choice"; then
+            continue 2
+          fi
+          case "$choice" in
+            1) RESTORE_DRY_RUN=1; break ;;
+            2) RESTORE_DRY_RUN=0; break ;;
+            *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")" ;;
+          esac
+        done
+        while true; do
+          menu_option "1" "$(tr_text "Автоперезапуск после restore (быстрее)" "Auto-restart after restore (faster)")"
+          menu_option "2" "$(tr_text "Без автоперезапуска (осторожно)" "No auto-restart (safer)")"
+          print_separator
+          read -r -p "$(tr_text "Перезапуски [1-2]: " "Restarts [1-2]: ")" choice
+          if is_back_command "$choice"; then
+            continue 2
+          fi
+          case "$choice" in
+            1) RESTORE_NO_RESTART=0; break ;;
+            2) RESTORE_NO_RESTART=1; break ;;
+            *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")" ;;
+          esac
+        done
         draw_restore_step "4" "4" "$(tr_text "Подтверждение и запуск" "Confirm and run")"
         show_restore_summary
+        show_restore_safety_checklist
         print_separator
         if ! ask_yes_no "$(tr_text "Запустить восстановление с этими параметрами?" "Run restore with these parameters?")" "y"; then
           [[ "$?" == "2" ]] && continue
@@ -737,8 +827,10 @@ menu_section_operations() {
         fi
         if run_restore; then
           paint "$CLR_OK" "$(tr_text "Восстановление завершено." "Restore completed.")"
+          show_operation_result_summary "$(tr_text "Восстановление backup" "Backup restore")" "1"
         else
           paint "$CLR_DANGER" "$(tr_text "Ошибка восстановления. Проверьте лог выше." "Restore failed. Check the log above.")"
+          show_operation_result_summary "$(tr_text "Восстановление backup" "Backup restore")" "0"
         fi
         wait_for_enter
         ;;
