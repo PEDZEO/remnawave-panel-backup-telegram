@@ -18,6 +18,7 @@ WORKDIR="$(mktemp -d /tmp/panel-backup.XXXXXX)"
 ARCHIVE_BASE="pb-${TIMESTAMP_SHORT}"
 ARCHIVE_PATH="${BACKUP_ROOT}/${ARCHIVE_BASE}.tar.gz"
 LOG_TAG="panel-backup"
+LOCK_FILE="${LOCK_FILE:-/var/lock/panel-backup.lock}"
 declare -a BACKUP_ITEMS=()
 
 cleanup() {
@@ -79,9 +80,21 @@ container_version_label() {
   local image_id=""
   local version=""
   local revision=""
+  local env_versions=""
 
   image_ref="$(container_image_ref "$name")"
   image_id="$(docker inspect -f '{{.Image}}' "$name" 2>/dev/null || true)"
+
+  env_versions="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$name" 2>/dev/null | awk -F= '
+    $1=="REMNAWAVE_VERSION" {print $2; exit}
+    $1=="SUBSCRIPTION_VERSION" {print $2; exit}
+    $1=="APP_VERSION" {print $2; exit}
+    $1=="VERSION" {print $2; exit}
+  ' || true)"
+  if [[ -n "$env_versions" ]]; then
+    printf '%s' "$env_versions"
+    return 0
+  fi
 
   if [[ -n "$image_id" ]]; then
     version="$(docker image inspect -f '{{ index .Config.Labels "org.opencontainers.image.version" }}' "$image_id" 2>/dev/null || true)"
@@ -198,6 +211,52 @@ $(t "Время (UTC):" "Time (UTC):") ${TIMESTAMP_UTC_HUMAN}"
   exit 1
 }
 
+ensure_dependencies() {
+  local cmd=""
+  for cmd in docker tar curl split du stat find awk grep sed flock; do
+    command -v "$cmd" >/dev/null 2>&1 || fail "$(t "не найдена команда" "missing command"): $cmd"
+  done
+}
+
+check_container_present() {
+  local name="$1"
+  docker inspect "$name" >/dev/null 2>&1 || fail "$(t "контейнер не найден" "container not found"): $name"
+}
+
+estimate_required_bytes() {
+  local rem_size=0
+  local safety_bytes=$((200 * 1024 * 1024))
+  rem_size="$(du -sb "$REMNAWAVE_DIR" 2>/dev/null | awk '{print $1}' || echo 0)"
+  if [[ ! "$rem_size" =~ ^[0-9]+$ ]]; then
+    rem_size=0
+  fi
+  echo $((rem_size + safety_bytes))
+}
+
+available_backup_root_bytes() {
+  df -Pk "$BACKUP_ROOT" 2>/dev/null | awk 'NR==2 {print $4 * 1024}' || echo 0
+}
+
+preflight_checks() {
+  local need_bytes=0
+  local free_bytes=0
+
+  ensure_dependencies
+  check_container_present remnawave-db
+  check_container_present remnawave-redis
+  check_container_present remnawave
+
+  mkdir -p "$BACKUP_ROOT"
+  need_bytes="$(estimate_required_bytes)"
+  free_bytes="$(available_backup_root_bytes)"
+
+  if [[ "$need_bytes" =~ ^[0-9]+$ && "$free_bytes" =~ ^[0-9]+$ ]]; then
+    if (( free_bytes < need_bytes )); then
+      fail "$(t "недостаточно места для backup" "not enough free disk space for backup"): $(t "нужно" "need") ${need_bytes} $(t "байт, доступно" "bytes, available") ${free_bytes}"
+    fi
+  fi
+}
+
 normalize_env_file_format() {
   local fix_pattern='^BACKUP_ON_CALENDAR=[^"].* [^"].*$'
   if [[ ! -f "$BACKUP_ENV_PATH" ]]; then
@@ -226,6 +285,11 @@ if [[ -f "$BACKUP_ENV_PATH" ]]; then
 fi
 normalize_backup_lang
 
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+  fail "$(t "backup уже выполняется (блокировка активна)" "backup is already running (lock is active)")"
+fi
+
 REMNAWAVE_DIR="${REMNAWAVE_DIR:-$(detect_remnawave_dir || true)}"
 PANEL_VERSION="$(container_version_label remnawave)"
 SUBSCRIPTION_VERSION="$(container_version_label remnawave-subscription-page)"
@@ -235,6 +299,7 @@ SUBSCRIPTION_VERSION="$(container_version_label remnawave-subscription-page)"
 
 [[ -d "$REMNAWAVE_DIR" ]] || fail "не найдена директория ${REMNAWAVE_DIR}"
 [[ -f "${REMNAWAVE_DIR}/.env" ]] || fail "не найден ${REMNAWAVE_DIR}/.env"
+preflight_checks
 
 POSTGRES_USER="$(grep -E '^POSTGRES_USER=' "${REMNAWAVE_DIR}/.env" | head -n1 | cut -d= -f2-)"
 POSTGRES_DB="$(grep -E '^POSTGRES_DB=' "${REMNAWAVE_DIR}/.env" | head -n1 | cut -d= -f2-)"
