@@ -527,6 +527,16 @@ is_back_command() {
   esac
 }
 
+is_prev_command() {
+  local raw="${1:-}"
+  local cleaned=""
+  cleaned="$(echo "$raw" | xargs 2>/dev/null || echo "$raw")"
+  case "${cleaned,,}" in
+    p|/p|prev|/prev|назад-шаг|шаг-назад) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 show_back_hint() {
   :
 }
@@ -912,6 +922,42 @@ ask_value() {
   fi
 }
 
+ask_value_nav() {
+  local prompt="$1"
+  local current="${2:-}"
+  local input=""
+
+  if [[ -n "$current" ]]; then
+    if [[ "$COLOR" == "1" ]]; then
+      printf "%b%s%b\n" "$CLR_MUTED" "${prompt} [${current}]" "$CLR_RESET" >&2
+    else
+      printf "%s\n" "${prompt} [${current}]" >&2
+    fi
+  else
+    if [[ "$COLOR" == "1" ]]; then
+      printf "%b%s%b\n" "$CLR_MUTED" "${prompt}" "$CLR_RESET" >&2
+    else
+      printf "%s\n" "${prompt}" >&2
+    fi
+  fi
+  read -r -p "> " input
+
+  if is_back_command "$input"; then
+    echo "__PBM_BACK__"
+    return 0
+  fi
+  if is_prev_command "$input"; then
+    echo "__PBM_PREV__"
+    return 0
+  fi
+
+  if [[ -n "$input" ]]; then
+    echo "$input"
+  else
+    echo "$current"
+  fi
+}
+
 ask_secret_value() {
   local prompt="$1"
   local current="${2:-}"
@@ -935,6 +981,43 @@ ask_secret_value() {
 
   if is_back_command "$input"; then
     echo "__PBM_BACK__"
+    return 0
+  fi
+
+  if [[ -n "$input" ]]; then
+    echo "$input"
+  else
+    echo "$current"
+  fi
+}
+
+ask_secret_value_nav() {
+  local prompt="$1"
+  local current="${2:-}"
+  local input=""
+  local hint=""
+
+  if [[ -n "$current" ]]; then
+    hint="$(tr_text "задан" "set")"
+  else
+    hint="$(tr_text "не задан" "not set")"
+  fi
+
+  if [[ "$COLOR" == "1" ]]; then
+    printf "%b%s [%s]%b\n" "$CLR_MUTED" "$prompt" "$hint" "$CLR_RESET" >&2
+  else
+    printf "%s [%s]\n" "$prompt" "$hint" >&2
+  fi
+
+  read -r -s -p "> " input
+  printf "\n" >&2
+
+  if is_back_command "$input"; then
+    echo "__PBM_BACK__"
+    return 0
+  fi
+  if is_prev_command "$input"; then
+    echo "__PBM_PREV__"
     return 0
   fi
 

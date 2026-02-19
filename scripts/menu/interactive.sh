@@ -54,6 +54,251 @@ menu_flow_edit_settings_only() {
   wait_for_enter
 }
 
+render_change_line() {
+  local label="$1"
+  local before="$2"
+  local after="$3"
+  local display_before="$before"
+  local display_after="$after"
+
+  [[ "$label" == "TELEGRAM_BOT_TOKEN" || "$label" == "BACKUP_PASSWORD" ]] && display_before="$( [[ -n "$before" ]] && mask_secret "$before" || echo "$(tr_text "не задан" "not set")" )"
+  [[ "$label" == "TELEGRAM_BOT_TOKEN" || "$label" == "BACKUP_PASSWORD" ]] && display_after="$( [[ -n "$after" ]] && mask_secret "$after" || echo "$(tr_text "не задан" "not set")" )"
+  [[ -z "$display_before" ]] && display_before="$(tr_text "не задан" "not set")"
+  [[ -z "$display_after" ]] && display_after="$(tr_text "не задан" "not set")"
+
+  if [[ "$before" == "$after" ]]; then
+    paint "$CLR_MUTED" "  = ${label}: ${display_after}"
+  else
+    paint "$CLR_OK" "  * ${label}: ${display_before} -> ${display_after}"
+  fi
+}
+
+show_quick_setup_summary() {
+  local old_bot="$1"
+  local old_admin="$2"
+  local old_thread="$3"
+  local old_dir="$4"
+  local old_lang="$5"
+  local old_encrypt="$6"
+  local old_password="$7"
+  local old_calendar="$8"
+
+  draw_header "$(tr_text "Краткий итог изменений" "Quick changes summary")"
+  paint "$CLR_MUTED" "$(tr_text "Легенда: * изменено, = без изменений." "Legend: * changed, = unchanged.")"
+  print_separator
+  render_change_line "TELEGRAM_BOT_TOKEN" "$old_bot" "$TELEGRAM_BOT_TOKEN"
+  render_change_line "TELEGRAM_ADMIN_ID" "$old_admin" "$TELEGRAM_ADMIN_ID"
+  render_change_line "TELEGRAM_THREAD_ID" "$old_thread" "$TELEGRAM_THREAD_ID"
+  render_change_line "REMNAWAVE_DIR" "$old_dir" "$REMNAWAVE_DIR"
+  render_change_line "BACKUP_LANG" "$old_lang" "$BACKUP_LANG"
+  render_change_line "BACKUP_ENCRYPT" "$old_encrypt" "$BACKUP_ENCRYPT"
+  render_change_line "BACKUP_PASSWORD" "$old_password" "$BACKUP_PASSWORD"
+  render_change_line "BACKUP_ON_CALENDAR" "$old_calendar" "$BACKUP_ON_CALENDAR"
+  print_separator
+}
+
+menu_flow_quick_setup() {
+  local step=1
+  local input=""
+  local confirm=""
+  local old_bot=""
+  local old_admin=""
+  local old_thread=""
+  local old_dir=""
+  local old_lang=""
+  local old_encrypt=""
+  local old_password=""
+  local old_calendar=""
+  local prev_password=""
+
+  load_existing_env_defaults
+  old_bot="$TELEGRAM_BOT_TOKEN"
+  old_admin="$TELEGRAM_ADMIN_ID"
+  old_thread="$TELEGRAM_THREAD_ID"
+  old_dir="$REMNAWAVE_DIR"
+  old_lang="$BACKUP_LANG"
+  old_encrypt="$BACKUP_ENCRYPT"
+  old_password="$BACKUP_PASSWORD"
+  old_calendar="$BACKUP_ON_CALENDAR"
+
+  while true; do
+    case "$step" in
+      1)
+        draw_header "$(tr_text "Быстрая настройка" "Quick setup")" "$(tr_text "Шаг 1/3: Telegram и путь" "Step 1/3: Telegram and path")"
+        paint "$CLR_MUTED" "$(tr_text "Команды: b = выход из мастера, p = предыдущий шаг." "Commands: b = exit wizard, p = previous step.")"
+
+        while true; do
+          input="$(ask_value_nav "$(tr_text "Токен Telegram-бота" "Telegram bot token")" "$TELEGRAM_BOT_TOKEN")"
+          [[ "$input" == "__PBM_BACK__" ]] && return 0
+          if [[ "$input" == "__PBM_PREV__" ]]; then
+            paint "$CLR_WARN" "$(tr_text "Это первый шаг." "This is the first step.")"
+            continue
+          fi
+          if [[ -n "$input" ]] && ! is_valid_telegram_token "$input"; then
+            paint "$CLR_WARN" "$(tr_text "Некорректный токен Telegram." "Invalid Telegram token.")"
+            continue
+          fi
+          TELEGRAM_BOT_TOKEN="$input"
+          break
+        done
+
+        while true; do
+          input="$(ask_value_nav "$(tr_text "ID чата/канала Telegram" "Telegram chat/channel ID")" "$TELEGRAM_ADMIN_ID")"
+          [[ "$input" == "__PBM_BACK__" ]] && return 0
+          if [[ "$input" == "__PBM_PREV__" ]]; then
+            step=1
+            continue 2
+          fi
+          if [[ -n "$input" ]] && ! is_valid_telegram_id "$input"; then
+            paint "$CLR_WARN" "$(tr_text "ID чата должен быть числом." "Chat ID must be numeric.")"
+            continue
+          fi
+          TELEGRAM_ADMIN_ID="$input"
+          break
+        done
+
+        while true; do
+          input="$(ask_value_nav "$(tr_text "ID темы (опционально)" "Thread ID (optional)")" "$TELEGRAM_THREAD_ID")"
+          [[ "$input" == "__PBM_BACK__" ]] && return 0
+          if [[ "$input" == "__PBM_PREV__" ]]; then
+            step=1
+            continue 2
+          fi
+          if [[ -n "$input" ]] && ! is_valid_telegram_id "$input"; then
+            paint "$CLR_WARN" "$(tr_text "ID темы должен быть числом." "Thread ID must be numeric.")"
+            continue
+          fi
+          TELEGRAM_THREAD_ID="$input"
+          break
+        done
+
+        while true; do
+          input="$(ask_value_nav "$(tr_text "Путь к Remnawave" "Remnawave path")" "$REMNAWAVE_DIR")"
+          [[ "$input" == "__PBM_BACK__" ]] && return 0
+          if [[ "$input" == "__PBM_PREV__" ]]; then
+            step=1
+            continue 2
+          fi
+          REMNAWAVE_DIR="$input"
+          break
+        done
+
+        while true; do
+          input="$(ask_value_nav "$(tr_text "Язык backup (ru/en)" "Backup language (ru/en)")" "$BACKUP_LANG")"
+          [[ "$input" == "__PBM_BACK__" ]] && return 0
+          if [[ "$input" == "__PBM_PREV__" ]]; then
+            step=1
+            continue 2
+          fi
+          case "${input,,}" in
+            ru|"") BACKUP_LANG="ru"; break ;;
+            en|eu) BACKUP_LANG="en"; break ;;
+            *) paint "$CLR_WARN" "$(tr_text "Допустимо только ru или en." "Only ru or en are allowed.")" ;;
+          esac
+        done
+
+        step=2
+        ;;
+      2)
+        draw_header "$(tr_text "Быстрая настройка" "Quick setup")" "$(tr_text "Шаг 2/3: Шифрование" "Step 2/3: Encryption")"
+        paint "$CLR_MUTED" "$(tr_text "1) Включить шифрование  2) Выключить шифрование" "1) Enable encryption  2) Disable encryption")"
+        read -r -p "$(tr_text "Выбор [1-2], p назад, b выход: " "Choice [1-2], p back, b exit: ")" input
+        if is_back_command "$input"; then
+          return 0
+        fi
+        if is_prev_command "$input"; then
+          step=1
+          continue
+        fi
+        case "$input" in
+          1) BACKUP_ENCRYPT="1" ;;
+          2) BACKUP_ENCRYPT="0"; BACKUP_PASSWORD="" ;;
+          *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; continue ;;
+        esac
+
+        if [[ "$BACKUP_ENCRYPT" == "1" ]]; then
+          while true; do
+            prev_password="$BACKUP_PASSWORD"
+            input="$(ask_secret_value_nav "$(tr_text "Пароль шифрования (мин. 8 символов)" "Encryption password (min. 8 chars)")" "$BACKUP_PASSWORD")"
+            [[ "$input" == "__PBM_BACK__" ]] && return 0
+            if [[ "$input" == "__PBM_PREV__" ]]; then
+              step=1
+              continue 2
+            fi
+            if [[ -n "$prev_password" && "$input" == "$prev_password" ]]; then
+              BACKUP_PASSWORD="$input"
+              break
+            fi
+            if [[ ${#input} -lt 8 ]]; then
+              paint "$CLR_WARN" "$(tr_text "Пароль слишком короткий." "Password is too short.")"
+              continue
+            fi
+            confirm="$(ask_secret_value_nav "$(tr_text "Подтвердите пароль" "Confirm password")" "")"
+            [[ "$confirm" == "__PBM_BACK__" ]] && return 0
+            if [[ "$confirm" == "__PBM_PREV__" ]]; then
+              continue
+            fi
+            if [[ "$confirm" != "$input" ]]; then
+              paint "$CLR_WARN" "$(tr_text "Пароли не совпадают." "Passwords do not match.")"
+              continue
+            fi
+            BACKUP_PASSWORD="$input"
+            break
+          done
+        fi
+
+        step=3
+        ;;
+      3)
+        draw_header "$(tr_text "Быстрая настройка" "Quick setup")" "$(tr_text "Шаг 3/3: Расписание" "Step 3/3: Schedule")"
+        paint "$CLR_MUTED" "$(tr_text "1) Ежедневно 03:40 UTC  2) Каждые 12 часов  3) Каждые 6 часов  4) Каждый час  5) Свой OnCalendar" "1) Daily 03:40 UTC  2) Every 12h  3) Every 6h  4) Hourly  5) Custom OnCalendar")"
+        read -r -p "$(tr_text "Выбор [1-5], p назад, b выход: " "Choice [1-5], p back, b exit: ")" input
+        if is_back_command "$input"; then
+          return 0
+        fi
+        if is_prev_command "$input"; then
+          step=2
+          continue
+        fi
+        case "$input" in
+          1) BACKUP_ON_CALENDAR="*-*-* 03:40:00 UTC" ;;
+          2) BACKUP_ON_CALENDAR="*-*-* 00,12:00:00 UTC" ;;
+          3) BACKUP_ON_CALENDAR="*-*-* 00,06,12,18:00:00 UTC" ;;
+          4) BACKUP_ON_CALENDAR="hourly" ;;
+          5)
+            input="$(ask_value_nav "$(tr_text "Введите OnCalendar" "Enter OnCalendar")" "$BACKUP_ON_CALENDAR")"
+            [[ "$input" == "__PBM_BACK__" ]] && return 0
+            if [[ "$input" == "__PBM_PREV__" ]]; then
+              step=2
+              continue
+            fi
+            [[ -n "$input" ]] && BACKUP_ON_CALENDAR="$input"
+            ;;
+          *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; continue ;;
+        esac
+
+        show_quick_setup_summary "$old_bot" "$old_admin" "$old_thread" "$old_dir" "$old_lang" "$old_encrypt" "$old_password" "$old_calendar"
+        if ! ask_yes_no "$(tr_text "Сохранить эти изменения?" "Save these changes?")" "y"; then
+          [[ "$?" == "2" ]] && { step=2; continue; }
+          paint "$CLR_WARN" "$(tr_text "Изменения отменены." "Changes cancelled.")"
+          wait_for_enter
+          return 0
+        fi
+
+        write_env
+        write_timer_unit
+        $SUDO systemctl daemon-reload
+        if $SUDO systemctl is-enabled --quiet panel-backup.timer 2>/dev/null; then
+          $SUDO systemctl restart panel-backup.timer || true
+        fi
+        paint "$CLR_OK" "$(tr_text "Быстрая настройка применена." "Quick setup applied.")"
+        wait_for_enter
+        return 0
+        ;;
+    esac
+  done
+}
+
 menu_flow_encryption_settings() {
   local choice=""
   local val=""
@@ -188,19 +433,21 @@ menu_section_setup() {
     paint "$CLR_MUTED" "$(tr_text "Здесь первичная установка и изменение конфигурации." "Use this section for initial install and config changes.")"
     paint "$CLR_MUTED" "$(tr_text "Текущее состояние:" "Current state:") Telegram=${tg_state}, $(tr_text "шифрование" "encryption")=${enc_state}"
     menu_option "1" "$(tr_text "Установить/обновить файлы + первичная настройка" "Install/update files + initial setup")"
-    menu_option "2" "$(tr_text "Изменить только текущие настройки" "Edit current settings only")"
-    menu_option "3" "$(tr_text "Настройки шифрования backup" "Backup encryption settings")"
-    menu_option "4" "$(tr_text "Назад" "Back")"
+    menu_option "2" "$(tr_text "Быстрая настройка (3 шага)" "Quick setup (3 steps)")"
+    menu_option "3" "$(tr_text "Изменить только текущие настройки" "Edit current settings only")"
+    menu_option "4" "$(tr_text "Настройки шифрования backup" "Backup encryption settings")"
+    menu_option "5" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
     case "$choice" in
       1) menu_flow_install_and_setup ;;
-      2) menu_flow_edit_settings_only ;;
-      3) menu_flow_encryption_settings ;;
-      4) break ;;
+      2) menu_flow_quick_setup ;;
+      3) menu_flow_edit_settings_only ;;
+      4) menu_flow_encryption_settings ;;
+      5) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
