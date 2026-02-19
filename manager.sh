@@ -19,6 +19,7 @@ TELEGRAM_ADMIN_ID="${TELEGRAM_ADMIN_ID:-}"
 TELEGRAM_THREAD_ID="${TELEGRAM_THREAD_ID:-}"
 REMNAWAVE_DIR="${REMNAWAVE_DIR:-}"
 BACKUP_ON_CALENDAR="${BACKUP_ON_CALENDAR:-}"
+AUTO_INSTALL_DEPS="${AUTO_INSTALL_DEPS:-0}"
 TMP_DIR="$(mktemp -d /tmp/panel-backup-install.XXXXXX)"
 SUDO=""
 COLOR=0
@@ -81,7 +82,12 @@ USAGE
 }
 
 if [[ "${EUID}" -ne 0 ]]; then
-  SUDO="sudo"
+  if command -v sudo >/dev/null 2>&1; then
+    SUDO="sudo"
+  else
+    echo "sudo not found. Run as root or install sudo." >&2
+    exit 1
+  fi
 fi
 
 setup_colors() {
@@ -105,6 +111,105 @@ paint() {
   else
     printf "%s\n" "$*"
   fi
+}
+
+detect_package_manager() {
+  if command -v apt-get >/dev/null 2>&1; then
+    echo "apt-get"
+    return 0
+  fi
+  if command -v dnf >/dev/null 2>&1; then
+    echo "dnf"
+    return 0
+  fi
+  if command -v yum >/dev/null 2>&1; then
+    echo "yum"
+    return 0
+  fi
+  if command -v apk >/dev/null 2>&1; then
+    echo "apk"
+    return 0
+  fi
+  if command -v pacman >/dev/null 2>&1; then
+    echo "pacman"
+    return 0
+  fi
+  echo ""
+}
+
+install_package() {
+  local pkg="$1"
+  local pm=""
+  pm="$(detect_package_manager)"
+  [[ -n "$pm" ]] || return 1
+
+  case "$pm" in
+    apt-get) $SUDO apt-get update -y && $SUDO apt-get install -y "$pkg" ;;
+    dnf) $SUDO dnf install -y "$pkg" ;;
+    yum) $SUDO yum install -y "$pkg" ;;
+    apk) $SUDO apk add --no-cache "$pkg" ;;
+    pacman) $SUDO pacman -Sy --noconfirm "$pkg" ;;
+    *) return 1 ;;
+  esac
+}
+
+command_package_name() {
+  local cmd="$1"
+  case "$cmd" in
+    curl) echo "curl" ;;
+    tar) echo "tar" ;;
+    systemctl) echo "systemd" ;;
+    install|mktemp|chmod|chown) echo "coreutils" ;;
+    awk) echo "gawk" ;;
+    sed) echo "sed" ;;
+    grep) echo "grep" ;;
+    *) echo "" ;;
+  esac
+}
+
+preflight_install_environment() {
+  local required=()
+  local missing=()
+  local cmd=""
+  local pkg=""
+  local failed=()
+
+  required=(curl tar systemctl install mktemp chmod chown awk sed grep)
+  for cmd in "${required[@]}"; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      missing+=("$cmd")
+    fi
+  done
+
+  if [[ ${#missing[@]} -eq 0 ]]; then
+    paint "$CLR_OK" "[0/5] $(tr_text "Preflight: окружение готово" "Preflight: environment is ready")"
+    return 0
+  fi
+
+  paint "$CLR_WARN" "[0/5] $(tr_text "Preflight: отсутствуют команды:" "Preflight: missing commands:") ${missing[*]}"
+  if [[ "$AUTO_INSTALL_DEPS" != "1" ]]; then
+    paint "$CLR_WARN" "$(tr_text "Установите их вручную или запустите с AUTO_INSTALL_DEPS=1." "Install them manually or run with AUTO_INSTALL_DEPS=1.")"
+    return 1
+  fi
+
+  for cmd in "${missing[@]}"; do
+    pkg="$(command_package_name "$cmd")"
+    if [[ -z "$pkg" ]]; then
+      failed+=("$cmd")
+      continue
+    fi
+    paint "$CLR_ACCENT" "$(tr_text "Пробую установить пакет для" "Trying to install package for"): $cmd -> $pkg"
+    install_package "$pkg" >/dev/null 2>&1 || true
+    command -v "$cmd" >/dev/null 2>&1 || failed+=("$cmd")
+  done
+
+  if [[ ${#failed[@]} -gt 0 ]]; then
+    paint "$CLR_DANGER" "$(tr_text "Не удалось подготовить зависимости:" "Failed to prepare dependencies:") ${failed[*]}"
+    return 1
+  fi
+
+  paint "$CLR_OK" "$(tr_text "Зависимости установлены автоматически." "Dependencies were installed automatically.")"
+  return 0
 }
 
 container_state() {
@@ -956,6 +1061,36 @@ enable_timer() {
   $SUDO systemctl status --no-pager panel-backup.timer | sed -n '1,12p'
 }
 
+post_install_health_check() {
+  local timer_active="inactive"
+  local service_loaded="unknown"
+
+  timer_active="$($SUDO systemctl is-active panel-backup.timer 2>/dev/null || echo "inactive")"
+  if $SUDO systemctl cat panel-backup.service >/dev/null 2>&1; then
+    service_loaded="ok"
+  else
+    service_loaded="missing"
+  fi
+
+  paint "$CLR_TITLE" "$(tr_text "Проверка после установки" "Post-install check")"
+  paint "$CLR_MUTED" "panel-backup.timer: ${timer_active}"
+  paint "$CLR_MUTED" "panel-backup.service: ${service_loaded}"
+  if [[ "$timer_active" == "active" && "$service_loaded" == "ok" ]]; then
+    paint "$CLR_OK" "$(tr_text "Установка и запуск таймера подтверждены." "Install and timer activation confirmed.")"
+  else
+    paint "$CLR_WARN" "$(tr_text "Есть проблемы после установки, проверьте systemctl status." "Post-install checks reported issues, verify with systemctl status.")"
+  fi
+}
+
+run_install_pipeline() {
+  preflight_install_environment || return 1
+  install_files
+  write_env
+  enable_timer
+  post_install_health_check
+  return 0
+}
+
 disable_timer() {
   echo "$(tr_text "Отключаю таймер бэкапа" "Disabling backup timer")"
   $SUDO systemctl disable --now panel-backup.timer
@@ -1157,6 +1292,11 @@ menu_flow_install_and_setup() {
     wait_for_enter
     return 0
   fi
+  if ! preflight_install_environment; then
+    paint "$CLR_DANGER" "$(tr_text "Preflight не пройден. Установка остановлена." "Preflight failed. Installation aborted.")"
+    wait_for_enter
+    return 0
+  fi
   install_files
   write_env
   if ask_yes_no "$(tr_text "Включить таймер backup сейчас?" "Enable backup timer now?")" "y"; then
@@ -1170,6 +1310,7 @@ menu_flow_install_and_setup() {
       2) paint "$CLR_WARN" "$(tr_text "Пропущено." "Skipped.")" ;;
     esac
   fi
+  post_install_health_check
   wait_for_enter
 }
 
@@ -1574,9 +1715,7 @@ fi
 
 case "$MODE" in
   install)
-    install_files
-    write_env
-    enable_timer
+    run_install_pipeline
     echo
     echo "$(tr_text "Запустить backup сейчас:" "Run backup now:")"
     echo "  sudo /usr/local/bin/panel-backup.sh"
@@ -1585,6 +1724,7 @@ case "$MODE" in
     ;;
   restore)
     if [[ ! -x /usr/local/bin/panel-restore.sh ]]; then
+      preflight_install_environment
       install_files
       write_env
       $SUDO systemctl daemon-reload
