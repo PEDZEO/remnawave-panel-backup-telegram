@@ -14,6 +14,7 @@ Update: repository structure synchronized.
 - поддержка шифрования backup-архивов (GPG symmetric)
 - status-раздел с диагностикой systemd, архива и контейнеров
 - установка/обновление Remnawave панели и RemnaNode из меню
+- установка/обновление страницы подписок Remnawave из меню
 
 ## Быстрый запуск
 

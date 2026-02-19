@@ -14,6 +14,7 @@ A script-based manager for backup/restore of Remnawave with a unified interactiv
 - backup archive encryption support (GPG symmetric)
 - status/diagnostics for systemd, latest archive, and containers
 - install/update flows for Remnawave panel and RemnaNode in menu
+- install/update flows for Remnawave subscription page in menu
 
 ## Quick Start
 

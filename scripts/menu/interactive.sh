@@ -467,14 +467,16 @@ menu_section_panel_node() {
   while true; do
     draw_header "$(tr_text "Раздел: Панель и нода" "Section: Panel and node")"
     show_back_hint
-    paint "$CLR_MUTED" "$(tr_text "Установка и обновление Remnawave/RemnaNode." "Install and update Remnawave/RemnaNode.")"
+    paint "$CLR_MUTED" "$(tr_text "Установка и обновление Remnawave/RemnaNode/subscription." "Install and update Remnawave/RemnaNode/subscription.")"
     menu_option "1" "$(tr_text "Установить панель Remnawave" "Install Remnawave panel")"
     menu_option "2" "$(tr_text "Обновить панель Remnawave" "Update Remnawave panel")"
     menu_option "3" "$(tr_text "Установить ноду RemnaNode" "Install RemnaNode")"
     menu_option "4" "$(tr_text "Обновить ноду RemnaNode" "Update RemnaNode")"
-    menu_option "5" "$(tr_text "Назад" "Back")"
+    menu_option "5" "$(tr_text "Установить страницу подписок" "Install subscription page")"
+    menu_option "6" "$(tr_text "Обновить страницу подписок" "Update subscription page")"
+    menu_option "7" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-7]: " "Choice [1-7]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
@@ -483,7 +485,9 @@ menu_section_panel_node() {
       2) run_panel_update_flow; wait_for_enter ;;
       3) run_node_install_flow; wait_for_enter ;;
       4) run_node_update_flow; wait_for_enter ;;
-      5) break ;;
+      5) run_subscription_install_flow; wait_for_enter ;;
+      6) run_subscription_update_flow; wait_for_enter ;;
+      7) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done

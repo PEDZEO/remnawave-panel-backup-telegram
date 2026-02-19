@@ -457,3 +457,116 @@ run_node_update_flow() {
   paint "$CLR_DANGER" "$(tr_text "Ошибка обновления ноды." "Node update failed.")"
   return 1
 }
+
+write_subscription_template() {
+  local target_dir="$1"
+  local panel_domain="$2"
+  local sub_port="$3"
+  local api_token="$4"
+
+  $SUDO install -d -m 755 "$target_dir"
+  $SUDO bash -c "cat > '${target_dir}/.env' <<ENV
+APP_PORT=${sub_port}
+REMNAWAVE_PANEL_URL=https://${panel_domain}
+REMNAWAVE_API_TOKEN=${api_token}
+ENV"
+
+  $SUDO bash -c "cat > '${target_dir}/docker-compose.yml' <<COMPOSE
+services:
+  remnawave-subscription-page:
+    image: remnawave/subscription-page:latest
+    container_name: remnawave-subscription-page
+    hostname: remnawave-subscription-page
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - 127.0.0.1:${sub_port}:${sub_port}
+COMPOSE"
+
+  $SUDO chmod 600 "${target_dir}/.env"
+  $SUDO chmod 644 "${target_dir}/docker-compose.yml"
+}
+
+run_subscription_install_flow() {
+  local sub_dir=""
+  local panel_domain=""
+  local sub_port=""
+  local api_token=""
+  local backup_suffix=""
+
+  load_existing_env_defaults
+
+  draw_header "$(tr_text "Установка страницы подписок" "Install subscription page")"
+  sub_dir="$(ask_value "$(tr_text "Путь установки subscription" "Subscription installation path")" "${REMNAWAVE_DIR:-/opt/remnawave}/subscription")"
+  [[ "$sub_dir" == "__PBM_BACK__" ]] && return 1
+
+  while true; do
+    panel_domain="$(ask_value "$(tr_text "Домен панели (без http/https)" "Panel domain (without http/https)")" "")"
+    [[ "$panel_domain" == "__PBM_BACK__" ]] && return 1
+    [[ -n "$panel_domain" ]] && break
+    paint "$CLR_WARN" "$(tr_text "Домен панели не может быть пустым." "Panel domain cannot be empty.")"
+  done
+
+  while true; do
+    sub_port="$(ask_value "$(tr_text "Порт subscription" "Subscription port")" "3010")"
+    [[ "$sub_port" == "__PBM_BACK__" ]] && return 1
+    if [[ "$sub_port" =~ ^[0-9]+$ ]]; then
+      break
+    fi
+    paint "$CLR_WARN" "$(tr_text "Порт должен быть числом." "Port must be numeric.")"
+  done
+
+  while true; do
+    api_token="$(ask_value "$(tr_text "API токен панели (Remnawave Settings -> API Tokens)" "Panel API token (Remnawave Settings -> API Tokens)")" "")"
+    [[ "$api_token" == "__PBM_BACK__" ]] && return 1
+    [[ -n "$api_token" ]] && break
+    paint "$CLR_WARN" "$(tr_text "API токен не может быть пустым." "API token cannot be empty.")"
+  done
+
+  if ! ensure_docker_available; then
+    return 1
+  fi
+
+  if [[ -f "${sub_dir}/.env" || -f "${sub_dir}/docker-compose.yml" ]]; then
+    backup_suffix="$(date -u +%Y%m%d-%H%M%S)"
+    $SUDO cp "${sub_dir}/.env" "${sub_dir}/.env.bak-${backup_suffix}" 2>/dev/null || true
+    $SUDO cp "${sub_dir}/docker-compose.yml" "${sub_dir}/docker-compose.yml.bak-${backup_suffix}" 2>/dev/null || true
+  fi
+
+  paint "$CLR_ACCENT" "$(tr_text "Генерирую конфигурацию subscription" "Generating subscription configuration")"
+  write_subscription_template "$sub_dir" "$panel_domain" "$sub_port" "$api_token"
+
+  paint "$CLR_ACCENT" "$(tr_text "Запускаю контейнер subscription" "Starting subscription container")"
+  if compose_stack_up "$sub_dir"; then
+    paint "$CLR_OK" "$(tr_text "Страница подписок установлена/обновлена." "Subscription page installed/updated.")"
+    paint "$CLR_MUTED" "$(tr_text "Путь:" "Path:") ${sub_dir}"
+    return 0
+  fi
+
+  paint "$CLR_DANGER" "$(tr_text "Не удалось запустить subscription." "Failed to start subscription.")"
+  return 1
+}
+
+run_subscription_update_flow() {
+  local sub_dir=""
+
+  load_existing_env_defaults
+
+  draw_header "$(tr_text "Обновление страницы подписок" "Update subscription page")"
+  sub_dir="$(ask_value "$(tr_text "Путь к subscription" "Subscription path")" "${REMNAWAVE_DIR:-/opt/remnawave}/subscription")"
+  [[ "$sub_dir" == "__PBM_BACK__" ]] && return 1
+
+  if ! ensure_docker_available; then
+    return 1
+  fi
+
+  paint "$CLR_ACCENT" "$(tr_text "Обновляю subscription" "Updating subscription")"
+  if compose_stack_update "$sub_dir"; then
+    paint "$CLR_OK" "$(tr_text "Страница подписок обновлена." "Subscription page updated.")"
+    return 0
+  fi
+
+  paint "$CLR_DANGER" "$(tr_text "Ошибка обновления subscription." "Subscription update failed.")"
+  return 1
+}
