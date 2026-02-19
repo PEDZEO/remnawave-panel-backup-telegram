@@ -618,8 +618,24 @@ run_restore() {
   "${restore_cmd[@]}"
 }
 
+normalize_env_file_format() {
+  local env_path="/etc/panel-backup.env"
+  local fix_pattern='^BACKUP_ON_CALENDAR=[^"].* [^"].*$'
+
+  if [[ ! -f "$env_path" ]]; then
+    return 0
+  fi
+
+  if $SUDO grep -qE "$fix_pattern" "$env_path" 2>/dev/null; then
+    $SUDO sed -i -E 's/^BACKUP_ON_CALENDAR=(.*)$/BACKUP_ON_CALENDAR="\1"/' "$env_path"
+    paint "$CLR_WARN" "$(tr_text "Исправлен формат BACKUP_ON_CALENDAR в /etc/panel-backup.env" "Fixed BACKUP_ON_CALENDAR format in /etc/panel-backup.env")"
+  fi
+}
+
 run_backup_now() {
   local backup_cmd
+
+  normalize_env_file_format
 
   if [[ ! -x /usr/local/bin/panel-backup.sh ]]; then
     install_files
