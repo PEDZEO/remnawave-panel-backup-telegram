@@ -9,6 +9,8 @@ REMNAWAVE_DIR="${REMNAWAVE_DIR:-}"
 BACKUP_ENV_PATH="${BACKUP_ENV_PATH:-/etc/panel-backup.env}"
 
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+TIMESTAMP_LOCAL="$(date '+%Y-%m-%d %H:%M:%S %Z')"
+TIMESTAMP_UTC_HUMAN="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 HOSTNAME_FQDN="$(hostname -f 2>/dev/null || hostname)"
 WORKDIR="$(mktemp -d /tmp/panel-backup.XXXXXX)"
 ARCHIVE_BASE="panel-backup-${HOSTNAME_FQDN}-${TIMESTAMP}"
@@ -98,10 +100,30 @@ fail() {
   log "ERROR: ${msg}"
   send_telegram_text "❌ Бэкап панели: ошибка на ${HOSTNAME_FQDN}
 ${msg}
-Время: ${TIMESTAMP}"
+Время (локальное): ${TIMESTAMP_LOCAL}
+Время (UTC): ${TIMESTAMP_UTC_HUMAN}"
   exit 1
 }
 
+normalize_env_file_format() {
+  local fix_pattern='^BACKUP_ON_CALENDAR=[^"].* [^"].*$'
+  if [[ ! -f "$BACKUP_ENV_PATH" ]]; then
+    return 0
+  fi
+  if grep -qE "$fix_pattern" "$BACKUP_ENV_PATH" 2>/dev/null; then
+    sed -i -E 's/^BACKUP_ON_CALENDAR=(.*)$/BACKUP_ON_CALENDAR="\1"/' "$BACKUP_ENV_PATH"
+  fi
+}
+
+build_caption() {
+  local file_label="$1"
+  printf '%s' "📦 ${file_label}
+Host: ${HOSTNAME_FQDN}
+Time: ${TIMESTAMP_LOCAL}
+Size: ${ARCHIVE_SIZE_HUMAN}"
+}
+
+normalize_env_file_format
 if [[ -f "$BACKUP_ENV_PATH" ]]; then
   # shellcheck disable=SC1090
   source "$BACKUP_ENV_PATH"
@@ -172,20 +194,22 @@ send_telegram_text "📦 Бэкап панели создан
 Хост: ${HOSTNAME_FQDN}
 Файл: $(basename "$ARCHIVE_PATH")
 Размер: ${ARCHIVE_SIZE_HUMAN}
-Время: ${TIMESTAMP}
+Время (локальное): ${TIMESTAMP_LOCAL}
+Время (UTC): ${TIMESTAMP_UTC_HUMAN}
+Описание: PostgreSQL + Redis + конфиги Remnawave
 
 Состав бэкапа:
 $(printf '%s\n' "${BACKUP_ITEMS[@]}")"
 
 if (( ARCHIVE_SIZE_BYTES <= TG_SINGLE_LIMIT_BYTES )); then
   log "Отправляю архив одним файлом в Telegram"
-  send_telegram_file "$ARCHIVE_PATH" "backup ${HOSTNAME_FQDN} ${TIMESTAMP}" \
+  send_telegram_file "$ARCHIVE_PATH" "$(build_caption "$(basename "$ARCHIVE_PATH")")" \
     || fail "не удалось отправить архив в Telegram"
 else
   log "Архив большой, режу на части по ${MAX_TG_PART_SIZE}"
   split -b "$MAX_TG_PART_SIZE" -d -a 3 "$ARCHIVE_PATH" "${ARCHIVE_PATH}.part."
   for part in "${ARCHIVE_PATH}.part."*; do
-    send_telegram_file "$part" "backup part ${HOSTNAME_FQDN} $(basename "$part")" \
+    send_telegram_file "$part" "$(build_caption "$(basename "$part")")" \
       || fail "не удалось отправить часть $(basename "$part")"
   done
 fi
@@ -194,4 +218,6 @@ log "Бэкап и отправка завершены: ${ARCHIVE_PATH} (${ARCHI
 send_telegram_text "✅ Бэкап панели отправлен
 Хост: ${HOSTNAME_FQDN}
 Размер: ${ARCHIVE_SIZE_HUMAN}
-Время: ${TIMESTAMP}"
+Время (локальное): ${TIMESTAMP_LOCAL}
+Время (UTC): ${TIMESTAMP_UTC_HUMAN}
+Описание: архив отправлен в Telegram"
