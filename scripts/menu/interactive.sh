@@ -481,12 +481,30 @@ menu_section_panel_node() {
       break
     fi
     case "$choice" in
-      1) run_panel_install_flow; wait_for_enter ;;
-      2) run_panel_update_flow; wait_for_enter ;;
-      3) run_node_install_flow; wait_for_enter ;;
-      4) run_node_update_flow; wait_for_enter ;;
-      5) run_subscription_install_flow; wait_for_enter ;;
-      6) run_subscription_update_flow; wait_for_enter ;;
+      1)
+        run_panel_install_flow || true
+        wait_for_enter
+        ;;
+      2)
+        run_panel_update_flow || true
+        wait_for_enter
+        ;;
+      3)
+        run_node_install_flow || true
+        wait_for_enter
+        ;;
+      4)
+        run_node_update_flow || true
+        wait_for_enter
+        ;;
+      5)
+        run_subscription_install_flow || true
+        wait_for_enter
+        ;;
+      6)
+        run_subscription_update_flow || true
+        wait_for_enter
+        ;;
       7) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac

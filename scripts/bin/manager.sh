@@ -1042,6 +1042,7 @@ ask_yes_no() {
   local prompt="$1"
   local default="${2:-y}"
   local answer=""
+  local normalized=""
 
   while true; do
     if [[ "$default" == "y" ]]; then
@@ -1054,11 +1055,12 @@ ask_yes_no() {
       answer="${answer:-n}"
     fi
 
-    case "${answer,,}" in
+    normalized="$(echo "$answer" | xargs 2>/dev/null || echo "$answer")"
+    case "${normalized,,}" in
       y|yes|д|да) return 0 ;;
       n|no|н|нет) return 1 ;;
       *)
-        if is_back_command "$answer"; then
+        if is_back_command "$normalized"; then
           return 2
         fi
         echo "$(tr_text "Введите y/n (или д/н)." "Please answer y or n.")"
