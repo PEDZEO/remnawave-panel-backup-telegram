@@ -659,6 +659,14 @@ run_restore() {
   "${restore_cmd[@]}"
 }
 
+sync_runtime_scripts() {
+  paint "$CLR_ACCENT" "$(tr_text "Обновляю runtime-скрипты backup/restore..." "Updating backup/restore runtime scripts...")"
+  fetch "panel-backup.sh" "$TMP_DIR/panel-backup.sh"
+  fetch "panel-restore.sh" "$TMP_DIR/panel-restore.sh"
+  $SUDO install -m 755 "$TMP_DIR/panel-backup.sh" /usr/local/bin/panel-backup.sh
+  $SUDO install -m 755 "$TMP_DIR/panel-restore.sh" /usr/local/bin/panel-restore.sh
+}
+
 normalize_env_file_format() {
   local env_path="/etc/panel-backup.env"
   local fix_pattern='^BACKUP_ON_CALENDAR=[^"].* [^"].*$'
@@ -676,6 +684,7 @@ normalize_env_file_format() {
 run_backup_now() {
   local backup_cmd
 
+  sync_runtime_scripts
   normalize_env_file_format
 
   if [[ ! -x /usr/local/bin/panel-backup.sh ]]; then
