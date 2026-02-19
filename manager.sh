@@ -344,20 +344,23 @@ prompt_install_settings() {
 
   draw_header "$(tr_text "Настройка параметров бэкапа" "Configure backup settings")"
   show_back_hint
+  paint "$CLR_MUTED" "$(tr_text "Сейчас вы настраиваете: Telegram-уведомления и путь к панели." "You are configuring: Telegram notifications and panel path.")"
+  paint "$CLR_MUTED" "$(tr_text "Пустое значение оставляет текущее (если есть)." "Empty input keeps current value (if any).")"
+  echo
 
-  val="$(ask_value "$(tr_text "Токен Telegram-бота (пусто = без уведомлений)" "Telegram bot token (empty = disable notifications)")" "$TELEGRAM_BOT_TOKEN")"
+  val="$(ask_value "$(tr_text "[1/4] Токен Telegram-бота (пример: 123456:ABCDEF...)" "[1/4] Telegram bot token (example: 123456:ABCDEF...)")" "$TELEGRAM_BOT_TOKEN")"
   [[ "$val" == "__PBM_BACK__" ]] && return 1
   TELEGRAM_BOT_TOKEN="$val"
 
-  val="$(ask_value "$(tr_text "ID чата/канала Telegram (например: 123456789 или -100...)" "Telegram chat/channel ID (example: 123456789 or -100...)")" "$TELEGRAM_ADMIN_ID")"
+  val="$(ask_value "$(tr_text "[2/4] ID чата/канала Telegram (пример: 123456789 или -1001234567890)" "[2/4] Telegram chat/channel ID (example: 123456789 or -1001234567890)")" "$TELEGRAM_ADMIN_ID")"
   [[ "$val" == "__PBM_BACK__" ]] && return 1
   TELEGRAM_ADMIN_ID="$val"
 
-  val="$(ask_value "$(tr_text "ID темы (topic) в Telegram, опционально" "Telegram topic/thread ID, optional")" "$TELEGRAM_THREAD_ID")"
+  val="$(ask_value "$(tr_text "[3/4] ID темы (topic), если нужен (иначе оставьте пусто)" "[3/4] Topic/thread ID if needed (otherwise leave empty)")" "$TELEGRAM_THREAD_ID")"
   [[ "$val" == "__PBM_BACK__" ]] && return 1
   TELEGRAM_THREAD_ID="$val"
 
-  val="$(ask_value "$(tr_text "Путь к папке панели Remnawave" "Path to Remnawave panel directory")" "$REMNAWAVE_DIR")"
+  val="$(ask_value "$(tr_text "[4/4] Путь к папке панели Remnawave (пример: /opt/remnawave)" "[4/4] Path to Remnawave panel directory (example: /opt/remnawave)")" "$REMNAWAVE_DIR")"
   [[ "$val" == "__PBM_BACK__" ]] && return 1
   REMNAWAVE_DIR="$val"
 
