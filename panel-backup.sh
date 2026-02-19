@@ -195,10 +195,19 @@ send_telegram_file() {
     -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
     -F "chat_id=${TELEGRAM_ADMIN_ID}" \
     "${thread_args[@]}" \
+    -F "parse_mode=HTML" \
     -F "caption=${caption}" \
     -F "document=@${file_path}")" || return 1
 
   echo "$response" | grep -q '"ok":true'
+}
+
+escape_html() {
+  local value="$1"
+  value="${value//&/&amp;}"
+  value="${value//</&lt;}"
+  value="${value//>/&gt;}"
+  printf '%s' "$value"
 }
 
 add_backup_item() {
@@ -282,13 +291,43 @@ normalize_env_file_format() {
 
 build_caption() {
   local file_label="$1"
-  printf '%s' "Backup: ${file_label}
-$(t "Хост" "Host"): ${HOSTNAME_FQDN}
-$(t "Время" "Time"): ${TIMESTAMP_LOCAL}
-$(t "Размер" "Size"): ${ARCHIVE_SIZE_HUMAN}
-$(t "Версия панели" "Panel version"): ${PANEL_VERSION}
-$(t "Версия подписки" "Subscription version"): ${SUBSCRIPTION_VERSION}
-$(t "Состав" "Contents"): PostgreSQL, Redis, .env, compose, caddy, subscription"
+  local file_label_e=""
+  local host_e=""
+  local time_e=""
+  local size_e=""
+  local panel_e=""
+  local sub_e=""
+  local enc_label=""
+  local contents_header=""
+  local spoiler_body=""
+
+  file_label_e="$(escape_html "$file_label")"
+  host_e="$(escape_html "$HOSTNAME_FQDN")"
+  time_e="$(escape_html "$TIMESTAMP_LOCAL")"
+  size_e="$(escape_html "$ARCHIVE_SIZE_HUMAN")"
+  panel_e="$(escape_html "$PANEL_VERSION")"
+  sub_e="$(escape_html "$SUBSCRIPTION_VERSION")"
+
+  if [[ "$BACKUP_ENCRYPT" == "1" ]]; then
+    enc_label="$(t "включено (GPG)" "enabled (GPG)")"
+  else
+    enc_label="$(t "выключено" "disabled")"
+  fi
+
+  contents_header="$(t "Что внутри (нажмите, чтобы развернуть):" "Inside backup (tap to expand):")"
+  spoiler_body="$(t "• PostgreSQL dump&#10;• Redis dump&#10;• remnawave/.env&#10;• remnawave/docker-compose.yml&#10;• remnawave/caddy&#10;• remnawave/subscription" "• PostgreSQL dump&#10;• Redis dump&#10;• remnawave/.env&#10;• remnawave/docker-compose.yml&#10;• remnawave/caddy&#10;• remnawave/subscription")"
+
+  printf '%s' "📦 <b>Backup Remnawave</b>
+📁 <b>$(t "Файл" "File"):</b> <code>${file_label_e}</code>
+🖥 <b>$(t "Хост" "Host"):</b> <code>${host_e}</code>
+🕒 <b>$(t "Время" "Time"):</b> <code>${time_e}</code>
+📏 <b>$(t "Размер" "Size"):</b> <code>${size_e}</code>
+🧩 <b>$(t "Версия панели" "Panel version"):</b> <code>${panel_e}</code>
+🧷 <b>$(t "Версия подписки" "Subscription version"):</b> <code>${sub_e}</code>
+🔐 <b>$(t "Шифрование" "Encryption"):</b> <code>${enc_label}</code>
+
+<blockquote>${contents_header}</blockquote>
+<tg-spoiler>${spoiler_body}</tg-spoiler>"
 }
 
 normalize_env_file_format
@@ -381,20 +420,6 @@ ARCHIVE_SIZE_HUMAN="$(du -h "$ARCHIVE_PATH" | awk '{print $1}')"
 log "Удаляю старые бэкапы (>${KEEP_DAYS} дней)"
 find "$BACKUP_ROOT" -type f \( -name 'pb-*.tar.gz' -o -name 'pb-*.tar.gz.gpg' -o -name 'pb-*.tar.gz.part.*' -o -name 'pb-*.tar.gz.gpg.part.*' -o -name 'panel-backup-*.tar.gz' -o -name 'panel-backup-*.tar.gz.gpg' -o -name 'panel-backup-*.tar.gz.part.*' -o -name 'panel-backup-*.tar.gz.gpg.part.*' \) -mtime +"$KEEP_DAYS" -delete || true
 
-send_telegram_text "INFO: $(t "Backup панели создан" "Panel backup created")
-$(t "Хост" "Host"): ${HOSTNAME_FQDN}
-$(t "Файл" "File"): $(basename "$ARCHIVE_PATH")
-$(t "Размер" "Size"): ${ARCHIVE_SIZE_HUMAN}
-$(t "Время (локальное)" "Time (local)"): ${TIMESTAMP_LOCAL}
-$(t "Время (UTC)" "Time (UTC)"): ${TIMESTAMP_UTC_HUMAN}
-$(t "Версия панели" "Panel version"): ${PANEL_VERSION}
-$(t "Версия подписки" "Subscription version"): ${SUBSCRIPTION_VERSION}
-$(t "Описание" "Description"): PostgreSQL + Redis + Remnawave configs
-$(t "Шифрование" "Encryption"): $( [[ "$BACKUP_ENCRYPT" == "1" ]] && t "включено (GPG)" "enabled (GPG)" || t "выключено" "disabled" )
-
-$(t "Состав бэкапа" "Backup contents"):
-$(printf '%s\n' "${BACKUP_ITEMS[@]}")"
-
 if (( ARCHIVE_SIZE_BYTES <= TG_SINGLE_LIMIT_BYTES )); then
   log "Отправляю архив одним файлом в Telegram"
   send_telegram_file "$ARCHIVE_PATH" "$(build_caption "$(basename "$ARCHIVE_PATH")")" \
@@ -409,12 +434,3 @@ else
 fi
 
 log "Бэкап и отправка завершены: ${ARCHIVE_PATH} (${ARCHIVE_SIZE_HUMAN})"
-send_telegram_text "OK: $(t "Backup панели отправлен" "Panel backup sent")
-$(t "Хост" "Host"): ${HOSTNAME_FQDN}
-$(t "Размер" "Size"): ${ARCHIVE_SIZE_HUMAN}
-$(t "Время (локальное)" "Time (local)"): ${TIMESTAMP_LOCAL}
-$(t "Время (UTC)" "Time (UTC)"): ${TIMESTAMP_UTC_HUMAN}
-$(t "Версия панели" "Panel version"): ${PANEL_VERSION}
-$(t "Версия подписки" "Subscription version"): ${SUBSCRIPTION_VERSION}
-$(t "Шифрование" "Encryption"): $( [[ "$BACKUP_ENCRYPT" == "1" ]] && t "включено (GPG)" "enabled (GPG)" || t "выключено" "disabled" )
-$(t "Описание" "Description"): $(t "архив отправлен в Telegram" "archive was sent to Telegram")"
