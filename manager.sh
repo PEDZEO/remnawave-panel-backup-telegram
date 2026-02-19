@@ -107,6 +107,54 @@ paint() {
   fi
 }
 
+container_state() {
+  local name="$1"
+  local state=""
+  state="$(docker inspect -f '{{.State.Status}}' "$name" 2>/dev/null || true)"
+  if [[ -z "$state" ]]; then
+    echo "$(tr_text "не найден" "not found")"
+  else
+    echo "$state"
+  fi
+}
+
+memory_usage_label() {
+  local total_kb=0
+  local avail_kb=0
+  local used_kb=0
+  local used_mb=0
+  local total_mb=0
+  local percent=0
+
+  total_kb="$(awk '/MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)"
+  avail_kb="$(awk '/MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)"
+  if [[ "$total_kb" =~ ^[0-9]+$ && "$avail_kb" =~ ^[0-9]+$ && "$total_kb" -gt 0 ]]; then
+    used_kb=$((total_kb - avail_kb))
+    used_mb=$((used_kb / 1024))
+    total_mb=$((total_kb / 1024))
+    percent=$((used_kb * 100 / total_kb))
+    echo "${used_mb}MB / ${total_mb}MB (${percent}%)"
+    return 0
+  fi
+  echo "n/a"
+}
+
+disk_usage_label() {
+  local line=""
+  local used=""
+  local total=""
+  local percent=""
+  line="$(df -h / 2>/dev/null | awk 'NR==2 {print $3" "$2" "$5}' || true)"
+  if [[ -z "$line" ]]; then
+    echo "n/a"
+    return 0
+  fi
+  used="$(echo "$line" | awk '{print $1}')"
+  total="$(echo "$line" | awk '{print $2}')"
+  percent="$(echo "$line" | awk '{print $3}')"
+  echo "${used} / ${total} (${percent})"
+}
+
 draw_header() {
   local title="$1"
   local subtitle="${2:-}"
@@ -115,11 +163,19 @@ draw_header() {
   local schedule_label=""
   local latest_backup=""
   local latest_label=""
+  local panel_state=""
+  local sub_state=""
+  local ram_label=""
+  local disk_label=""
 
   clear
   timer_state="$($SUDO systemctl is-active panel-backup.timer 2>/dev/null || echo "inactive")"
   schedule_now="$(get_current_timer_calendar || true)"
   schedule_label="$(format_schedule_label "$schedule_now")"
+  panel_state="$(container_state remnawave)"
+  sub_state="$(container_state remnawave-subscription-page)"
+  ram_label="$(memory_usage_label)"
+  disk_label="$(disk_usage_label)"
   latest_backup="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz 2>/dev/null | head -n1 || true)"
   if [[ -n "$latest_backup" ]]; then
     latest_label="$(basename "$latest_backup")"
@@ -128,17 +184,12 @@ draw_header() {
   fi
 
   paint "$CLR_TITLE" "============================================================"
-  paint "$CLR_TITLE" "  ██████╗  █████╗ ███╗   ██╗███████╗██╗         ██████╗  ███╗   ███╗"
-  paint "$CLR_TITLE" "  ██╔══██╗██╔══██╗████╗  ██║██╔════╝██║         ██╔══██╗ ████╗ ████║"
-  paint "$CLR_TITLE" "  ██████╔╝███████║██╔██╗ ██║█████╗  ██║         ██████╔╝ ██╔████╔██║"
-  paint "$CLR_TITLE" "  ██╔═══╝ ██╔══██║██║╚██╗██║██╔══╝  ██║         ██╔══██╗ ██║╚██╔╝██║"
-  paint "$CLR_TITLE" "  ██║     ██║  ██║██║ ╚████║███████╗███████╗    ██████╔╝ ██║ ╚═╝ ██║"
-  paint "$CLR_TITLE" "  ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝    ╚═════╝  ╚═╝     ╚═╝"
-  paint "$CLR_TITLE" "============================================================"
   paint "$CLR_OK" "  ${title} (${APP_VERSION})"
   if [[ -n "$subtitle" ]]; then
     paint "$CLR_MUTED" "  ${subtitle}"
   fi
+  paint "$CLR_MUTED" "  $(tr_text "Панель(remnawave):" "Panel(remnawave):") ${panel_state}   |   $(tr_text "Подписка:" "Subscription:") ${sub_state}"
+  paint "$CLR_MUTED" "  RAM: ${ram_label}   |   $(tr_text "Диск /:" "Disk /:") ${disk_label}"
   paint "$CLR_MUTED" "  $(tr_text "Таймер:" "Timer:") ${timer_state}   |   $(tr_text "Расписание:" "Schedule:") ${schedule_label}"
   paint "$CLR_MUTED" "  $(tr_text "Последний backup:" "Latest backup:") $(short_backup_label "$latest_label")"
   paint "$CLR_TITLE" "============================================================"
