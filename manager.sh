@@ -18,6 +18,7 @@ REMNAWAVE_DIR="${REMNAWAVE_DIR:-}"
 TMP_DIR="$(mktemp -d /tmp/panel-backup-install.XXXXXX)"
 SUDO=""
 COLOR=0
+UI_ACTIVE=0
 CLR_RESET=""
 CLR_TITLE=""
 CLR_ACCENT=""
@@ -26,6 +27,10 @@ CLR_OK=""
 CLR_WARN=""
 
 cleanup() {
+  if [[ "$UI_ACTIVE" == "1" ]]; then
+    tput cnorm >/dev/null 2>&1 || true
+    tput rmcup >/dev/null 2>&1 || true
+  fi
   rm -rf "$TMP_DIR"
 }
 trap cleanup EXIT
@@ -89,6 +94,14 @@ paint() {
   else
     printf "%s\n" "$*"
   fi
+}
+
+enter_ui_mode() {
+  [[ -t 0 && -t 1 ]] || return 0
+  tput smcup >/dev/null 2>&1 || true
+  tput civis >/dev/null 2>&1 || true
+  UI_ACTIVE=1
+  clear
 }
 
 fetch() {
@@ -449,6 +462,7 @@ interactive_menu() {
   local action=""
 
   setup_colors
+  enter_ui_mode
   choose_ui_lang
 
   while true; do
