@@ -39,7 +39,11 @@ run_restore() {
   fi
 
   if [[ -n "$SUDO" ]]; then
-    restore_cmd=("$SUDO" "${restore_cmd[@]}")
+    if [[ -n "${BACKUP_PASSWORD:-}" ]]; then
+      restore_cmd=("$SUDO" "BACKUP_PASSWORD=${BACKUP_PASSWORD}" "${restore_cmd[@]}")
+    else
+      restore_cmd=("$SUDO" "${restore_cmd[@]}")
+    fi
   fi
 
   "${restore_cmd[@]}"

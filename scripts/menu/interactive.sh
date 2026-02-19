@@ -591,6 +591,47 @@ select_restore_components() {
   done
 }
 
+restore_source_looks_encrypted() {
+  if [[ -n "${BACKUP_FILE:-}" && "${BACKUP_FILE}" == *.gpg ]]; then
+    return 0
+  fi
+  if [[ -n "${BACKUP_URL:-}" && "${BACKUP_URL}" == *.gpg* ]]; then
+    return 0
+  fi
+  return 1
+}
+
+ensure_restore_password_if_needed() {
+  local entered=""
+  local masked=""
+
+  load_existing_env_defaults
+  if ! restore_source_looks_encrypted; then
+    return 0
+  fi
+
+  if [[ -n "${BACKUP_PASSWORD:-}" ]]; then
+    masked="$(mask_secret "$BACKUP_PASSWORD")"
+    paint "$CLR_MUTED" "$(tr_text "Архив зашифрован, пароль найден в настройках:" "Encrypted archive, password found in settings:") ${masked}"
+    return 0
+  fi
+
+  paint "$CLR_WARN" "$(tr_text "Архив зашифрован (.gpg). Нужен пароль для восстановления." "Encrypted archive (.gpg). Password is required for restore.")"
+  while true; do
+    entered="$(ask_secret_value "$(tr_text "Введите пароль от backup-архива" "Enter backup archive password")" "")"
+    if [[ "$entered" == "__PBM_BACK__" ]]; then
+      return 1
+    fi
+    if [[ -z "$entered" ]]; then
+      paint "$CLR_WARN" "$(tr_text "Пароль не может быть пустым." "Password cannot be empty.")"
+      continue
+    fi
+    BACKUP_PASSWORD="$entered"
+    export BACKUP_PASSWORD
+    return 0
+  done
+}
+
 show_restore_summary() {
   local source_label=""
   local components_label=""
@@ -770,6 +811,9 @@ menu_section_operations() {
         fi
         draw_restore_step "2" "4" "$(tr_text "Выбор компонентов" "Select components")"
         if ! select_restore_components; then
+          continue
+        fi
+        if ! ensure_restore_password_if_needed; then
           continue
         fi
         draw_restore_step "3" "4" "$(tr_text "Параметры запуска" "Execution options")"
