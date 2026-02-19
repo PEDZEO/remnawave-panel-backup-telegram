@@ -592,12 +592,50 @@ select_restore_components() {
 }
 
 show_restore_summary() {
+  local source_label=""
+  local components_label=""
+  local mode_label=""
+  local restart_label=""
+
+  if [[ -n "${BACKUP_FILE:-}" ]]; then
+    source_label="$(tr_text "локальный файл" "local file")"
+  elif [[ -n "${BACKUP_URL:-}" ]]; then
+    source_label="$(tr_text "скачивание по URL" "download by URL")"
+  else
+    source_label="$(tr_text "не выбран" "not selected")"
+  fi
+
+  case "${RESTORE_ONLY:-all}" in
+    all) components_label="$(tr_text "всё (база + redis + конфиги)" "everything (db + redis + configs)")" ;;
+    db) components_label="$(tr_text "только база PostgreSQL" "PostgreSQL database only")" ;;
+    redis) components_label="$(tr_text "только Redis" "Redis only")" ;;
+    configs) components_label="$(tr_text "только конфиги (env/compose/caddy/subscription)" "configs only (env/compose/caddy/subscription)")" ;;
+    *) components_label="$(tr_text "кастом: " "custom: ")${RESTORE_ONLY}" ;;
+  esac
+
+  if [[ "${RESTORE_DRY_RUN:-0}" == "1" ]]; then
+    mode_label="$(tr_text "тестовый запуск (без изменений)" "test run (no changes)")"
+  else
+    mode_label="$(tr_text "боевой запуск (изменения будут применены)" "real run (changes will be applied)")"
+  fi
+
+  if [[ "${RESTORE_NO_RESTART:-0}" == "1" ]]; then
+    restart_label="$(tr_text "перезапуски сервисов отключены" "service restarts are disabled")"
+  else
+    restart_label="$(tr_text "после restore будут перезапуски сервисов" "services will be restarted after restore")"
+  fi
+
   paint "$CLR_TITLE" "$(tr_text "Параметры восстановления" "Restore parameters")"
-  paint "$CLR_MUTED" "  BACKUP_FILE: ${BACKUP_FILE:-$(tr_text "не задан" "not set")}"
-  paint "$CLR_MUTED" "  BACKUP_URL: ${BACKUP_URL:-$(tr_text "не задан" "not set")}"
-  paint "$CLR_MUTED" "  RESTORE_ONLY: ${RESTORE_ONLY:-all}"
-  paint "$CLR_MUTED" "  RESTORE_DRY_RUN: ${RESTORE_DRY_RUN:-0}"
-  paint "$CLR_MUTED" "  RESTORE_NO_RESTART: ${RESTORE_NO_RESTART:-0}"
+  paint "$CLR_MUTED" "  $(tr_text "Источник:" "Source:") ${source_label}"
+  if [[ -n "${BACKUP_FILE:-}" ]]; then
+    paint "$CLR_MUTED" "  $(tr_text "Файл:" "File:") ${BACKUP_FILE}"
+  fi
+  if [[ -n "${BACKUP_URL:-}" ]]; then
+    paint "$CLR_MUTED" "  URL: ${BACKUP_URL}"
+  fi
+  paint "$CLR_MUTED" "  $(tr_text "Что восстанавливаем:" "What will be restored:") ${components_label}"
+  paint "$CLR_MUTED" "  $(tr_text "Режим:" "Mode:") ${mode_label}"
+  paint "$CLR_MUTED" "  $(tr_text "Перезапуски:" "Restarts:") ${restart_label}"
 }
 
 draw_restore_step() {
