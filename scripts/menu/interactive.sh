@@ -704,12 +704,12 @@ menu_section_operations() {
         draw_restore_step "3" "4" "$(tr_text "Параметры запуска" "Execution options")"
         paint "$CLR_MUTED" "$(tr_text "Подсказка: тестовый режим только проверяет шаги, боевой режим реально применяет изменения." "Tip: test mode only validates steps, real mode actually applies changes.")"
         paint "$CLR_MUTED" "$(tr_text "Если отключить перезапуски, сервисы не будут автоматически перезапущены после восстановления." "If restarts are disabled, services will not be restarted automatically after restore.")"
-        if ask_yes_no "$(tr_text "Запустить restore в dry-run режиме?" "Run restore in dry-run mode?")" "n"; then
+        if ask_yes_no "$(tr_text "Запустить в тестовом режиме dry-run (без применения изменений)?" "Run in dry-run test mode (without applying changes)?")" "n"; then
           RESTORE_DRY_RUN=1
         else
           [[ "$?" == "2" ]] && continue
         fi
-        if ask_yes_no "$(tr_text "Пропустить перезапуск сервисов после restore?" "Skip service restart after restore?")" "n"; then
+        if ask_yes_no "$(tr_text "Отключить автоматический перезапуск сервисов после restore?" "Disable automatic service restart after restore?")" "n"; then
           RESTORE_NO_RESTART=1
         else
           [[ "$?" == "2" ]] && continue
