@@ -2,12 +2,31 @@
 # Interactive menu sections for manager.sh
 
 menu_flow_install_and_setup() {
+  local old_bot=""
+  local old_admin=""
+  local old_thread=""
+  local old_dir=""
+  local old_lang=""
+  local old_encrypt=""
+  local old_password=""
+  local old_calendar=""
+
+  load_existing_env_defaults
+  old_bot="$TELEGRAM_BOT_TOKEN"
+  old_admin="$TELEGRAM_ADMIN_ID"
+  old_thread="$TELEGRAM_THREAD_ID"
+  old_dir="$REMNAWAVE_DIR"
+  old_lang="$BACKUP_LANG"
+  old_encrypt="$BACKUP_ENCRYPT"
+  old_password="$BACKUP_PASSWORD"
+  old_calendar="$BACKUP_ON_CALENDAR"
+
   draw_header "$(tr_text "Установка и настройка" "Install and configure")"
   paint "$CLR_MUTED" "$(tr_text "Используйте этот пункт при первом запуске или обновлении скриптов." "Use this on first run or when updating scripts.")"
   if ! prompt_install_settings; then
     return 0
   fi
-  show_settings_preview
+  show_quick_setup_summary "$old_bot" "$old_admin" "$old_thread" "$old_dir" "$old_lang" "$old_encrypt" "$old_password" "$old_calendar"
   if ! ask_yes_no "$(tr_text "Применить эти настройки и продолжить установку?" "Apply these settings and continue installation?")" "y"; then
     [[ "$?" == "2" ]] && return 0
     paint "$CLR_WARN" "$(tr_text "Отменено пользователем." "Cancelled by user.")"
@@ -37,12 +56,31 @@ menu_flow_install_and_setup() {
 }
 
 menu_flow_edit_settings_only() {
+  local old_bot=""
+  local old_admin=""
+  local old_thread=""
+  local old_dir=""
+  local old_lang=""
+  local old_encrypt=""
+  local old_password=""
+  local old_calendar=""
+
+  load_existing_env_defaults
+  old_bot="$TELEGRAM_BOT_TOKEN"
+  old_admin="$TELEGRAM_ADMIN_ID"
+  old_thread="$TELEGRAM_THREAD_ID"
+  old_dir="$REMNAWAVE_DIR"
+  old_lang="$BACKUP_LANG"
+  old_encrypt="$BACKUP_ENCRYPT"
+  old_password="$BACKUP_PASSWORD"
+  old_calendar="$BACKUP_ON_CALENDAR"
+
   draw_header "$(tr_text "Настройка Telegram и пути" "Configure Telegram and path")"
   paint "$CLR_MUTED" "$(tr_text "Скрипты не переустанавливаются: меняется только /etc/panel-backup.env." "Scripts are not reinstalled: only /etc/panel-backup.env will be changed.")"
   if ! prompt_install_settings; then
     return 0
   fi
-  show_settings_preview
+  show_quick_setup_summary "$old_bot" "$old_admin" "$old_thread" "$old_dir" "$old_lang" "$old_encrypt" "$old_password" "$old_calendar"
   if ! ask_yes_no "$(tr_text "Сохранить эти настройки?" "Save these settings?")" "y"; then
     [[ "$?" == "2" ]] && return 0
     paint "$CLR_WARN" "$(tr_text "Изменения не сохранены." "Changes were not saved.")"
