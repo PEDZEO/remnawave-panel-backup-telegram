@@ -2,7 +2,7 @@
 
 [English](README.en.md) | [Русский](README.md)
 
-Удобный менеджер для Remnawave: backup, restore, расписание, шифрование и базовые операции по панели/ноде/странице подписок в одном интерактивном меню.
+Этот скрипт нужен, чтобы вы могли спокойно обслуживать Remnawave без ручной рутины: сделать backup, проверить состояние, безопасно запустить restore и при необходимости обновить панель, ноду или страницу подписок через одно понятное меню.
 
 ## Установка
 
@@ -12,23 +12,23 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backu
 
 ## Возможности
 
-- интерактивное меню RU/EN
-- создание backup вручную и по таймеру systemd
-- восстановление из файла или по URL
-- `dry-run` режим перед боевым restore
-- шифрование архивов (GPG symmetric)
-- статус и диагностика таймера/сервиса/контейнеров
-- установка и обновление:
-  - Remnawave panel
-  - RemnaNode
-  - Remnawave subscription page
+- Понятное интерактивное меню на русском и английском.
+- Создание backup вручную в один шаг.
+- Автоматические backup по расписанию через systemd timer.
+- Восстановление из локального файла или по прямой ссылке (URL).
+- `dry-run` режим restore, чтобы сначала проверить сценарий без изменений в системе.
+- Шифрование архивов backup (GPG symmetric), чтобы хранить и передавать их безопаснее.
+- Отображение статуса: таймер, сервис, последний backup, состояние контейнеров и базовые диагностические данные.
+- Отдельные действия по установке и обновлению Remnawave panel.
+- Отдельные действия по установке и обновлению RemnaNode.
+- Отдельные действия по установке и обновлению Remnawave subscription page.
 
 ## Режимы запуска
 
-- `MODE=install` — установка/обновление менеджера, env и timer
-- `MODE=backup` — запустить backup сейчас
-- `MODE=restore` — запустить restore
-- `MODE=status` — показать статус
+- `MODE=install` — установка/обновление менеджера, env и timer.
+- `MODE=backup` — запустить backup сейчас.
+- `MODE=restore` — запустить restore.
+- `MODE=status` — показать статус.
 
 Пример restore:
 
@@ -39,9 +39,9 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backu
 
 ## Требования
 
-- Linux с systemd
-- Bash, curl, tar, docker/docker compose
-- root или sudo
+- Linux с systemd.
+- Bash, curl, tar, docker/docker compose.
+- root или sudo.
 
 ## Лицензия
 

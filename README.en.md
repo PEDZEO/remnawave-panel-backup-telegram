@@ -2,7 +2,7 @@
 
 [English](README.en.md) | [Русский](README.md)
 
-A practical manager for Remnawave: backup, restore, schedule, encryption, and basic panel/node/subscription operations in one interactive menu.
+This script helps you operate Remnawave without manual routine work: create backups, check health, run safer restore flows, and update panel/node/subscription components from one clear menu.
 
 ## Installation
 
@@ -12,23 +12,23 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backu
 
 ## Features
 
-- RU/EN interactive menu
-- manual backup and systemd timer backup
-- restore from local file or URL
-- `dry-run` mode before real restore
-- encrypted archives (GPG symmetric)
-- status and diagnostics for timer/service/containers
-- install and update flows for:
-  - Remnawave panel
-  - RemnaNode
-  - Remnawave subscription page
+- Clear interactive menu in Russian and English.
+- One-step manual backup.
+- Scheduled automatic backups via systemd timer.
+- Restore from local archive file or direct URL.
+- `dry-run` restore mode to validate flow before real changes.
+- Encrypted backup archives (GPG symmetric) for safer storage and transfer.
+- Status and diagnostics: timer, service, latest backup, container state, and key runtime signals.
+- Dedicated install/update actions for Remnawave panel.
+- Dedicated install/update actions for RemnaNode.
+- Dedicated install/update actions for Remnawave subscription page.
 
 ## Run Modes
 
-- `MODE=install` - install/update manager, env, and timer
-- `MODE=backup` - run backup now
-- `MODE=restore` - run restore
-- `MODE=status` - show status
+- `MODE=install` - install/update manager, env, and timer.
+- `MODE=backup` - run backup now.
+- `MODE=restore` - run restore.
+- `MODE=status` - show status.
 
 Restore example:
 
@@ -39,9 +39,9 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backu
 
 ## Requirements
 
-- Linux with systemd
-- Bash, curl, tar, docker/docker compose
-- root or sudo
+- Linux with systemd.
+- Bash, curl, tar, docker/docker compose.
+- root or sudo.
 
 ## License
 
