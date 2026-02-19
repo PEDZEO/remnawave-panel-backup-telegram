@@ -108,6 +108,20 @@ draw_header() {
   paint "$CLR_TITLE" "============================================"
 }
 
+is_back_command() {
+  local raw="$1"
+  local cleaned=""
+  cleaned="$(echo "$raw" | xargs 2>/dev/null || echo "$raw")"
+  case "${cleaned,,}" in
+    b|/b|back|/back|назад) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+show_back_hint() {
+  paint "$CLR_MUTED" "$(tr_text "Подсказка: b = назад" "Hint: b = back")"
+}
+
 wait_for_enter() {
   local msg
   msg="$(tr_text "Нажмите Enter для продолжения..." "Press Enter to continue...")"
@@ -249,9 +263,10 @@ ask_value() {
   fi
   read -r -p "> " input
 
-  case "${input,,}" in
-    /back|/b|back|b|назад) echo "__PBM_BACK__"; return 0 ;;
-  esac
+  if is_back_command "$input"; then
+    echo "__PBM_BACK__"
+    return 0
+  fi
 
   if [[ -n "$input" ]]; then
     echo "$input"
@@ -279,8 +294,12 @@ ask_yes_no() {
     case "${answer,,}" in
       y|yes|д|да) return 0 ;;
       n|no|н|нет) return 1 ;;
-      /back|/b|back|b|назад) return 2 ;;
-      *) echo "$(tr_text "Введите y/n (или д/н)." "Please answer y or n.")" ;;
+      *)
+        if is_back_command "$answer"; then
+          return 2
+        fi
+        echo "$(tr_text "Введите y/n (или д/н)." "Please answer y or n.")"
+        ;;
     esac
   done
 }
@@ -290,7 +309,7 @@ prompt_install_settings() {
   load_existing_env_defaults
 
   draw_header "$(tr_text "Настройка параметров бэкапа" "Configure backup settings")"
-  paint "$CLR_MUTED" "$(tr_text "Подсказка: введите /back для возврата в меню." "Hint: type /back to return to menu.")"
+  show_back_hint
 
   val="$(ask_value "$(tr_text "TELEGRAM_BOT_TOKEN (пусто = без Telegram уведомлений)" "TELEGRAM_BOT_TOKEN (empty disables Telegram notifications)")" "$TELEGRAM_BOT_TOKEN")"
   [[ "$val" == "__PBM_BACK__" ]] && return 1
@@ -517,8 +536,6 @@ interactive_menu() {
       1)
         draw_header "$(tr_text "Установка и настройка" "Install and configure")"
         if ! prompt_install_settings; then
-          paint "$CLR_WARN" "$(tr_text "Возврат в меню без изменений." "Returned to menu without changes.")"
-          wait_for_enter
           continue
         fi
         install_files
@@ -537,8 +554,6 @@ interactive_menu() {
       2)
         draw_header "$(tr_text "Настройка Telegram и пути" "Configure Telegram and path")"
         if ! prompt_install_settings; then
-          paint "$CLR_WARN" "$(tr_text "Возврат в меню без изменений." "Returned to menu without changes.")"
-          wait_for_enter
           continue
         fi
         write_env
@@ -557,6 +572,7 @@ interactive_menu() {
         ;;
       5)
         draw_header "$(tr_text "Восстановление backup" "Restore backup")"
+        show_back_hint
         MODE="restore"
         BACKUP_FILE="$(ask_value "$(tr_text "BACKUP_FILE (путь, можно пусто если задан BACKUP_URL)" "BACKUP_FILE (path, optional if BACKUP_URL is set)")" "$BACKUP_FILE")"
         [[ "$BACKUP_FILE" == "__PBM_BACK__" ]] && continue
