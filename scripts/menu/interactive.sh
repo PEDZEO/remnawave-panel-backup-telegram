@@ -58,6 +58,7 @@ menu_flow_encryption_settings() {
   local choice=""
   local val=""
   local confirm_val=""
+  local previous_password=""
   local encrypt_state=""
   local password_state=""
 
@@ -93,6 +94,15 @@ menu_flow_encryption_settings() {
       1)
         val="$(ask_secret_value "$(tr_text "Введите пароль шифрования (минимум 8 символов)" "Enter encryption password (minimum 8 characters)")" "$BACKUP_PASSWORD")"
         [[ "$val" == "__PBM_BACK__" ]] && continue
+        previous_password="$BACKUP_PASSWORD"
+        if [[ -n "$previous_password" && "$val" == "$previous_password" ]]; then
+          BACKUP_ENCRYPT="1"
+          BACKUP_PASSWORD="$val"
+          write_env
+          paint "$CLR_OK" "$(tr_text "Шифрование включено, текущий пароль сохранен." "Encryption enabled, current password retained.")"
+          wait_for_enter
+          continue
+        fi
         if [[ ${#val} -lt 8 ]]; then
           paint "$CLR_WARN" "$(tr_text "Пароль должен быть не короче 8 символов." "Password must be at least 8 characters long.")"
           wait_for_enter
@@ -119,6 +129,12 @@ menu_flow_encryption_settings() {
         fi
         val="$(ask_secret_value "$(tr_text "Новый пароль шифрования (минимум 8 символов)" "New encryption password (minimum 8 characters)")" "$BACKUP_PASSWORD")"
         [[ "$val" == "__PBM_BACK__" ]] && continue
+        previous_password="$BACKUP_PASSWORD"
+        if [[ -n "$previous_password" && "$val" == "$previous_password" ]]; then
+          paint "$CLR_OK" "$(tr_text "Пароль не изменен." "Password unchanged.")"
+          wait_for_enter
+          continue
+        fi
         if [[ ${#val} -lt 8 ]]; then
           paint "$CLR_WARN" "$(tr_text "Пароль должен быть не короче 8 символов." "Password must be at least 8 characters long.")"
           wait_for_enter
