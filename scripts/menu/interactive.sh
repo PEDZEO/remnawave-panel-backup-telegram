@@ -57,6 +57,7 @@ menu_flow_edit_settings_only() {
 menu_flow_encryption_settings() {
   local choice=""
   local val=""
+  local confirm_val=""
   local encrypt_state=""
   local password_state=""
 
@@ -90,10 +91,17 @@ menu_flow_encryption_settings() {
 
     case "$choice" in
       1)
-        val="$(ask_value "$(tr_text "Введите пароль шифрования (минимум 8 символов)" "Enter encryption password (minimum 8 characters)")" "$BACKUP_PASSWORD")"
+        val="$(ask_secret_value "$(tr_text "Введите пароль шифрования (минимум 8 символов)" "Enter encryption password (minimum 8 characters)")" "$BACKUP_PASSWORD")"
         [[ "$val" == "__PBM_BACK__" ]] && continue
         if [[ ${#val} -lt 8 ]]; then
           paint "$CLR_WARN" "$(tr_text "Пароль должен быть не короче 8 символов." "Password must be at least 8 characters long.")"
+          wait_for_enter
+          continue
+        fi
+        confirm_val="$(ask_secret_value "$(tr_text "Подтвердите пароль шифрования" "Confirm encryption password")" "")"
+        [[ "$confirm_val" == "__PBM_BACK__" ]] && continue
+        if [[ "$confirm_val" != "$val" ]]; then
+          paint "$CLR_WARN" "$(tr_text "Пароли не совпадают." "Passwords do not match.")"
           wait_for_enter
           continue
         fi
@@ -109,10 +117,17 @@ menu_flow_encryption_settings() {
           wait_for_enter
           continue
         fi
-        val="$(ask_value "$(tr_text "Новый пароль шифрования (минимум 8 символов)" "New encryption password (minimum 8 characters)")" "$BACKUP_PASSWORD")"
+        val="$(ask_secret_value "$(tr_text "Новый пароль шифрования (минимум 8 символов)" "New encryption password (minimum 8 characters)")" "$BACKUP_PASSWORD")"
         [[ "$val" == "__PBM_BACK__" ]] && continue
         if [[ ${#val} -lt 8 ]]; then
           paint "$CLR_WARN" "$(tr_text "Пароль должен быть не короче 8 символов." "Password must be at least 8 characters long.")"
+          wait_for_enter
+          continue
+        fi
+        confirm_val="$(ask_secret_value "$(tr_text "Подтвердите новый пароль" "Confirm new password")" "")"
+        [[ "$confirm_val" == "__PBM_BACK__" ]] && continue
+        if [[ "$confirm_val" != "$val" ]]; then
+          paint "$CLR_WARN" "$(tr_text "Пароли не совпадают." "Passwords do not match.")"
           wait_for_enter
           continue
         fi

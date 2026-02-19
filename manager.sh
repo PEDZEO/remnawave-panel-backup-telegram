@@ -912,6 +912,39 @@ ask_value() {
   fi
 }
 
+ask_secret_value() {
+  local prompt="$1"
+  local current="${2:-}"
+  local input=""
+  local hint=""
+
+  if [[ -n "$current" ]]; then
+    hint="$(tr_text "задан" "set")"
+  else
+    hint="$(tr_text "не задан" "not set")"
+  fi
+
+  if [[ "$COLOR" == "1" ]]; then
+    printf "%b%s [%s]%b\n" "$CLR_MUTED" "$prompt" "$hint" "$CLR_RESET" >&2
+  else
+    printf "%s [%s]\n" "$prompt" "$hint" >&2
+  fi
+
+  read -r -s -p "> " input
+  printf "\n" >&2
+
+  if is_back_command "$input"; then
+    echo "__PBM_BACK__"
+    return 0
+  fi
+
+  if [[ -n "$input" ]]; then
+    echo "$input"
+  else
+    echo "$current"
+  fi
+}
+
 ask_yes_no() {
   local prompt="$1"
   local default="${2:-y}"

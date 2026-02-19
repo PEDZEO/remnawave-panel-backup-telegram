@@ -15,6 +15,7 @@ prompt_install_settings() {
   local val=""
   local detected_path=""
   local encrypt_choice=""
+  local confirm_val=""
   load_existing_env_defaults
 
   draw_header "$(tr_text "Настройка параметров бэкапа" "Configure backup settings")"
@@ -90,10 +91,17 @@ prompt_install_settings() {
   esac
 
   if [[ "$BACKUP_ENCRYPT" == "1" ]]; then
-    val="$(ask_value "$(tr_text "[7/7] Пароль шифрования (GPG symmetric)" "[7/7] Encryption password (GPG symmetric)")" "$BACKUP_PASSWORD")"
+    val="$(ask_secret_value "$(tr_text "[7/7] Пароль шифрования (GPG symmetric)" "[7/7] Encryption password (GPG symmetric)")" "$BACKUP_PASSWORD")"
     [[ "$val" == "__PBM_BACK__" ]] && return 1
     if [[ ${#val} -lt 8 ]]; then
       paint "$CLR_WARN" "$(tr_text "Пароль шифрования должен быть не короче 8 символов." "Encryption password must be at least 8 characters long.")"
+      wait_for_enter
+      return 1
+    fi
+    confirm_val="$(ask_secret_value "$(tr_text "Подтвердите пароль шифрования" "Confirm encryption password")" "")"
+    [[ "$confirm_val" == "__PBM_BACK__" ]] && return 1
+    if [[ "$confirm_val" != "$val" ]]; then
+      paint "$CLR_WARN" "$(tr_text "Пароли не совпадают." "Passwords do not match.")"
       wait_for_enter
       return 1
     fi
