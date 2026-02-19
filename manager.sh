@@ -11,6 +11,7 @@ UI_LANG="${UI_LANG:-auto}"
 BACKUP_LANG="${BACKUP_LANG:-}"
 BACKUP_ENCRYPT="${BACKUP_ENCRYPT:-}"
 BACKUP_PASSWORD="${BACKUP_PASSWORD:-}"
+BACKUP_INCLUDE="${BACKUP_INCLUDE:-}"
 BACKUP_FILE="${BACKUP_FILE:-}"
 BACKUP_URL="${BACKUP_URL:-}"
 RESTORE_ONLY="${RESTORE_ONLY:-all}"
@@ -556,6 +557,7 @@ show_settings_preview() {
   local token_view=""
   local encrypt_view=""
   local password_view=""
+  local include_view=""
   if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
     token_view="$(mask_secret "$TELEGRAM_BOT_TOKEN")"
   else
@@ -569,6 +571,8 @@ show_settings_preview() {
   paint "$CLR_MUTED" "  REMNAWAVE_DIR: ${REMNAWAVE_DIR:-$(tr_text "не задан" "not set")}"
   paint "$CLR_MUTED" "  BACKUP_ON_CALENDAR: ${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}"
   paint "$CLR_MUTED" "  BACKUP_LANG: ${BACKUP_LANG:-$(tr_text "не задан" "not set")}"
+  include_view="${BACKUP_INCLUDE:-all}"
+  paint "$CLR_MUTED" "  BACKUP_INCLUDE: ${include_view}"
   if [[ "${BACKUP_ENCRYPT:-0}" == "1" ]]; then
     encrypt_view="$(tr_text "включено" "enabled")"
   else
@@ -848,6 +852,7 @@ load_existing_env_defaults() {
   local old_backup_lang=""
   local old_backup_encrypt=""
   local old_backup_password=""
+  local old_backup_include=""
   local detected=""
 
   if [[ -f /etc/panel-backup.env ]]; then
@@ -860,6 +865,7 @@ load_existing_env_defaults() {
     old_backup_lang="$(grep -E '^BACKUP_LANG=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
     old_backup_encrypt="$(grep -E '^BACKUP_ENCRYPT=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
     old_backup_password="$(grep -E '^BACKUP_PASSWORD=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
+    old_backup_include="$(grep -E '^BACKUP_INCLUDE=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
     old_bot="$(normalize_env_value_raw "$old_bot")"
     old_admin="$(normalize_env_value_raw "$old_admin")"
     old_thread="$(normalize_env_value_raw "$old_thread")"
@@ -867,6 +873,7 @@ load_existing_env_defaults() {
     old_backup_lang="$(normalize_env_value_raw "$old_backup_lang")"
     old_backup_encrypt="$(normalize_backup_encrypt_raw "$old_backup_encrypt")"
     old_backup_password="$(normalize_env_value_raw "$old_backup_password")"
+    old_backup_include="$(normalize_env_value_raw "$old_backup_include")"
   fi
 
   TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-$old_bot}"
@@ -877,6 +884,7 @@ load_existing_env_defaults() {
   BACKUP_LANG="${BACKUP_LANG:-$old_backup_lang}"
   BACKUP_ENCRYPT="${BACKUP_ENCRYPT:-$old_backup_encrypt}"
   BACKUP_PASSWORD="${BACKUP_PASSWORD:-$old_backup_password}"
+  BACKUP_INCLUDE="${BACKUP_INCLUDE:-$old_backup_include}"
 
   detected="$(detect_remnawave_dir || true)"
   REMNAWAVE_DIR="${REMNAWAVE_DIR:-$detected}"
@@ -888,6 +896,7 @@ load_existing_env_defaults() {
     BACKUP_LANG="ru"
   fi
   BACKUP_ENCRYPT="$(normalize_backup_encrypt_raw "${BACKUP_ENCRYPT:-0}")"
+  BACKUP_INCLUDE="${BACKUP_INCLUDE:-all}"
 }
 
 ask_value() {

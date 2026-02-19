@@ -17,6 +17,7 @@ prompt_install_settings() {
   local encrypt_choice=""
   local confirm_val=""
   local previous_password=""
+  local include_choice=""
   load_existing_env_defaults
 
   draw_header "$(tr_text "Настройка параметров бэкапа" "Configure backup settings")"
@@ -73,7 +74,7 @@ prompt_install_settings() {
   done
 
   while true; do
-    val="$(ask_value "$(tr_text "[5/7] Язык описания backup в Telegram (ru/en)" "[5/7] Backup description language in Telegram (ru/en)")" "$BACKUP_LANG")"
+    val="$(ask_value "$(tr_text "[5/8] Язык описания backup в Telegram (ru/en)" "[5/8] Backup description language in Telegram (ru/en)")" "$BACKUP_LANG")"
     [[ "$val" == "__PBM_BACK__" ]] && return 1
     case "${val,,}" in
       en|eu) BACKUP_LANG="en"; break ;;
@@ -91,7 +92,7 @@ prompt_install_settings() {
   menu_option "2" "$(tr_text "Выключить шифрование" "Disable encryption")"
   print_separator
   while true; do
-    read -r -p "$(tr_text "[6/7] Выбор [1-2]: " "[6/7] Choice [1-2]: ")" encrypt_choice
+    read -r -p "$(tr_text "[6/8] Выбор [1-2]: " "[6/8] Choice [1-2]: ")" encrypt_choice
     if is_back_command "$encrypt_choice"; then
       return 1
     fi
@@ -107,7 +108,7 @@ prompt_install_settings() {
   if [[ "$BACKUP_ENCRYPT" == "1" ]]; then
     while true; do
       previous_password="$BACKUP_PASSWORD"
-      val="$(ask_secret_value "$(tr_text "[7/7] Пароль шифрования (GPG symmetric)" "[7/7] Encryption password (GPG symmetric)")" "$BACKUP_PASSWORD")"
+      val="$(ask_secret_value "$(tr_text "[7/8] Пароль шифрования (GPG symmetric)" "[7/8] Encryption password (GPG symmetric)")" "$BACKUP_PASSWORD")"
       [[ "$val" == "__PBM_BACK__" ]] && return 1
       if [[ -n "$previous_password" && "$val" == "$previous_password" ]]; then
         BACKUP_PASSWORD="$val"
@@ -129,6 +130,38 @@ prompt_install_settings() {
   else
     BACKUP_PASSWORD=""
   fi
+
+  draw_header "$(tr_text "Состав backup" "Backup scope")"
+  show_back_hint
+  paint "$CLR_MUTED" "$(tr_text "Выберите, какие данные включать в backup." "Choose what to include in backup.")"
+  menu_option "1" "$(tr_text "Все (db + redis + configs)" "All (db + redis + configs)")"
+  menu_option "2" "$(tr_text "Только PostgreSQL (db)" "PostgreSQL only (db)")"
+  menu_option "3" "$(tr_text "Только Redis (redis)" "Redis only (redis)")"
+  menu_option "4" "$(tr_text "Только конфиги (configs)" "Configs only (configs)")"
+  menu_option "5" "$(tr_text "Свой список (пример: db,env,compose)" "Custom list (example: db,env,compose)")"
+  print_separator
+  while true; do
+    read -r -p "$(tr_text "[8/8] Выбор [1-5]: " "[8/8] Choice [1-5]: ")" include_choice
+    if is_back_command "$include_choice"; then
+      return 1
+    fi
+    case "$include_choice" in
+      1) BACKUP_INCLUDE="all"; break ;;
+      2) BACKUP_INCLUDE="db"; break ;;
+      3) BACKUP_INCLUDE="redis"; break ;;
+      4) BACKUP_INCLUDE="configs"; break ;;
+      5)
+        val="$(ask_value "$(tr_text "Введите компоненты через запятую (all,db,redis,configs,env,compose,caddy,subscription)" "Enter comma-separated components (all,db,redis,configs,env,compose,caddy,subscription)")" "$BACKUP_INCLUDE")"
+        [[ "$val" == "__PBM_BACK__" ]] && continue
+        [[ -n "$val" ]] || { paint "$CLR_WARN" "$(tr_text "Список не может быть пустым." "List cannot be empty.")"; continue; }
+        BACKUP_INCLUDE="$val"
+        break
+        ;;
+      *)
+        paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"
+        ;;
+    esac
+  done
 
   return 0
 }
@@ -155,6 +188,7 @@ write_env() {
   local escaped_calendar=""
   local escaped_backup_lang=""
   local escaped_backup_password=""
+  local escaped_backup_include=""
   load_existing_env_defaults
 
   escaped_bot="$(escape_env_value "${TELEGRAM_BOT_TOKEN:-}")"
@@ -164,6 +198,7 @@ write_env() {
   escaped_calendar="$(escape_env_value "${BACKUP_ON_CALENDAR:-}")"
   escaped_backup_lang="$(escape_env_value "${BACKUP_LANG:-}")"
   escaped_backup_password="$(escape_env_value "${BACKUP_PASSWORD:-}")"
+  escaped_backup_include="$(escape_env_value "${BACKUP_INCLUDE:-all}")"
 
   paint "$CLR_ACCENT" "[3/5] $(tr_text "Запись /etc/panel-backup.env" "Writing /etc/panel-backup.env")"
   $SUDO install -d -m 755 /etc
@@ -176,6 +211,7 @@ ${BACKUP_ON_CALENDAR:+BACKUP_ON_CALENDAR=\"${escaped_calendar}\"}
 ${BACKUP_LANG:+BACKUP_LANG=\"${escaped_backup_lang}\"}
 BACKUP_ENCRYPT=\"${BACKUP_ENCRYPT:-0}\"
 ${BACKUP_PASSWORD:+BACKUP_PASSWORD=\"${escaped_backup_password}\"}
+BACKUP_INCLUDE=\"${escaped_backup_include}\"
 ENV"
   $SUDO chmod 600 /etc/panel-backup.env
   $SUDO chown root:root /etc/panel-backup.env
@@ -184,6 +220,7 @@ ENV"
   paint "$CLR_MUTED" "BACKUP_ON_CALENDAR=${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}"
   paint "$CLR_MUTED" "BACKUP_LANG=${BACKUP_LANG:-ru}"
   paint "$CLR_MUTED" "BACKUP_ENCRYPT=${BACKUP_ENCRYPT:-0}"
+  paint "$CLR_MUTED" "BACKUP_INCLUDE=${BACKUP_INCLUDE:-all}"
 }
 
 escape_env_value() {

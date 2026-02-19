@@ -10,6 +10,7 @@ menu_flow_install_and_setup() {
   local old_encrypt=""
   local old_password=""
   local old_calendar=""
+  local old_include=""
 
   load_existing_env_defaults
   old_bot="$TELEGRAM_BOT_TOKEN"
@@ -20,13 +21,14 @@ menu_flow_install_and_setup() {
   old_encrypt="$BACKUP_ENCRYPT"
   old_password="$BACKUP_PASSWORD"
   old_calendar="$BACKUP_ON_CALENDAR"
+  old_include="$BACKUP_INCLUDE"
 
   draw_header "$(tr_text "Установка и настройка" "Install and configure")"
   paint "$CLR_MUTED" "$(tr_text "Используйте этот пункт при первом запуске или обновлении скриптов." "Use this on first run or when updating scripts.")"
   if ! prompt_install_settings; then
     return 0
   fi
-  show_quick_setup_summary "$old_bot" "$old_admin" "$old_thread" "$old_dir" "$old_lang" "$old_encrypt" "$old_password" "$old_calendar"
+  show_quick_setup_summary "$old_bot" "$old_admin" "$old_thread" "$old_dir" "$old_lang" "$old_encrypt" "$old_password" "$old_calendar" "$old_include"
   if ! ask_yes_no "$(tr_text "Применить эти настройки и продолжить установку?" "Apply these settings and continue installation?")" "y"; then
     [[ "$?" == "2" ]] && return 0
     paint "$CLR_WARN" "$(tr_text "Отменено пользователем." "Cancelled by user.")"
@@ -83,6 +85,7 @@ show_quick_setup_summary() {
   local old_encrypt="$6"
   local old_password="$7"
   local old_calendar="$8"
+  local old_include="$9"
 
   draw_header "$(tr_text "Краткий итог изменений" "Quick changes summary")"
   paint "$CLR_MUTED" "$(tr_text "Легенда: * изменено, = без изменений." "Legend: * changed, = unchanged.")"
@@ -95,6 +98,7 @@ show_quick_setup_summary() {
   render_change_line "BACKUP_ENCRYPT" "$old_encrypt" "$BACKUP_ENCRYPT"
   render_change_line "BACKUP_PASSWORD" "$old_password" "$BACKUP_PASSWORD"
   render_change_line "BACKUP_ON_CALENDAR" "$old_calendar" "$BACKUP_ON_CALENDAR"
+  render_change_line "BACKUP_INCLUDE" "$old_include" "$BACKUP_INCLUDE"
   print_separator
 }
 
@@ -110,6 +114,7 @@ menu_flow_quick_setup() {
   local old_encrypt=""
   local old_password=""
   local old_calendar=""
+  local old_include=""
   local prev_password=""
 
   load_existing_env_defaults
@@ -121,6 +126,7 @@ menu_flow_quick_setup() {
   old_encrypt="$BACKUP_ENCRYPT"
   old_password="$BACKUP_PASSWORD"
   old_calendar="$BACKUP_ON_CALENDAR"
+  old_include="$BACKUP_INCLUDE"
 
   while true; do
     case "$step" in
@@ -278,7 +284,7 @@ menu_flow_quick_setup() {
           *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; continue ;;
         esac
 
-        show_quick_setup_summary "$old_bot" "$old_admin" "$old_thread" "$old_dir" "$old_lang" "$old_encrypt" "$old_password" "$old_calendar"
+        show_quick_setup_summary "$old_bot" "$old_admin" "$old_thread" "$old_dir" "$old_lang" "$old_encrypt" "$old_password" "$old_calendar" "$old_include"
         if ! ask_yes_no "$(tr_text "Сохранить эти изменения?" "Save these changes?")" "y"; then
           [[ "$?" == "2" ]] && { step=2; continue; }
           paint "$CLR_WARN" "$(tr_text "Изменения отменены." "Changes cancelled.")"
@@ -417,6 +423,7 @@ menu_section_setup() {
   local choice=""
   local tg_state=""
   local enc_state=""
+  local include_state=""
   while true; do
     load_existing_env_defaults
     if [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_ADMIN_ID:-}" ]]; then
@@ -429,10 +436,11 @@ menu_section_setup() {
     else
       enc_state="$(tr_text "выключено" "disabled")"
     fi
+    include_state="${BACKUP_INCLUDE:-all}"
     draw_header "$(tr_text "Раздел: Установка и настройка" "Section: Setup and configuration")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Здесь первичная установка и изменение конфигурации." "Use this section for initial install and config changes.")"
-    paint "$CLR_MUTED" "$(tr_text "Текущее состояние:" "Current state:") Telegram=${tg_state}, $(tr_text "шифрование" "encryption")=${enc_state}"
+    paint "$CLR_MUTED" "$(tr_text "Текущее состояние:" "Current state:") Telegram=${tg_state}, $(tr_text "шифрование" "encryption")=${enc_state}, $(tr_text "состав" "scope")=${include_state}"
     menu_option "1" "$(tr_text "Установить/обновить файлы + первичная настройка" "Install/update files + initial setup")"
     menu_option "2" "$(tr_text "Быстрая настройка (3 шага)" "Quick setup (3 steps)")"
     menu_option "3" "$(tr_text "Настройки шифрования backup" "Backup encryption settings")"

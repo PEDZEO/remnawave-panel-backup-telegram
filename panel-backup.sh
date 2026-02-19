@@ -10,6 +10,7 @@ BACKUP_ENV_PATH="${BACKUP_ENV_PATH:-/etc/panel-backup.env}"
 BACKUP_LANG="${BACKUP_LANG:-ru}"
 BACKUP_ENCRYPT="${BACKUP_ENCRYPT:-0}"
 BACKUP_PASSWORD="${BACKUP_PASSWORD:-}"
+BACKUP_INCLUDE="${BACKUP_INCLUDE:-all}"
 
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 TIMESTAMP_SHORT="$(date -u +%m%d-%H%M%S)"
@@ -22,6 +23,12 @@ ARCHIVE_PATH="${BACKUP_ROOT}/${ARCHIVE_BASE}.tar.gz"
 LOG_TAG="panel-backup"
 LOCK_FILE="${LOCK_FILE:-/var/lock/panel-backup.lock}"
 declare -a BACKUP_ITEMS=()
+WANT_DB=0
+WANT_REDIS=0
+WANT_ENV=0
+WANT_COMPOSE=0
+WANT_CADDY=0
+WANT_SUBSCRIPTION=0
 
 cleanup() {
   rm -rf "$WORKDIR"
@@ -45,6 +52,87 @@ normalize_backup_encrypt() {
     1|true|yes|on|y|да) BACKUP_ENCRYPT="1" ;;
     *) BACKUP_ENCRYPT="0" ;;
   esac
+}
+
+normalize_backup_include() {
+  local raw=""
+  local item=""
+  local has_any=0
+  local unknown_items=""
+
+  BACKUP_INCLUDE="${BACKUP_INCLUDE:-all}"
+  raw="$(printf '%s' "${BACKUP_INCLUDE,,}" | tr -d '[:space:]')"
+  [[ -z "$raw" ]] && raw="all"
+
+  WANT_DB=0
+  WANT_REDIS=0
+  WANT_ENV=0
+  WANT_COMPOSE=0
+  WANT_CADDY=0
+  WANT_SUBSCRIPTION=0
+
+  IFS=',' read -r -a __items <<< "$raw"
+  for item in "${__items[@]}"; do
+    case "$item" in
+      all)
+        WANT_DB=1
+        WANT_REDIS=1
+        WANT_ENV=1
+        WANT_COMPOSE=1
+        WANT_CADDY=1
+        WANT_SUBSCRIPTION=1
+        ;;
+      configs)
+        WANT_ENV=1
+        WANT_COMPOSE=1
+        WANT_CADDY=1
+        WANT_SUBSCRIPTION=1
+        ;;
+      db) WANT_DB=1 ;;
+      redis) WANT_REDIS=1 ;;
+      env) WANT_ENV=1 ;;
+      compose) WANT_COMPOSE=1 ;;
+      caddy) WANT_CADDY=1 ;;
+      subscription) WANT_SUBSCRIPTION=1 ;;
+      "") ;;
+      *)
+        if [[ -n "$unknown_items" ]]; then
+          unknown_items="${unknown_items},${item}"
+        else
+          unknown_items="$item"
+        fi
+        ;;
+    esac
+  done
+
+  if [[ -n "$unknown_items" ]]; then
+    fail "$(t "неизвестные компоненты BACKUP_INCLUDE" "unknown BACKUP_INCLUDE components"): ${unknown_items}"
+  fi
+
+  (( WANT_DB == 1 )) && has_any=1
+  (( WANT_REDIS == 1 )) && has_any=1
+  (( WANT_ENV == 1 )) && has_any=1
+  (( WANT_COMPOSE == 1 )) && has_any=1
+  (( WANT_CADDY == 1 )) && has_any=1
+  (( WANT_SUBSCRIPTION == 1 )) && has_any=1
+
+  if (( has_any == 0 )); then
+    fail "$(t "не выбран ни один компонент backup (BACKUP_INCLUDE)" "no backup components selected (BACKUP_INCLUDE)")"
+  fi
+
+  BACKUP_INCLUDE="$raw"
+}
+
+backup_scope_text() {
+  local out=""
+  (( WANT_DB == 1 )) && out="${out}db,"
+  (( WANT_REDIS == 1 )) && out="${out}redis,"
+  (( WANT_ENV == 1 )) && out="${out}env,"
+  (( WANT_COMPOSE == 1 )) && out="${out}compose,"
+  (( WANT_CADDY == 1 )) && out="${out}caddy,"
+  (( WANT_SUBSCRIPTION == 1 )) && out="${out}subscription,"
+  out="${out%,}"
+  printf '%s' "$out"
 }
 
 t() {
@@ -266,7 +354,9 @@ check_container_present() {
 estimate_required_bytes() {
   local rem_size=0
   local safety_bytes=$((200 * 1024 * 1024))
-  rem_size="$(du -sb "$REMNAWAVE_DIR" 2>/dev/null | awk '{print $1}' || echo 0)"
+  if (( WANT_ENV == 1 || WANT_COMPOSE == 1 || WANT_CADDY == 1 || WANT_SUBSCRIPTION == 1 )); then
+    rem_size="$(du -sb "$REMNAWAVE_DIR" 2>/dev/null | awk '{print $1}' || echo 0)"
+  fi
   if [[ ! "$rem_size" =~ ^[0-9]+$ ]]; then
     rem_size=0
   fi
@@ -282,9 +372,8 @@ preflight_checks() {
   local free_bytes=0
 
   ensure_dependencies
-  check_container_present remnawave-db
-  check_container_present remnawave-redis
-  check_container_present remnawave
+  (( WANT_DB == 1 )) && check_container_present remnawave-db
+  (( WANT_REDIS == 1 )) && check_container_present remnawave-redis
 
   mkdir -p "$BACKUP_ROOT"
   need_bytes="$(estimate_required_bytes)"
@@ -337,7 +426,7 @@ build_caption() {
 🧩 <b>$(t "Версия панели" "Panel version"):</b> <code>${panel_e}</code>
 🧷 <b>$(t "Версия подписки" "Subscription version"):</b> <code>${sub_e}</code>
 🔐 <b>$(t "Шифрование" "Encryption"):</b> <code>${enc_label}</code>
-📋 <b>$(t "Состав" "Contents"):</b> PostgreSQL, Redis, .env, compose, caddy, subscription"
+📋 <b>$(t "Состав" "Contents"):</b> <code>$(backup_scope_text)</code>"
 }
 
 build_caption_plain() {
@@ -358,7 +447,7 @@ $(t "Размер" "Size"): ${ARCHIVE_SIZE_HUMAN}
 $(t "Версия панели" "Panel version"): ${PANEL_VERSION}
 $(t "Версия подписки" "Subscription version"): ${SUBSCRIPTION_VERSION}
 $(t "Шифрование" "Encryption"): ${enc_label}
-$(t "Состав" "Contents"): PostgreSQL, Redis, .env, compose, caddy, subscription"
+$(t "Состав" "Contents"): $(backup_scope_text)"
 }
 
 normalize_env_file_format
@@ -368,6 +457,7 @@ if [[ -f "$BACKUP_ENV_PATH" ]]; then
 fi
 normalize_backup_lang
 normalize_backup_encrypt
+normalize_backup_include
 
 exec 9>"$LOCK_FILE"
 if ! flock -n 9; then
@@ -377,44 +467,60 @@ fi
 REMNAWAVE_DIR="${REMNAWAVE_DIR:-$(detect_remnawave_dir || true)}"
 PANEL_VERSION="$(container_version_label remnawave)"
 SUBSCRIPTION_VERSION="$(container_version_label remnawave-subscription-page)"
+POSTGRES_USER=""
+POSTGRES_DB=""
 
 [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]] || fail "не найден TELEGRAM_BOT_TOKEN в ${BACKUP_ENV_PATH}"
 [[ -n "${TELEGRAM_ADMIN_ID:-}" ]] || fail "не найден TELEGRAM_ADMIN_ID в ${BACKUP_ENV_PATH}"
 
-[[ -d "$REMNAWAVE_DIR" ]] || fail "не найдена директория ${REMNAWAVE_DIR}"
-[[ -f "${REMNAWAVE_DIR}/.env" ]] || fail "не найден ${REMNAWAVE_DIR}/.env"
+if (( WANT_DB == 1 || WANT_ENV == 1 || WANT_COMPOSE == 1 || WANT_CADDY == 1 || WANT_SUBSCRIPTION == 1 )); then
+  [[ -d "$REMNAWAVE_DIR" ]] || fail "не найдена директория ${REMNAWAVE_DIR}"
+fi
+if (( WANT_DB == 1 || WANT_ENV == 1 )); then
+  [[ -f "${REMNAWAVE_DIR}/.env" ]] || fail "не найден ${REMNAWAVE_DIR}/.env"
+fi
 preflight_checks
 
-POSTGRES_USER="$(grep -E '^POSTGRES_USER=' "${REMNAWAVE_DIR}/.env" | head -n1 | cut -d= -f2-)"
-POSTGRES_DB="$(grep -E '^POSTGRES_DB=' "${REMNAWAVE_DIR}/.env" | head -n1 | cut -d= -f2-)"
-[[ -n "$POSTGRES_USER" && -n "$POSTGRES_DB" ]] || fail "не удалось прочитать POSTGRES_USER/POSTGRES_DB"
-
-mkdir -p "$BACKUP_ROOT"
-mkdir -p "$WORKDIR/payload/remnawave"
-
-log "Создаю дамп PostgreSQL (${POSTGRES_DB})"
-docker exec remnawave-db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -Z9 > "$WORKDIR/payload/remnawave-db.dump" \
-  || fail "ошибка pg_dump remnawave-db"
-BACKUP_ITEMS+=("- PostgreSQL dump: включено ($(du -h "$WORKDIR/payload/remnawave-db.dump" | awk '{print $1}'))")
-
-log "Сохраняю Redis dump"
-docker exec remnawave-redis sh -lc 'valkey-cli save >/dev/null 2>&1 || redis-cli save >/dev/null 2>&1 || true' || true
-docker cp remnawave-redis:/data/dump.rdb "$WORKDIR/payload/remnawave-redis.rdb" 2>/dev/null || true
-if [[ -f "$WORKDIR/payload/remnawave-redis.rdb" ]]; then
-  BACKUP_ITEMS+=("- Redis dump: включено ($(du -h "$WORKDIR/payload/remnawave-redis.rdb" | awk '{print $1}'))")
-else
-  BACKUP_ITEMS+=("- Redis dump: не найден или не создан")
+if (( WANT_DB == 1 )); then
+  POSTGRES_USER="$(grep -E '^POSTGRES_USER=' "${REMNAWAVE_DIR}/.env" | head -n1 | cut -d= -f2-)"
+  POSTGRES_DB="$(grep -E '^POSTGRES_DB=' "${REMNAWAVE_DIR}/.env" | head -n1 | cut -d= -f2-)"
+  [[ -n "$POSTGRES_USER" && -n "$POSTGRES_DB" ]] || fail "не удалось прочитать POSTGRES_USER/POSTGRES_DB"
 fi
 
-log "Копирую конфиги Remnawave"
-cp -a "${REMNAWAVE_DIR}/docker-compose.yml" "$WORKDIR/payload/remnawave/" 2>/dev/null || true
-cp -a "${REMNAWAVE_DIR}/.env" "$WORKDIR/payload/remnawave/" 2>/dev/null || true
-cp -a "${REMNAWAVE_DIR}/caddy" "$WORKDIR/payload/remnawave/" 2>/dev/null || true
-cp -a "${REMNAWAVE_DIR}/subscription" "$WORKDIR/payload/remnawave/" 2>/dev/null || true
-add_backup_item "Docker Compose (remnawave/docker-compose.yml)" "$WORKDIR/payload/remnawave/docker-compose.yml"
-add_backup_item "ENV (remnawave/.env)" "$WORKDIR/payload/remnawave/.env"
-add_backup_item "Caddy config (remnawave/caddy)" "$WORKDIR/payload/remnawave/caddy"
-add_backup_item "Subscription page (remnawave/subscription)" "$WORKDIR/payload/remnawave/subscription"
+mkdir -p "$BACKUP_ROOT"
+if (( WANT_ENV == 1 || WANT_COMPOSE == 1 || WANT_CADDY == 1 || WANT_SUBSCRIPTION == 1 )); then
+  mkdir -p "$WORKDIR/payload/remnawave"
+fi
+
+if (( WANT_DB == 1 )); then
+  log "Создаю дамп PostgreSQL (${POSTGRES_DB})"
+  docker exec remnawave-db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -Z9 > "$WORKDIR/payload/remnawave-db.dump" \
+    || fail "ошибка pg_dump remnawave-db"
+  BACKUP_ITEMS+=("- PostgreSQL dump: включено ($(du -h "$WORKDIR/payload/remnawave-db.dump" | awk '{print $1}'))")
+fi
+
+if (( WANT_REDIS == 1 )); then
+  log "Сохраняю Redis dump"
+  docker exec remnawave-redis sh -lc 'valkey-cli save >/dev/null 2>&1 || redis-cli save >/dev/null 2>&1 || true' || true
+  docker cp remnawave-redis:/data/dump.rdb "$WORKDIR/payload/remnawave-redis.rdb" 2>/dev/null || true
+  if [[ -f "$WORKDIR/payload/remnawave-redis.rdb" ]]; then
+    BACKUP_ITEMS+=("- Redis dump: включено ($(du -h "$WORKDIR/payload/remnawave-redis.rdb" | awk '{print $1}'))")
+  else
+    BACKUP_ITEMS+=("- Redis dump: не найден или не создан")
+  fi
+fi
+
+if (( WANT_COMPOSE == 1 || WANT_ENV == 1 || WANT_CADDY == 1 || WANT_SUBSCRIPTION == 1 )); then
+  log "Копирую конфиги Remnawave"
+  (( WANT_COMPOSE == 1 )) && cp -a "${REMNAWAVE_DIR}/docker-compose.yml" "$WORKDIR/payload/remnawave/" 2>/dev/null || true
+  (( WANT_ENV == 1 )) && cp -a "${REMNAWAVE_DIR}/.env" "$WORKDIR/payload/remnawave/" 2>/dev/null || true
+  (( WANT_CADDY == 1 )) && cp -a "${REMNAWAVE_DIR}/caddy" "$WORKDIR/payload/remnawave/" 2>/dev/null || true
+  (( WANT_SUBSCRIPTION == 1 )) && cp -a "${REMNAWAVE_DIR}/subscription" "$WORKDIR/payload/remnawave/" 2>/dev/null || true
+  (( WANT_COMPOSE == 1 )) && add_backup_item "Docker Compose (remnawave/docker-compose.yml)" "$WORKDIR/payload/remnawave/docker-compose.yml"
+  (( WANT_ENV == 1 )) && add_backup_item "ENV (remnawave/.env)" "$WORKDIR/payload/remnawave/.env"
+  (( WANT_CADDY == 1 )) && add_backup_item "Caddy config (remnawave/caddy)" "$WORKDIR/payload/remnawave/caddy"
+  (( WANT_SUBSCRIPTION == 1 )) && add_backup_item "Subscription page (remnawave/subscription)" "$WORKDIR/payload/remnawave/subscription"
+fi
 
 cat > "$WORKDIR/payload/backup-info.txt" <<INFO
 timestamp_utc=${TIMESTAMP}
@@ -425,6 +531,7 @@ remnawave_image=$(docker inspect remnawave --format '{{.Config.Image}}' 2>/dev/n
 remnawave_caddy_image=$(docker inspect remnawave-caddy --format '{{.Config.Image}}' 2>/dev/null || echo unknown)
 panel_version=${PANEL_VERSION}
 subscription_version=${SUBSCRIPTION_VERSION}
+backup_include=${BACKUP_INCLUDE}
 INFO
 
 {

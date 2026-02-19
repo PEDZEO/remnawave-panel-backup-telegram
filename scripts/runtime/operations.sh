@@ -232,6 +232,7 @@ show_status() {
   else
     paint "$CLR_MUTED" "  $(tr_text "Шифрование backup:" "Backup encryption:") $(tr_text "выключено" "disabled")"
   fi
+  paint "$CLR_MUTED" "  $(tr_text "Состав backup:" "Backup scope:") ${BACKUP_INCLUDE:-all}"
   paint "$CLR_MUTED" "  $(tr_text "Путь Remnawave:" "Remnawave path:") ${REMNAWAVE_DIR:-not-detected}"
   print_separator
 }
