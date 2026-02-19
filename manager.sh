@@ -17,6 +17,13 @@ TELEGRAM_THREAD_ID="${TELEGRAM_THREAD_ID:-}"
 REMNAWAVE_DIR="${REMNAWAVE_DIR:-}"
 TMP_DIR="$(mktemp -d /tmp/panel-backup-install.XXXXXX)"
 SUDO=""
+COLOR=0
+CLR_RESET=""
+CLR_TITLE=""
+CLR_ACCENT=""
+CLR_MUTED=""
+CLR_OK=""
+CLR_WARN=""
 
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -61,6 +68,28 @@ USAGE
 if [[ "${EUID}" -ne 0 ]]; then
   SUDO="sudo"
 fi
+
+setup_colors() {
+  if [[ -t 1 && "${TERM:-}" != "dumb" ]]; then
+    COLOR=1
+    CLR_RESET="$(printf '\033[0m')"
+    CLR_TITLE="$(printf '\033[1;36m')"
+    CLR_ACCENT="$(printf '\033[1;34m')"
+    CLR_MUTED="$(printf '\033[0;37m')"
+    CLR_OK="$(printf '\033[1;32m')"
+    CLR_WARN="$(printf '\033[1;33m')"
+  fi
+}
+
+paint() {
+  local color="$1"
+  shift
+  if [[ "$COLOR" == "1" ]]; then
+    printf "%b%s%b\n" "$color" "$*" "$CLR_RESET"
+  else
+    printf "%s\n" "$*"
+  fi
+}
 
 fetch() {
   local src="$1"
@@ -113,12 +142,12 @@ choose_ui_lang() {
   fi
 
   echo
-  echo "============================================"
-  echo "  Panel Backup Manager"
-  echo "  Выберите язык / Choose language"
-  echo "============================================"
-  echo "  1) Русский"
-  echo "  2) English (EU)"
+  paint "$CLR_TITLE" "============================================"
+  paint "$CLR_TITLE" "  Panel Backup Manager"
+  paint "$CLR_TITLE" "  Выберите язык / Choose language"
+  paint "$CLR_TITLE" "============================================"
+  paint "$CLR_ACCENT" "  1) Русский"
+  paint "$CLR_ACCENT" "  2) English (EU)"
   read -r -p "Choice [1-2]: " choice
   case "$choice" in
     1) UI_LANG="ru" ;;
@@ -341,25 +370,25 @@ show_status() {
   local service_finished=""
 
   echo
-  echo "$(tr_text "Статус panel backup" "Panel backup status")"
-  echo "==================="
+  paint "$CLR_TITLE" "$(tr_text "Статус panel backup" "Panel backup status")"
+  paint "$CLR_TITLE" "==================="
 
   if [[ -x /usr/local/bin/panel-backup.sh ]]; then
-    echo "$(tr_text "Скрипт backup: установлен (/usr/local/bin/panel-backup.sh)" "Backup script: installed (/usr/local/bin/panel-backup.sh)")"
+    paint "$CLR_OK" "$(tr_text "Скрипт backup: установлен (/usr/local/bin/panel-backup.sh)" "Backup script: installed (/usr/local/bin/panel-backup.sh)")"
   else
-    echo "$(tr_text "Скрипт backup: не установлен" "Backup script: not installed")"
+    paint "$CLR_WARN" "$(tr_text "Скрипт backup: не установлен" "Backup script: not installed")"
   fi
 
   if [[ -x /usr/local/bin/panel-restore.sh ]]; then
-    echo "$(tr_text "Скрипт restore: установлен (/usr/local/bin/panel-restore.sh)" "Restore script: installed (/usr/local/bin/panel-restore.sh)")"
+    paint "$CLR_OK" "$(tr_text "Скрипт restore: установлен (/usr/local/bin/panel-restore.sh)" "Restore script: installed (/usr/local/bin/panel-restore.sh)")"
   else
-    echo "$(tr_text "Скрипт restore: не установлен" "Restore script: not installed")"
+    paint "$CLR_WARN" "$(tr_text "Скрипт restore: не установлен" "Restore script: not installed")"
   fi
 
   if [[ -f /etc/panel-backup.env ]]; then
-    echo "$(tr_text "Файл конфигурации: найден (/etc/panel-backup.env)" "Config file: present (/etc/panel-backup.env)")"
+    paint "$CLR_OK" "$(tr_text "Файл конфигурации: найден (/etc/panel-backup.env)" "Config file: present (/etc/panel-backup.env)")"
   else
-    echo "$(tr_text "Файл конфигурации: отсутствует (/etc/panel-backup.env)" "Config file: missing (/etc/panel-backup.env)")"
+    paint "$CLR_WARN" "$(tr_text "Файл конфигурации: отсутствует (/etc/panel-backup.env)" "Config file: missing (/etc/panel-backup.env)")"
   fi
 
   timer_show="$($SUDO systemctl show panel-backup.timer \
@@ -419,23 +448,22 @@ show_status() {
 interactive_menu() {
   local action=""
 
+  setup_colors
   choose_ui_lang
 
   while true; do
-    cat <<MENU
-
-============================================
-  $(tr_text "Менеджер бэкапа панели" "Panel Backup Manager")
-============================================
-$(tr_text "Выберите действие:" "Select action:")
-  1) $(tr_text "Установить/обновить + настроить backup" "Install/update + configure backup")
-  2) $(tr_text "Только обновить Telegram/путь" "Configure Telegram/path only")
-  3) $(tr_text "Включить таймер backup" "Enable scheduled backup timer")
-  4) $(tr_text "Выключить таймер backup" "Disable scheduled backup timer")
-  5) $(tr_text "Восстановить backup" "Restore backup")
-  6) $(tr_text "Показать статус" "Show status")
-  7) $(tr_text "Выход" "Exit")
-MENU
+    echo
+    paint "$CLR_TITLE" "============================================"
+    paint "$CLR_TITLE" "  $(tr_text "Менеджер бэкапа панели" "Panel Backup Manager")"
+    paint "$CLR_TITLE" "============================================"
+    paint "$CLR_MUTED" "$(tr_text "Выберите действие:" "Select action:")"
+    paint "$CLR_ACCENT" "  1) $(tr_text "Установить/обновить + настроить backup" "Install/update + configure backup")"
+    paint "$CLR_ACCENT" "  2) $(tr_text "Только обновить Telegram/путь" "Configure Telegram/path only")"
+    paint "$CLR_ACCENT" "  3) $(tr_text "Включить таймер backup" "Enable scheduled backup timer")"
+    paint "$CLR_ACCENT" "  4) $(tr_text "Выключить таймер backup" "Disable scheduled backup timer")"
+    paint "$CLR_ACCENT" "  5) $(tr_text "Восстановить backup" "Restore backup")"
+    paint "$CLR_ACCENT" "  6) $(tr_text "Показать статус" "Show status")"
+    paint "$CLR_ACCENT" "  7) $(tr_text "Выход" "Exit")"
     read -r -p "$(tr_text "Выбор [1-7]: " "Choice [1-7]: ")" action
 
     case "$action" in
