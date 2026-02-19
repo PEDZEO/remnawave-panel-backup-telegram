@@ -23,9 +23,9 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backu
 ## Структура проекта
 
 - `install.sh` — точка входа для запуска с GitHub
-- `manager.sh` — основной менеджер (режимы + интерактивное меню)
-- `panel-backup.sh` — создание backup
-- `panel-restore.sh` — восстановление backup
+- `scripts/bin/manager.sh` — основной менеджер (режимы + интерактивное меню)
+- `scripts/bin/panel-backup.sh` — создание backup
+- `scripts/bin/panel-restore.sh` — восстановление backup
 - `scripts/install/pipeline.sh` — установка и настройка окружения
 - `scripts/runtime/operations.sh` — backup/restore/status операции
 - `scripts/runtime/panel_node.sh` — установка/обновление панели и ноды

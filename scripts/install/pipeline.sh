@@ -168,8 +168,8 @@ prompt_install_settings() {
 
 install_files() {
   paint "$CLR_ACCENT" "[1/5] $(tr_text "Загрузка файлов" "Downloading files")"
-  fetch "panel-backup.sh" "$TMP_DIR/panel-backup.sh"
-  fetch "panel-restore.sh" "$TMP_DIR/panel-restore.sh"
+  fetch "scripts/bin/panel-backup.sh" "$TMP_DIR/panel-backup.sh"
+  fetch "scripts/bin/panel-restore.sh" "$TMP_DIR/panel-restore.sh"
   fetch "systemd/panel-backup.service" "$TMP_DIR/panel-backup.service"
   fetch "systemd/panel-backup.timer" "$TMP_DIR/panel-backup.timer"
 

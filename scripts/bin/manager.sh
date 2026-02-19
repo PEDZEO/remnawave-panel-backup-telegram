@@ -1072,9 +1072,11 @@ load_manager_module() {
   local local_path=""
   local fetched_path=""
   local manager_dir=""
+  local repo_root=""
 
   manager_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  local_path="${manager_dir}/${module_path}"
+  repo_root="$(cd "${manager_dir}/../.." && pwd)"
+  local_path="${repo_root}/${module_path}"
 
   if [[ -f "$local_path" ]]; then
     # shellcheck source=/dev/null

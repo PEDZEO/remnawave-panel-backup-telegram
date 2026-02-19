@@ -51,8 +51,8 @@ run_restore() {
 
 sync_runtime_scripts() {
   paint "$CLR_ACCENT" "$(tr_text "Обновляю runtime-скрипты backup/restore..." "Updating backup/restore runtime scripts...")"
-  fetch "panel-backup.sh" "$TMP_DIR/panel-backup.sh"
-  fetch "panel-restore.sh" "$TMP_DIR/panel-restore.sh"
+  fetch "scripts/bin/panel-backup.sh" "$TMP_DIR/panel-backup.sh"
+  fetch "scripts/bin/panel-restore.sh" "$TMP_DIR/panel-restore.sh"
   $SUDO install -m 755 "$TMP_DIR/panel-backup.sh" /usr/local/bin/panel-backup.sh
   $SUDO install -m 755 "$TMP_DIR/panel-restore.sh" /usr/local/bin/panel-restore.sh
 }

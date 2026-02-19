@@ -23,9 +23,9 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backu
 ## Project Structure
 
 - `install.sh` - GitHub entrypoint launcher
-- `manager.sh` - main manager (modes + interactive menu)
-- `panel-backup.sh` - backup creation
-- `panel-restore.sh` - backup restore
+- `scripts/bin/manager.sh` - main manager (modes + interactive menu)
+- `scripts/bin/panel-backup.sh` - backup creation
+- `scripts/bin/panel-restore.sh` - backup restore
 - `scripts/install/pipeline.sh` - install/setup pipeline
 - `scripts/runtime/operations.sh` - backup/restore/status operations
 - `scripts/runtime/panel_node.sh` - panel/node install and update flows
