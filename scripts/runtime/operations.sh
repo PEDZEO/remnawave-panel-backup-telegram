@@ -240,3 +240,112 @@ show_status() {
   paint "$CLR_MUTED" "  $(tr_text "Путь Remnawave:" "Remnawave path:") ${REMNAWAVE_DIR:-not-detected}"
   print_separator
 }
+
+show_disk_usage_top() {
+  local root_df=""
+  local path=""
+  local label=""
+  local top_lines=""
+
+  draw_header "$(tr_text "Анализ диска" "Disk analysis")"
+  root_df="$(df -h / 2>/dev/null | awk 'NR==2 {print $3" / "$2" ("$5")"}' || true)"
+  paint "$CLR_TITLE" "$(tr_text "Использование корня (/)" "Root filesystem usage (/):")"
+  paint "$CLR_MUTED" "  ${root_df:-n/a}"
+  print_separator
+
+  for path in /var /opt /home; do
+    [[ -d "$path" ]] || continue
+    label="$(tr_text "Крупные каталоги в" "Largest directories in")"
+    paint "$CLR_TITLE" "${label} ${path}"
+    top_lines="$(du -x -h -d 1 "$path" 2>/dev/null | sort -hr | head -n 8 || true)"
+    if [[ -n "$top_lines" ]]; then
+      echo "$top_lines" | while IFS= read -r line; do
+        paint "$CLR_MUTED" "  ${line}"
+      done
+    else
+      paint "$CLR_MUTED" "  n/a"
+    fi
+    print_separator
+  done
+
+  paint "$CLR_MUTED" "$(tr_text "Подсказка: для контейнеров отдельно смотрите \"Docker disk usage\" ниже в разделе очистки." "Tip: for containers, see \"Docker disk usage\" in cleanup section.")"
+}
+
+show_safe_cleanup_preview() {
+  local apt_cache="n/a"
+  local tmp_size="n/a"
+  local panel_tmp_size="n/a"
+  local journal_usage="n/a"
+  local docker_df="n/a"
+
+  draw_header "$(tr_text "Безопасная очистка: предпросмотр" "Safe cleanup: preview")"
+  paint "$CLR_TITLE" "$(tr_text "Что можно чистить безопасно" "What can be cleaned safely")"
+  paint "$CLR_MUTED" "  - $(tr_text "systemd journal старше 7 дней" "systemd journal older than 7 days")"
+  paint "$CLR_MUTED" "  - $(tr_text "apt package cache (autoclean)" "apt package cache (autoclean)")"
+  paint "$CLR_MUTED" "  - $(tr_text "временные файлы в /tmp и /var/tmp старше 7 дней" "temporary files in /tmp and /var/tmp older than 7 days")"
+  paint "$CLR_MUTED" "  - $(tr_text "docker dangling images + builder cache" "docker dangling images + builder cache")"
+  paint "$CLR_WARN" "  $(tr_text "Тома Docker (volumes) не удаляются." "Docker volumes are not removed.")"
+  print_separator
+
+  if [[ -d /var/cache/apt/archives ]]; then
+    apt_cache="$(du -sh /var/cache/apt/archives 2>/dev/null | awk '{print $1}' || echo "n/a")"
+  fi
+  tmp_size="$(du -sh /tmp /var/tmp 2>/dev/null | awk '{print $2": "$1}' | paste -sd ', ' - || true)"
+  [[ -z "$tmp_size" ]] && tmp_size="n/a"
+  panel_tmp_size="$(du -sh /tmp/panel-backup* /tmp/panel-restore* /tmp/panel-backup-install.* 2>/dev/null | awk '{print $2": "$1}' | paste -sd ', ' - || true)"
+  [[ -z "$panel_tmp_size" ]] && panel_tmp_size="n/a"
+  if command -v journalctl >/dev/null 2>&1; then
+    journal_usage="$($SUDO journalctl --disk-usage 2>/dev/null | sed 's/^Archived and active journals take up //; s/ in the file system.$//' || true)"
+    [[ -z "$journal_usage" ]] && journal_usage="n/a"
+  fi
+
+  paint "$CLR_MUTED" "  $(tr_text "APT cache:" "APT cache:") ${apt_cache}"
+  paint "$CLR_MUTED" "  $(tr_text "/tmp + /var/tmp:" "/tmp + /var/tmp:") ${tmp_size}"
+  paint "$CLR_MUTED" "  $(tr_text "Временные файлы panel-*:" "Temporary panel-* files:") ${panel_tmp_size}"
+  paint "$CLR_MUTED" "  $(tr_text "System journal:" "System journal:") ${journal_usage}"
+  print_separator
+
+  if command -v docker >/dev/null 2>&1; then
+    paint "$CLR_TITLE" "Docker disk usage"
+    docker_df="$($SUDO docker system df 2>/dev/null || true)"
+    if [[ -n "$docker_df" ]]; then
+      echo "$docker_df" | while IFS= read -r line; do
+        paint "$CLR_MUTED" "  ${line}"
+      done
+    else
+      paint "$CLR_MUTED" "  n/a"
+    fi
+  else
+    paint "$CLR_MUTED" "Docker: n/a"
+  fi
+  print_separator
+}
+
+run_safe_cleanup() {
+  paint "$CLR_ACCENT" "$(tr_text "Запуск безопасной очистки..." "Running safe cleanup...")"
+
+  if command -v journalctl >/dev/null 2>&1; then
+    paint "$CLR_MUTED" "  - $(tr_text "Очищаю system journal старше 7 дней" "Vacuuming system journal older than 7 days")"
+    $SUDO journalctl --vacuum-time=7d >/dev/null 2>&1 || true
+  fi
+
+  if command -v apt-get >/dev/null 2>&1; then
+    paint "$CLR_MUTED" "  - $(tr_text "Очищаю apt cache (autoclean)" "Cleaning apt cache (autoclean)")"
+    $SUDO apt-get autoclean -y >/dev/null 2>&1 || true
+  fi
+
+  paint "$CLR_MUTED" "  - $(tr_text "Удаляю временные файлы panel-* в /tmp" "Removing panel-* temporary files in /tmp")"
+  $SUDO rm -rf /tmp/panel-backup* /tmp/panel-restore* /tmp/panel-backup-install.* 2>/dev/null || true
+
+  paint "$CLR_MUTED" "  - $(tr_text "Удаляю старые файлы (>7 дней) в /tmp и /var/tmp" "Removing old files (>7 days) in /tmp and /var/tmp")"
+  $SUDO find /tmp /var/tmp -xdev -type f -mtime +7 -delete 2>/dev/null || true
+
+  if command -v docker >/dev/null 2>&1; then
+    paint "$CLR_MUTED" "  - $(tr_text "Docker: image prune (dangling only)" "Docker: image prune (dangling only)")"
+    $SUDO docker image prune -f >/dev/null 2>&1 || true
+    paint "$CLR_MUTED" "  - $(tr_text "Docker: builder prune" "Docker: builder prune")"
+    $SUDO docker builder prune -f >/dev/null 2>&1 || true
+  fi
+
+  paint "$CLR_OK" "$(tr_text "Безопасная очистка завершена." "Safe cleanup completed.")"
+}

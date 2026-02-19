@@ -988,15 +988,26 @@ menu_section_status() {
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Проверка состояния скриптов, таймера и последних backup." "Check scripts, timer and latest backup details.")"
     menu_option "1" "$(tr_text "Показать полный статус" "Show full status")"
-    menu_option "2" "$(tr_text "Назад" "Back")"
+    menu_option "2" "$(tr_text "Анализ использования диска" "Analyze disk usage")"
+    menu_option "3" "$(tr_text "Безопасная очистка диска" "Safe disk cleanup")"
+    menu_option "4" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-2]: " "Choice [1-2]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
     case "$choice" in
       1) show_status; wait_for_enter ;;
-      2) break ;;
+      2) show_disk_usage_top; wait_for_enter ;;
+      3)
+        show_safe_cleanup_preview
+        if ask_yes_no "$(tr_text "Запустить безопасную очистку сейчас?" "Run safe cleanup now?")" "n"; then
+          run_safe_cleanup
+          show_status
+        fi
+        wait_for_enter
+        ;;
+      4) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
