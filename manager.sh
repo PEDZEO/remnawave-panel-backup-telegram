@@ -20,12 +20,14 @@ TMP_DIR="$(mktemp -d /tmp/panel-backup-install.XXXXXX)"
 SUDO=""
 COLOR=0
 UI_ACTIVE=0
+APP_VERSION="v3.0"
 CLR_RESET=""
 CLR_TITLE=""
 CLR_ACCENT=""
 CLR_MUTED=""
 CLR_OK=""
 CLR_WARN=""
+CLR_DANGER=""
 
 cleanup() {
   if [[ "$UI_ACTIVE" == "1" ]]; then
@@ -88,6 +90,7 @@ setup_colors() {
     CLR_MUTED="$(printf '\033[0;37m')"
     CLR_OK="$(printf '\033[1;32m')"
     CLR_WARN="$(printf '\033[1;33m')"
+    CLR_DANGER="$(printf '\033[1;31m')"
   fi
 }
 
@@ -104,13 +107,49 @@ paint() {
 draw_header() {
   local title="$1"
   local subtitle="${2:-}"
+  local timer_state=""
+  local schedule_now=""
+  local latest_backup=""
+  local latest_label=""
+
   clear
-  paint "$CLR_TITLE" "============================================"
-  paint "$CLR_TITLE" "  ${title}"
+  timer_state="$($SUDO systemctl is-active panel-backup.timer 2>/dev/null || echo "inactive")"
+  schedule_now="$(get_current_timer_calendar || true)"
+  latest_backup="$(ls -1t /var/backups/panel/panel-backup-*.tar.gz 2>/dev/null | head -n1 || true)"
+  if [[ -n "$latest_backup" ]]; then
+    latest_label="$(basename "$latest_backup")"
+  else
+    latest_label="$(tr_text "нет" "none")"
+  fi
+
+  paint "$CLR_TITLE" "============================================================"
+  paint "$CLR_TITLE" "  ██████╗  █████╗ ███╗   ██╗███████╗██╗         ██████╗  ███╗   ███╗"
+  paint "$CLR_TITLE" "  ██╔══██╗██╔══██╗████╗  ██║██╔════╝██║         ██╔══██╗ ████╗ ████║"
+  paint "$CLR_TITLE" "  ██████╔╝███████║██╔██╗ ██║█████╗  ██║         ██████╔╝ ██╔████╔██║"
+  paint "$CLR_TITLE" "  ██╔═══╝ ██╔══██║██║╚██╗██║██╔══╝  ██║         ██╔══██╗ ██║╚██╔╝██║"
+  paint "$CLR_TITLE" "  ██║     ██║  ██║██║ ╚████║███████╗███████╗    ██████╔╝ ██║ ╚═╝ ██║"
+  paint "$CLR_TITLE" "  ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝    ╚═════╝  ╚═╝     ╚═╝"
+  paint "$CLR_TITLE" "============================================================"
+  paint "$CLR_OK" "  ${title} (${APP_VERSION})"
   if [[ -n "$subtitle" ]]; then
     paint "$CLR_MUTED" "  ${subtitle}"
   fi
-  paint "$CLR_TITLE" "============================================"
+  paint "$CLR_MUTED" "  $(tr_text "Таймер:" "Timer:") ${timer_state}   |   $(tr_text "Расписание:" "Schedule:") ${schedule_now:-unknown}"
+  paint "$CLR_MUTED" "  $(tr_text "Последний backup:" "Latest backup:") ${latest_label}"
+  paint "$CLR_TITLE" "============================================================"
+  paint "$CLR_MUTED" "$(tr_text "Чё делать будем, босс?" "What are we doing, boss?")"
+  echo
+}
+
+print_separator() {
+  paint "$CLR_MUTED" "------------------------------------------------------------"
+}
+
+menu_option() {
+  local key="$1"
+  local label="$2"
+  local color="${3:-$CLR_ACCENT}"
+  paint "$color" "  [${key}] ${label}"
 }
 
 is_back_command() {
@@ -124,7 +163,7 @@ is_back_command() {
 }
 
 show_back_hint() {
-  paint "$CLR_MUTED" "$(tr_text "Подсказка: b/и = назад" "Hint: b = back")"
+  paint "$CLR_MUTED" "$(tr_text "Подсказка: b/и = назад, q = выход" "Hint: b = back, q = exit")"
 }
 
 mask_secret() {
@@ -221,8 +260,9 @@ choose_ui_lang() {
 
   draw_header "Panel Backup Manager" "Выберите язык / Choose language"
   show_back_hint
-  paint "$CLR_ACCENT" "  1) Русский"
-  paint "$CLR_ACCENT" "  2) English (EU)"
+  menu_option "1" "Русский 🇷🇺"
+  menu_option "2" "English (EU) 🇬🇧"
+  print_separator
   read -r -p "Choice [1-2]: " choice
   if is_back_command "$choice"; then
     return 0
@@ -528,12 +568,13 @@ configure_schedule_menu() {
     draw_header "$(tr_text "Периодичность backup" "Backup schedule")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Текущее расписание:" "Current schedule:") ${current}"
-    paint "$CLR_ACCENT" "  1) $(tr_text "Ежедневно 03:40 UTC (по умолчанию)" "Daily at 03:40 UTC (default)")"
-    paint "$CLR_ACCENT" "  2) $(tr_text "Каждые 12 часов" "Every 12 hours")"
-    paint "$CLR_ACCENT" "  3) $(tr_text "Каждые 6 часов" "Every 6 hours")"
-    paint "$CLR_ACCENT" "  4) $(tr_text "Каждый час" "Every hour")"
-    paint "$CLR_ACCENT" "  5) $(tr_text "Свой OnCalendar" "Custom OnCalendar")"
-    paint "$CLR_ACCENT" "  6) $(tr_text "Назад" "Back")"
+    menu_option "1" "$(tr_text "🕒 Ежедневно 03:40 UTC (по умолчанию)" "🕒 Daily at 03:40 UTC (default)")"
+    menu_option "2" "$(tr_text "🕛 Каждые 12 часов" "🕛 Every 12 hours")"
+    menu_option "3" "$(tr_text "⌚ Каждые 6 часов" "⌚ Every 6 hours")"
+    menu_option "4" "$(tr_text "⏰ Каждый час" "⏰ Every hour")"
+    menu_option "5" "$(tr_text "✍️ Свой OnCalendar" "✍️ Custom OnCalendar")"
+    menu_option "6" "$(tr_text "🔙 Назад" "🔙 Back")"
+    print_separator
     read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice
     if is_back_command "$choice"; then
       return 1
@@ -800,9 +841,10 @@ menu_section_setup() {
     draw_header "$(tr_text "Раздел: Установка и настройка" "Section: Setup and configuration")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Здесь первичная установка и изменение конфигурации." "Use this section for initial install and config changes.")"
-    paint "$CLR_ACCENT" "  1) $(tr_text "Установить/обновить файлы + первичная настройка" "Install/update files + initial setup")"
-    paint "$CLR_ACCENT" "  2) $(tr_text "Изменить только текущие настройки" "Edit current settings only")"
-    paint "$CLR_ACCENT" "  3) $(tr_text "Назад" "Back")"
+    menu_option "1" "$(tr_text "🛠 Установить/обновить файлы + первичная настройка" "🛠 Install/update files + initial setup")"
+    menu_option "2" "$(tr_text "⚙️ Изменить только текущие настройки" "⚙️ Edit current settings only")"
+    menu_option "3" "$(tr_text "🔙 Назад" "🔙 Back")"
+    print_separator
     read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
     if is_back_command "$choice"; then
       break
@@ -822,9 +864,10 @@ menu_section_operations() {
     draw_header "$(tr_text "Раздел: Операции backup/restore" "Section: Backup/restore operations")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Создание и восстановление backup вручную." "Run manual backup and restore operations.")"
-    paint "$CLR_ACCENT" "  1) $(tr_text "Создать backup сейчас" "Create backup now")"
-    paint "$CLR_ACCENT" "  2) $(tr_text "Восстановить backup" "Restore backup")"
-    paint "$CLR_ACCENT" "  3) $(tr_text "Назад" "Back")"
+    menu_option "1" "$(tr_text "📦 Создать backup сейчас" "📦 Create backup now")"
+    menu_option "2" "$(tr_text "♻️ Восстановить backup" "♻️ Restore backup")"
+    menu_option "3" "$(tr_text "🔙 Назад" "🔙 Back")"
+    print_separator
     read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
     if is_back_command "$choice"; then
       break
@@ -877,10 +920,11 @@ menu_section_timer() {
     show_back_hint
     schedule_now="$(get_current_timer_calendar || true)"
     paint "$CLR_MUTED" "$(tr_text "Текущее расписание:" "Current schedule:") ${schedule_now:-unknown}"
-    paint "$CLR_ACCENT" "  1) $(tr_text "Включить таймер backup" "Enable backup timer")"
-    paint "$CLR_ACCENT" "  2) $(tr_text "Выключить таймер backup" "Disable backup timer")"
-    paint "$CLR_ACCENT" "  3) $(tr_text "Настроить периодичность backup" "Configure backup schedule")"
-    paint "$CLR_ACCENT" "  4) $(tr_text "Назад" "Back")"
+    menu_option "1" "$(tr_text "🟢 Включить таймер backup" "🟢 Enable backup timer")"
+    menu_option "2" "$(tr_text "🟠 Выключить таймер backup" "🟠 Disable backup timer")"
+    menu_option "3" "$(tr_text "⏱ Настроить периодичность backup" "⏱ Configure backup schedule")"
+    menu_option "4" "$(tr_text "🔙 Назад" "🔙 Back")"
+    print_separator
     read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
     if is_back_command "$choice"; then
       break
@@ -920,8 +964,9 @@ menu_section_status() {
     draw_header "$(tr_text "Раздел: Статус и диагностика" "Section: Status and diagnostics")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Проверка состояния скриптов, таймера и последних backup." "Check scripts, timer and latest backup details.")"
-    paint "$CLR_ACCENT" "  1) $(tr_text "Показать полный статус" "Show full status")"
-    paint "$CLR_ACCENT" "  2) $(tr_text "Назад" "Back")"
+    menu_option "1" "$(tr_text "📊 Показать полный статус" "📊 Show full status")"
+    menu_option "2" "$(tr_text "🔙 Назад" "🔙 Back")"
+    print_separator
     read -r -p "$(tr_text "Выбор [1-2]: " "Choice [1-2]: ")" choice
     if is_back_command "$choice"; then
       break
@@ -944,12 +989,12 @@ interactive_menu() {
   while true; do
     draw_header "$(tr_text "Менеджер бэкапа панели" "Panel Backup Manager")"
     show_back_hint
-    paint "$CLR_MUTED" "$(tr_text "Главные разделы:" "Main sections:")"
-    paint "$CLR_ACCENT" "  1) $(tr_text "Установка и настройка" "Setup and configuration")"
-    paint "$CLR_ACCENT" "  2) $(tr_text "Операции backup/restore" "Backup/restore operations")"
-    paint "$CLR_ACCENT" "  3) $(tr_text "Таймер и периодичность" "Timer and schedule")"
-    paint "$CLR_ACCENT" "  4) $(tr_text "Статус и диагностика" "Status and diagnostics")"
-    paint "$CLR_ACCENT" "  q) $(tr_text "Выход" "Exit")"
+    menu_option "1" "$(tr_text "🛠 Установка и настройка" "🛠 Setup and configuration")"
+    menu_option "2" "$(tr_text "📦 Операции backup/restore" "📦 Backup/restore operations")"
+    menu_option "3" "$(tr_text "⏱ Таймер и периодичность" "⏱ Timer and schedule")"
+    menu_option "4" "$(tr_text "📊 Статус и диагностика" "📊 Status and diagnostics")"
+    menu_option "q" "$(tr_text "🚪 Выход" "🚪 Exit")" "$CLR_DANGER"
+    print_separator
     read -r -p "$(tr_text "Выбор [1-4/q]: " "Choice [1-4/q]: ")" action
     if is_back_command "$action"; then
       echo "$(tr_text "Выход." "Cancelled.")"
