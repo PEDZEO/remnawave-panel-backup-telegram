@@ -1,9 +1,20 @@
 #!/usr/bin/env bash
 # Install pipeline functions for manager.sh
 
+is_valid_telegram_token() {
+  local token="$1"
+  [[ "$token" =~ ^[0-9]+:[A-Za-z0-9_-]{20,}$ ]]
+}
+
+is_valid_telegram_id() {
+  local value="$1"
+  [[ "$value" =~ ^-?[0-9]+$ ]]
+}
+
 prompt_install_settings() {
   local val=""
   local detected_path=""
+  local encrypt_choice=""
   load_existing_env_defaults
 
   draw_header "$(tr_text "Настройка параметров бэкапа" "Configure backup settings")"
@@ -21,14 +32,29 @@ prompt_install_settings() {
 
   val="$(ask_value "$(tr_text "[1/7] Токен Telegram-бота (пример: 123456:ABCDEF...)" "[1/7] Telegram bot token (example: 123456:ABCDEF...)")" "$TELEGRAM_BOT_TOKEN")"
   [[ "$val" == "__PBM_BACK__" ]] && return 1
+  if [[ -n "$val" ]] && ! is_valid_telegram_token "$val"; then
+    paint "$CLR_WARN" "$(tr_text "Похоже на некорректный токен Telegram. Формат: digits:token" "Looks like an invalid Telegram token. Format: digits:token")"
+    wait_for_enter
+    return 1
+  fi
   TELEGRAM_BOT_TOKEN="$val"
 
   val="$(ask_value "$(tr_text "[2/7] ID чата/канала Telegram (пример: 123456789 или -1001234567890)" "[2/7] Telegram chat/channel ID (example: 123456789 or -1001234567890)")" "$TELEGRAM_ADMIN_ID")"
   [[ "$val" == "__PBM_BACK__" ]] && return 1
+  if [[ -n "$val" ]] && ! is_valid_telegram_id "$val"; then
+    paint "$CLR_WARN" "$(tr_text "ID чата должен быть числом (например 123456789 или -1001234567890)." "Chat ID must be numeric (for example 123456789 or -1001234567890).")"
+    wait_for_enter
+    return 1
+  fi
   TELEGRAM_ADMIN_ID="$val"
 
   val="$(ask_value "$(tr_text "[3/7] ID темы (topic), если нужен (иначе оставьте пусто)" "[3/7] Topic/thread ID if needed (otherwise leave empty)")" "$TELEGRAM_THREAD_ID")"
   [[ "$val" == "__PBM_BACK__" ]] && return 1
+  if [[ -n "$val" ]] && ! is_valid_telegram_id "$val"; then
+    paint "$CLR_WARN" "$(tr_text "ID темы должен быть числом." "Thread ID must be numeric.")"
+    wait_for_enter
+    return 1
+  fi
   TELEGRAM_THREAD_ID="$val"
 
   val="$(ask_value "$(tr_text "[4/7] Путь к папке панели Remnawave (пример: /opt/remnawave)" "[4/7] Path to Remnawave panel directory (example: /opt/remnawave)")" "$REMNAWAVE_DIR")"
@@ -43,13 +69,34 @@ prompt_install_settings() {
     *) BACKUP_LANG="$val" ;;
   esac
 
-  val="$(ask_value "$(tr_text "[6/7] Шифровать backup-архив (0/1, no/yes)" "[6/7] Encrypt backup archive (0/1, no/yes)")" "$BACKUP_ENCRYPT")"
-  [[ "$val" == "__PBM_BACK__" ]] && return 1
-  BACKUP_ENCRYPT="$(normalize_backup_encrypt_raw "$val")"
+  draw_header "$(tr_text "Режим шифрования backup" "Backup encryption mode")"
+  show_back_hint
+  paint "$CLR_MUTED" "$(tr_text "Выберите режим шифрования архива." "Choose archive encryption mode.")"
+  menu_option "1" "$(tr_text "Включить шифрование (GPG)" "Enable encryption (GPG)")"
+  menu_option "2" "$(tr_text "Выключить шифрование" "Disable encryption")"
+  print_separator
+  read -r -p "$(tr_text "[6/7] Выбор [1-2]: " "[6/7] Choice [1-2]: ")" encrypt_choice
+  if is_back_command "$encrypt_choice"; then
+    return 1
+  fi
+  case "$encrypt_choice" in
+    1) BACKUP_ENCRYPT="1" ;;
+    2) BACKUP_ENCRYPT="0" ;;
+    *)
+      paint "$CLR_WARN" "$(tr_text "Некорректный выбор режима шифрования." "Invalid encryption mode choice.")"
+      wait_for_enter
+      return 1
+      ;;
+  esac
 
   if [[ "$BACKUP_ENCRYPT" == "1" ]]; then
     val="$(ask_value "$(tr_text "[7/7] Пароль шифрования (GPG symmetric)" "[7/7] Encryption password (GPG symmetric)")" "$BACKUP_PASSWORD")"
     [[ "$val" == "__PBM_BACK__" ]] && return 1
+    if [[ ${#val} -lt 8 ]]; then
+      paint "$CLR_WARN" "$(tr_text "Пароль шифрования должен быть не короче 8 символов." "Encryption password must be at least 8 characters long.")"
+      wait_for_enter
+      return 1
+    fi
     BACKUP_PASSWORD="$val"
   else
     BACKUP_PASSWORD=""

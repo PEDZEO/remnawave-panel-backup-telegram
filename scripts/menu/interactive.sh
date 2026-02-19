@@ -138,10 +138,24 @@ menu_flow_encryption_settings() {
 
 menu_section_setup() {
   local choice=""
+  local tg_state=""
+  local enc_state=""
   while true; do
+    load_existing_env_defaults
+    if [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_ADMIN_ID:-}" ]]; then
+      tg_state="$(tr_text "настроен" "configured")"
+    else
+      tg_state="$(tr_text "не настроен" "not configured")"
+    fi
+    if [[ "${BACKUP_ENCRYPT:-0}" == "1" ]]; then
+      enc_state="$(tr_text "включено" "enabled")"
+    else
+      enc_state="$(tr_text "выключено" "disabled")"
+    fi
     draw_header "$(tr_text "Раздел: Установка и настройка" "Section: Setup and configuration")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Здесь первичная установка и изменение конфигурации." "Use this section for initial install and config changes.")"
+    paint "$CLR_MUTED" "$(tr_text "Текущее состояние:" "Current state:") Telegram=${tg_state}, $(tr_text "шифрование" "encryption")=${enc_state}"
     menu_option "1" "$(tr_text "Установить/обновить файлы + первичная настройка" "Install/update files + initial setup")"
     menu_option "2" "$(tr_text "Изменить только текущие настройки" "Edit current settings only")"
     menu_option "3" "$(tr_text "Настройки шифрования backup" "Backup encryption settings")"
@@ -417,8 +431,8 @@ menu_section_timer() {
     show_back_hint
     schedule_now="$(get_current_timer_calendar || true)"
     paint "$CLR_MUTED" "$(tr_text "Текущее расписание:" "Current schedule:") $(format_schedule_label "$schedule_now")"
-    menu_option "1" "$(tr_text "🟢 Включить таймер backup" "🟢 Enable backup timer")"
-    menu_option "2" "$(tr_text "🟠 Выключить таймер backup" "🟠 Disable backup timer")"
+    menu_option "1" "$(tr_text "Включить таймер backup" "Enable backup timer")"
+    menu_option "2" "$(tr_text "Выключить таймер backup" "Disable backup timer")"
     menu_option "3" "$(tr_text "Настроить периодичность backup" "Configure backup schedule")"
     menu_option "4" "$(tr_text "Назад" "Back")"
     print_separator
