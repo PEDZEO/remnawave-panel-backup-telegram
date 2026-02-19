@@ -8,6 +8,7 @@ MODE_SET="${MODE+x}"
 MODE="${MODE:-install}"
 INTERACTIVE="${INTERACTIVE:-auto}"
 UI_LANG="${UI_LANG:-auto}"
+BACKUP_LANG="${BACKUP_LANG:-}"
 BACKUP_FILE="${BACKUP_FILE:-}"
 BACKUP_URL="${BACKUP_URL:-}"
 RESTORE_ONLY="${RESTORE_ONLY:-all}"
@@ -195,6 +196,7 @@ show_settings_preview() {
   paint "$CLR_MUTED" "  TELEGRAM_THREAD_ID: ${TELEGRAM_THREAD_ID:-$(tr_text "не задан" "not set")}"
   paint "$CLR_MUTED" "  REMNAWAVE_DIR: ${REMNAWAVE_DIR:-$(tr_text "не задан" "not set")}"
   paint "$CLR_MUTED" "  BACKUP_ON_CALENDAR: ${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}"
+  paint "$CLR_MUTED" "  BACKUP_LANG: ${BACKUP_LANG:-$(tr_text "не задан" "not set")}"
 }
 
 wait_for_enter() {
@@ -307,6 +309,7 @@ choose_ui_lang() {
 
   normalize_ui_lang
   if [[ "$UI_LANG" == "ru" || "$UI_LANG" == "en" ]]; then
+    BACKUP_LANG="$UI_LANG"
     return 0
   fi
 
@@ -329,6 +332,7 @@ choose_ui_lang() {
     1) UI_LANG="ru" ;;
     2) UI_LANG="en" ;;
   esac
+  BACKUP_LANG="$UI_LANG"
 }
 
 detect_remnawave_dir() {
@@ -426,6 +430,7 @@ load_existing_env_defaults() {
   local old_thread=""
   local old_dir=""
   local old_calendar=""
+  local old_backup_lang=""
   local detected=""
 
   if [[ -f /etc/panel-backup.env ]]; then
@@ -435,6 +440,8 @@ load_existing_env_defaults() {
     old_dir="$(grep -E '^REMNAWAVE_DIR=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
     old_calendar="$(grep -E '^BACKUP_ON_CALENDAR=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
     old_calendar="$(normalize_calendar_raw "$old_calendar")"
+    old_backup_lang="$(grep -E '^BACKUP_LANG=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
+    old_backup_lang="$(normalize_calendar_raw "$old_backup_lang")"
   fi
 
   TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-$old_bot}"
@@ -442,12 +449,17 @@ load_existing_env_defaults() {
   TELEGRAM_THREAD_ID="${TELEGRAM_THREAD_ID:-$old_thread}"
   REMNAWAVE_DIR="${REMNAWAVE_DIR:-$old_dir}"
   BACKUP_ON_CALENDAR="${BACKUP_ON_CALENDAR:-$old_calendar}"
+  BACKUP_LANG="${BACKUP_LANG:-$old_backup_lang}"
 
   detected="$(detect_remnawave_dir || true)"
   REMNAWAVE_DIR="${REMNAWAVE_DIR:-$detected}"
   BACKUP_ON_CALENDAR="${BACKUP_ON_CALENDAR:-$(get_current_timer_calendar || true)}"
   BACKUP_ON_CALENDAR="$(normalize_calendar_raw "$BACKUP_ON_CALENDAR")"
   BACKUP_ON_CALENDAR="${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}"
+  BACKUP_LANG="${BACKUP_LANG:-$UI_LANG}"
+  if [[ "$BACKUP_LANG" == "auto" || -z "$BACKUP_LANG" ]]; then
+    BACKUP_LANG="ru"
+  fi
 }
 
 ask_value() {
@@ -528,21 +540,29 @@ prompt_install_settings() {
   fi
   echo
 
-  val="$(ask_value "$(tr_text "[1/4] Токен Telegram-бота (пример: 123456:ABCDEF...)" "[1/4] Telegram bot token (example: 123456:ABCDEF...)")" "$TELEGRAM_BOT_TOKEN")"
+  val="$(ask_value "$(tr_text "[1/5] Токен Telegram-бота (пример: 123456:ABCDEF...)" "[1/5] Telegram bot token (example: 123456:ABCDEF...)")" "$TELEGRAM_BOT_TOKEN")"
   [[ "$val" == "__PBM_BACK__" ]] && return 1
   TELEGRAM_BOT_TOKEN="$val"
 
-  val="$(ask_value "$(tr_text "[2/4] ID чата/канала Telegram (пример: 123456789 или -1001234567890)" "[2/4] Telegram chat/channel ID (example: 123456789 or -1001234567890)")" "$TELEGRAM_ADMIN_ID")"
+  val="$(ask_value "$(tr_text "[2/5] ID чата/канала Telegram (пример: 123456789 или -1001234567890)" "[2/5] Telegram chat/channel ID (example: 123456789 or -1001234567890)")" "$TELEGRAM_ADMIN_ID")"
   [[ "$val" == "__PBM_BACK__" ]] && return 1
   TELEGRAM_ADMIN_ID="$val"
 
-  val="$(ask_value "$(tr_text "[3/4] ID темы (topic), если нужен (иначе оставьте пусто)" "[3/4] Topic/thread ID if needed (otherwise leave empty)")" "$TELEGRAM_THREAD_ID")"
+  val="$(ask_value "$(tr_text "[3/5] ID темы (topic), если нужен (иначе оставьте пусто)" "[3/5] Topic/thread ID if needed (otherwise leave empty)")" "$TELEGRAM_THREAD_ID")"
   [[ "$val" == "__PBM_BACK__" ]] && return 1
   TELEGRAM_THREAD_ID="$val"
 
-  val="$(ask_value "$(tr_text "[4/4] Путь к папке панели Remnawave (пример: /opt/remnawave)" "[4/4] Path to Remnawave panel directory (example: /opt/remnawave)")" "$REMNAWAVE_DIR")"
+  val="$(ask_value "$(tr_text "[4/5] Путь к папке панели Remnawave (пример: /opt/remnawave)" "[4/5] Path to Remnawave panel directory (example: /opt/remnawave)")" "$REMNAWAVE_DIR")"
   [[ "$val" == "__PBM_BACK__" ]] && return 1
   REMNAWAVE_DIR="$val"
+
+  val="$(ask_value "$(tr_text "[5/5] Язык описания backup в Telegram (ru/en)" "[5/5] Backup description language in Telegram (ru/en)")" "$BACKUP_LANG")"
+  [[ "$val" == "__PBM_BACK__" ]] && return 1
+  case "${val,,}" in
+    en|eu) BACKUP_LANG="en" ;;
+    ru|"") BACKUP_LANG="ru" ;;
+    *) BACKUP_LANG="$val" ;;
+  esac
 
   return 0
 }
@@ -567,6 +587,7 @@ write_env() {
   local escaped_thread=""
   local escaped_dir=""
   local escaped_calendar=""
+  local escaped_backup_lang=""
   load_existing_env_defaults
 
   escaped_bot="$(escape_env_value "${TELEGRAM_BOT_TOKEN:-}")"
@@ -574,6 +595,7 @@ write_env() {
   escaped_thread="$(escape_env_value "${TELEGRAM_THREAD_ID:-}")"
   escaped_dir="$(escape_env_value "${REMNAWAVE_DIR:-}")"
   escaped_calendar="$(escape_env_value "${BACKUP_ON_CALENDAR:-}")"
+  escaped_backup_lang="$(escape_env_value "${BACKUP_LANG:-}")"
 
   paint "$CLR_ACCENT" "[3/5] $(tr_text "Запись /etc/panel-backup.env" "Writing /etc/panel-backup.env")"
   $SUDO install -d -m 755 /etc
@@ -583,12 +605,14 @@ ${TELEGRAM_ADMIN_ID:+TELEGRAM_ADMIN_ID=\"${escaped_admin}\"}
 ${TELEGRAM_THREAD_ID:+TELEGRAM_THREAD_ID=\"${escaped_thread}\"}
 ${REMNAWAVE_DIR:+REMNAWAVE_DIR=\"${escaped_dir}\"}
 ${BACKUP_ON_CALENDAR:+BACKUP_ON_CALENDAR=\"${escaped_calendar}\"}
+${BACKUP_LANG:+BACKUP_LANG=\"${escaped_backup_lang}\"}
 ENV"
   $SUDO chmod 600 /etc/panel-backup.env
   $SUDO chown root:root /etc/panel-backup.env
 
   paint "$CLR_MUTED" "REMNAWAVE_DIR=${REMNAWAVE_DIR:-not-detected}"
   paint "$CLR_MUTED" "BACKUP_ON_CALENDAR=${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}"
+  paint "$CLR_MUTED" "BACKUP_LANG=${BACKUP_LANG:-ru}"
 }
 
 escape_env_value() {
@@ -927,6 +951,146 @@ menu_section_setup() {
   done
 }
 
+list_local_backups() {
+  ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz 2>/dev/null || true
+}
+
+render_backup_list() {
+  local -a files=("$@")
+  local idx=1
+  local path=""
+  local size=""
+  local mtime=""
+
+  if [[ ${#files[@]} -eq 0 ]]; then
+    paint "$CLR_WARN" "$(tr_text "В /var/backups/panel нет архивов backup." "No backup archives found in /var/backups/panel.")"
+    return 0
+  fi
+
+  paint "$CLR_TITLE" "$(tr_text "Доступные backup-файлы" "Available backup files")"
+  for path in "${files[@]}"; do
+    [[ -f "$path" ]] || continue
+    size="$(du -h "$path" 2>/dev/null | awk '{print $1}' || echo "n/a")"
+    mtime="$(date -u -r "$path" '+%Y-%m-%d %H:%M:%S UTC' 2>/dev/null || stat -c '%y' "$path" 2>/dev/null || echo "n/a")"
+    paint "$CLR_MUTED" "  ${idx}) $(basename "$path") | ${size} | ${mtime}"
+    idx=$((idx + 1))
+  done
+}
+
+select_restore_source() {
+  local choice=""
+  local selected=""
+  local index=""
+  local path=""
+  local url=""
+  local -a files=()
+
+  while true; do
+    draw_header "$(tr_text "Источник backup для восстановления" "Restore source selection")"
+    mapfile -t files < <(list_local_backups)
+    render_backup_list "${files[@]}"
+    print_separator
+    menu_option "1" "$(tr_text "Выбрать файл из списка (по номеру)" "Select file from list (by number)")"
+    menu_option "2" "$(tr_text "Ввести путь к архиву вручную" "Enter archive path manually")"
+    menu_option "3" "$(tr_text "Указать URL архива" "Provide archive URL")"
+    menu_option "4" "$(tr_text "Назад" "Back")"
+    print_separator
+    read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
+    if is_back_command "$choice"; then
+      return 1
+    fi
+
+    case "$choice" in
+      1)
+        if [[ ${#files[@]} -eq 0 ]]; then
+          paint "$CLR_WARN" "$(tr_text "Список пуст. Выберите путь вручную или URL." "List is empty. Use manual path or URL.")"
+          wait_for_enter
+          continue
+        fi
+        selected="$(ask_value "$(tr_text "Введите номер backup из списка" "Enter backup number from list")" "")"
+        [[ "$selected" == "__PBM_BACK__" ]] && continue
+        if [[ "$selected" =~ ^[0-9]+$ ]] && (( selected >= 1 && selected <= ${#files[@]} )); then
+          index=$((selected - 1))
+          BACKUP_FILE="${files[$index]}"
+          BACKUP_URL=""
+          return 0
+        fi
+        paint "$CLR_WARN" "$(tr_text "Некорректный номер файла." "Invalid file number.")"
+        wait_for_enter
+        ;;
+      2)
+        path="$(ask_value "$(tr_text "Путь к backup-архиву (.tar.gz)" "Path to backup archive (.tar.gz)")" "$BACKUP_FILE")"
+        [[ "$path" == "__PBM_BACK__" ]] && continue
+        if [[ -f "$path" ]]; then
+          BACKUP_FILE="$path"
+          BACKUP_URL=""
+          return 0
+        fi
+        paint "$CLR_WARN" "$(tr_text "Файл не найден." "File not found.")"
+        wait_for_enter
+        ;;
+      3)
+        url="$(ask_value "$(tr_text "URL backup-архива" "Backup archive URL")" "$BACKUP_URL")"
+        [[ "$url" == "__PBM_BACK__" ]] && continue
+        if [[ -n "$url" ]]; then
+          BACKUP_URL="$url"
+          BACKUP_FILE=""
+          return 0
+        fi
+        paint "$CLR_WARN" "$(tr_text "URL не может быть пустым." "URL cannot be empty.")"
+        wait_for_enter
+        ;;
+      4) return 1 ;;
+      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+    esac
+  done
+}
+
+select_restore_components() {
+  local choice=""
+  local custom=""
+  while true; do
+    draw_header "$(tr_text "Выбор данных для восстановления" "Restore components selection")"
+    paint "$CLR_MUTED" "$(tr_text "Выберите, что именно восстанавливать из backup." "Choose which data to restore from backup.")"
+    menu_option "1" "$(tr_text "Все (db + redis + configs)" "All (db + redis + configs)")"
+    menu_option "2" "$(tr_text "Только PostgreSQL (db)" "PostgreSQL only (db)")"
+    menu_option "3" "$(tr_text "Только Redis (redis)" "Redis only (redis)")"
+    menu_option "4" "$(tr_text "Только конфиги (configs)" "Configs only (configs)")"
+    menu_option "5" "$(tr_text "Свой список компонентов" "Custom components list")"
+    menu_option "6" "$(tr_text "Назад" "Back")"
+    print_separator
+    read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice
+    if is_back_command "$choice"; then
+      return 1
+    fi
+    case "$choice" in
+      1) RESTORE_ONLY="all"; return 0 ;;
+      2) RESTORE_ONLY="db"; return 0 ;;
+      3) RESTORE_ONLY="redis"; return 0 ;;
+      4) RESTORE_ONLY="configs"; return 0 ;;
+      5)
+        custom="$(ask_value "$(tr_text "Компоненты через запятую (all,db,redis,configs,env,compose,caddy,subscription)" "Comma-separated components (all,db,redis,configs,env,compose,caddy,subscription)")" "$RESTORE_ONLY")"
+        [[ "$custom" == "__PBM_BACK__" ]] && continue
+        if [[ -n "$custom" ]]; then
+          RESTORE_ONLY="$custom"
+          return 0
+        fi
+        ;;
+      6) return 1 ;;
+      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+    esac
+  done
+}
+
+show_restore_summary() {
+  paint "$CLR_TITLE" "$(tr_text "Параметры восстановления" "Restore parameters")"
+  paint "$CLR_MUTED" "  BACKUP_FILE: ${BACKUP_FILE:-$(tr_text "не задан" "not set")}"
+  paint "$CLR_MUTED" "  BACKUP_URL: ${BACKUP_URL:-$(tr_text "не задан" "not set")}"
+  paint "$CLR_MUTED" "  RESTORE_ONLY: ${RESTORE_ONLY:-all}"
+  paint "$CLR_MUTED" "  RESTORE_DRY_RUN: ${RESTORE_DRY_RUN:-0}"
+  paint "$CLR_MUTED" "  RESTORE_NO_RESTART: ${RESTORE_NO_RESTART:-0}"
+}
+
 menu_section_operations() {
   local choice=""
   while true; do
@@ -949,14 +1113,16 @@ menu_section_operations() {
         ;;
       2)
         draw_header "$(tr_text "Восстановление backup" "Restore backup")"
-        show_back_hint
         MODE="restore"
-        BACKUP_FILE="$(ask_value "$(tr_text "BACKUP_FILE (путь, можно пусто если задан BACKUP_URL)" "BACKUP_FILE (path, optional if BACKUP_URL is set)")" "$BACKUP_FILE")"
-        [[ "$BACKUP_FILE" == "__PBM_BACK__" ]] && continue
-        BACKUP_URL="$(ask_value "$(tr_text "BACKUP_URL (опционально)" "BACKUP_URL (optional)")" "$BACKUP_URL")"
-        [[ "$BACKUP_URL" == "__PBM_BACK__" ]] && continue
-        RESTORE_ONLY="$(ask_value "$(tr_text "RESTORE_ONLY (all/db/redis/configs/...)" "RESTORE_ONLY (all/db/redis/configs/...)")" "$RESTORE_ONLY")"
-        [[ "$RESTORE_ONLY" == "__PBM_BACK__" ]] && continue
+        RESTORE_DRY_RUN=0
+        RESTORE_NO_RESTART=0
+        RESTORE_ONLY="all"
+        if ! select_restore_source; then
+          continue
+        fi
+        if ! select_restore_components; then
+          continue
+        fi
         if ask_yes_no "$(tr_text "Запустить restore в dry-run режиме?" "Run restore in dry-run mode?")" "n"; then
           RESTORE_DRY_RUN=1
         else
@@ -966,6 +1132,14 @@ menu_section_operations() {
           RESTORE_NO_RESTART=1
         else
           [[ "$?" == "2" ]] && continue
+        fi
+        draw_header "$(tr_text "Подтверждение восстановления" "Restore confirmation")"
+        show_restore_summary
+        if ! ask_yes_no "$(tr_text "Запустить восстановление с этими параметрами?" "Run restore with these parameters?")" "y"; then
+          [[ "$?" == "2" ]] && continue
+          paint "$CLR_WARN" "$(tr_text "Восстановление отменено." "Restore cancelled.")"
+          wait_for_enter
+          continue
         fi
         if [[ ! -x /usr/local/bin/panel-restore.sh ]]; then
           install_files

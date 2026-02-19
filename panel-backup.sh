@@ -7,6 +7,7 @@ MAX_TG_PART_SIZE="${MAX_TG_PART_SIZE:-45M}"
 TG_SINGLE_LIMIT_BYTES="${TG_SINGLE_LIMIT_BYTES:-50331648}"
 REMNAWAVE_DIR="${REMNAWAVE_DIR:-}"
 BACKUP_ENV_PATH="${BACKUP_ENV_PATH:-/etc/panel-backup.env}"
+BACKUP_LANG="${BACKUP_LANG:-ru}"
 
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 TIMESTAMP_SHORT="$(date -u +%m%d-%H%M%S)"
@@ -27,6 +28,23 @@ trap cleanup EXIT
 log() {
   logger -t "$LOG_TAG" "$*"
   echo "$*"
+}
+
+normalize_backup_lang() {
+  case "${BACKUP_LANG,,}" in
+    en|eu) BACKUP_LANG="en" ;;
+    *) BACKUP_LANG="ru" ;;
+  esac
+}
+
+t() {
+  local ru="$1"
+  local en="$2"
+  if [[ "$BACKUP_LANG" == "en" ]]; then
+    printf '%s' "$en"
+  else
+    printf '%s' "$ru"
+  fi
 }
 
 detect_remnawave_dir() {
@@ -90,19 +108,19 @@ add_backup_item() {
   local label="$1"
   local path="$2"
   if [[ -e "$path" ]]; then
-    BACKUP_ITEMS+=("- ${label}: включено ($(du -sh "$path" | awk '{print $1}'))")
+    BACKUP_ITEMS+=("- ${label}: $(t "включено" "included") ($(du -sh "$path" | awk '{print $1}'))")
   else
-    BACKUP_ITEMS+=("- ${label}: не найдено")
+    BACKUP_ITEMS+=("- ${label}: $(t "не найдено" "not found")")
   fi
 }
 
 fail() {
   local msg="$1"
   log "ERROR: ${msg}"
-  send_telegram_text "❌ Бэкап панели: ошибка на ${HOSTNAME_FQDN}
+  send_telegram_text "❌ $(t "Ошибка backup панели" "Panel backup error"): ${HOSTNAME_FQDN}
 ${msg}
-Время (локальное): ${TIMESTAMP_LOCAL}
-Время (UTC): ${TIMESTAMP_UTC_HUMAN}"
+$(t "Время (локальное):" "Time (local):") ${TIMESTAMP_LOCAL}
+$(t "Время (UTC):" "Time (UTC):") ${TIMESTAMP_UTC_HUMAN}"
   exit 1
 }
 
@@ -119,10 +137,10 @@ normalize_env_file_format() {
 build_caption() {
   local file_label="$1"
   printf '%s' "📦 ${file_label}
-Host: ${HOSTNAME_FQDN}
-Time: ${TIMESTAMP_LOCAL}
-Size: ${ARCHIVE_SIZE_HUMAN}
-Contents: PostgreSQL, Redis, .env, compose, caddy, subscription"
+$(t "Хост" "Host"): ${HOSTNAME_FQDN}
+$(t "Время" "Time"): ${TIMESTAMP_LOCAL}
+$(t "Размер" "Size"): ${ARCHIVE_SIZE_HUMAN}
+$(t "Состав" "Contents"): PostgreSQL, Redis, .env, compose, caddy, subscription"
 }
 
 normalize_env_file_format
@@ -130,6 +148,7 @@ if [[ -f "$BACKUP_ENV_PATH" ]]; then
   # shellcheck disable=SC1090
   source "$BACKUP_ENV_PATH"
 fi
+normalize_backup_lang
 
 REMNAWAVE_DIR="${REMNAWAVE_DIR:-$(detect_remnawave_dir || true)}"
 
@@ -192,15 +211,15 @@ ARCHIVE_SIZE_HUMAN="$(du -h "$ARCHIVE_PATH" | awk '{print $1}')"
 log "Удаляю старые бэкапы (>${KEEP_DAYS} дней)"
 find "$BACKUP_ROOT" -type f \( -name 'pb-*.tar.gz' -o -name 'pb-*.tar.gz.part.*' -o -name 'panel-backup-*.tar.gz' -o -name 'panel-backup-*.tar.gz.part.*' \) -mtime +"$KEEP_DAYS" -delete || true
 
-send_telegram_text "📦 Бэкап панели создан
-Хост: ${HOSTNAME_FQDN}
-Файл: $(basename "$ARCHIVE_PATH")
-Размер: ${ARCHIVE_SIZE_HUMAN}
-Время (локальное): ${TIMESTAMP_LOCAL}
-Время (UTC): ${TIMESTAMP_UTC_HUMAN}
-Описание: PostgreSQL + Redis + конфиги Remnawave
+send_telegram_text "📦 $(t "Backup панели создан" "Panel backup created")
+$(t "Хост" "Host"): ${HOSTNAME_FQDN}
+$(t "Файл" "File"): $(basename "$ARCHIVE_PATH")
+$(t "Размер" "Size"): ${ARCHIVE_SIZE_HUMAN}
+$(t "Время (локальное)" "Time (local)"): ${TIMESTAMP_LOCAL}
+$(t "Время (UTC)" "Time (UTC)"): ${TIMESTAMP_UTC_HUMAN}
+$(t "Описание" "Description"): PostgreSQL + Redis + Remnawave configs
 
-Состав бэкапа:
+$(t "Состав бэкапа" "Backup contents"):
 $(printf '%s\n' "${BACKUP_ITEMS[@]}")"
 
 if (( ARCHIVE_SIZE_BYTES <= TG_SINGLE_LIMIT_BYTES )); then
@@ -217,9 +236,9 @@ else
 fi
 
 log "Бэкап и отправка завершены: ${ARCHIVE_PATH} (${ARCHIVE_SIZE_HUMAN})"
-send_telegram_text "✅ Бэкап панели отправлен
-Хост: ${HOSTNAME_FQDN}
-Размер: ${ARCHIVE_SIZE_HUMAN}
-Время (локальное): ${TIMESTAMP_LOCAL}
-Время (UTC): ${TIMESTAMP_UTC_HUMAN}
-Описание: архив отправлен в Telegram"
+send_telegram_text "✅ $(t "Backup панели отправлен" "Panel backup sent")
+$(t "Хост" "Host"): ${HOSTNAME_FQDN}
+$(t "Размер" "Size"): ${ARCHIVE_SIZE_HUMAN}
+$(t "Время (локальное)" "Time (local)"): ${TIMESTAMP_LOCAL}
+$(t "Время (UTC)" "Time (UTC)"): ${TIMESTAMP_UTC_HUMAN}
+$(t "Описание" "Description"): $(t "архив отправлен в Telegram" "archive was sent to Telegram")"
