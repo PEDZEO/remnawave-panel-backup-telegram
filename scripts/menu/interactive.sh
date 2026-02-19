@@ -60,9 +60,9 @@ menu_section_setup() {
     draw_header "$(tr_text "Раздел: Установка и настройка" "Section: Setup and configuration")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Здесь первичная установка и изменение конфигурации." "Use this section for initial install and config changes.")"
-    menu_option "1" "$(tr_text "🛠 Установить/обновить файлы + первичная настройка" "🛠 Install/update files + initial setup")"
-    menu_option "2" "$(tr_text "⚙️ Изменить только текущие настройки" "⚙️ Edit current settings only")"
-    menu_option "3" "$(tr_text "🔙 Назад" "🔙 Back")"
+    menu_option "1" "$(tr_text "Установить/обновить файлы + первичная настройка" "Install/update files + initial setup")"
+    menu_option "2" "$(tr_text "Изменить только текущие настройки" "Edit current settings only")"
+    menu_option "3" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
     if is_back_command "$choice"; then
@@ -249,9 +249,9 @@ menu_section_operations() {
     draw_header "$(tr_text "Раздел: Ручное управление backup" "Section: Manual backup control")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Здесь можно вручную: 1) создать backup, 2) восстановить backup." "Manually: 1) create backup, 2) restore backup.")"
-    menu_option "1" "$(tr_text "📦 Создать backup сейчас" "📦 Create backup now")"
-    menu_option "2" "$(tr_text "♻️ Восстановить backup" "♻️ Restore backup")"
-    menu_option "3" "$(tr_text "🔙 Назад" "🔙 Back")"
+    menu_option "1" "$(tr_text "Создать backup сейчас" "Create backup now")"
+    menu_option "2" "$(tr_text "Восстановить backup" "Restore backup")"
+    menu_option "3" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
     if is_back_command "$choice"; then
@@ -335,8 +335,8 @@ menu_section_timer() {
     paint "$CLR_MUTED" "$(tr_text "Текущее расписание:" "Current schedule:") $(format_schedule_label "$schedule_now")"
     menu_option "1" "$(tr_text "🟢 Включить таймер backup" "🟢 Enable backup timer")"
     menu_option "2" "$(tr_text "🟠 Выключить таймер backup" "🟠 Disable backup timer")"
-    menu_option "3" "$(tr_text "⏱ Настроить периодичность backup" "⏱ Configure backup schedule")"
-    menu_option "4" "$(tr_text "🔙 Назад" "🔙 Back")"
+    menu_option "3" "$(tr_text "Настроить периодичность backup" "Configure backup schedule")"
+    menu_option "4" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
     if is_back_command "$choice"; then
@@ -377,8 +377,8 @@ menu_section_status() {
     draw_header "$(tr_text "Раздел: Статус и диагностика" "Section: Status and diagnostics")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Проверка состояния скриптов, таймера и последних backup." "Check scripts, timer and latest backup details.")"
-    menu_option "1" "$(tr_text "📊 Показать полный статус" "📊 Show full status")"
-    menu_option "2" "$(tr_text "🔙 Назад" "🔙 Back")"
+    menu_option "1" "$(tr_text "Показать полный статус" "Show full status")"
+    menu_option "2" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-2]: " "Choice [1-2]: ")" choice
     if is_back_command "$choice"; then
@@ -402,13 +402,13 @@ interactive_menu() {
   while true; do
     draw_header "$(tr_text "Менеджер бэкапа панели" "Panel Backup Manager")"
     show_back_hint
-    menu_option "1" "$(tr_text "🛠 Установка и настройка" "🛠 Setup and configuration")"
-    menu_option "2" "$(tr_text "📦 Создать или восстановить backup (вручную)" "📦 Create or restore backup (manual)")"
-    menu_option "3" "$(tr_text "⏱ Таймер и периодичность" "⏱ Timer and schedule")"
-    menu_option "4" "$(tr_text "📊 Статус и диагностика" "📊 Status and diagnostics")"
-    menu_option "q" "$(tr_text "🚪 Выход" "🚪 Exit")" "$CLR_DANGER"
+    menu_option "1" "$(tr_text "Установка и настройка" "Setup and configuration")"
+    menu_option "2" "$(tr_text "Создать или восстановить backup (вручную)" "Create or restore backup (manual)")"
+    menu_option "3" "$(tr_text "Таймер и периодичность" "Timer and schedule")"
+    menu_option "4" "$(tr_text "Статус и диагностика" "Status and diagnostics")"
+    menu_option "0" "$(tr_text "Выход" "Exit")" "$CLR_DANGER"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-4/q]: " "Choice [1-4/q]: ")" action
+    read -r -p "$(tr_text "Выбор [1-4/0]: " "Choice [1-4/0]: ")" action
     if is_back_command "$action"; then
       echo "$(tr_text "Выход." "Cancelled.")"
       break
@@ -419,7 +419,7 @@ interactive_menu() {
       2) menu_section_operations ;;
       3) menu_section_timer ;;
       4) menu_section_status ;;
-      q|Q)
+      0)
         echo "$(tr_text "Выход." "Cancelled.")"
         break
         ;;

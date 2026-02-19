@@ -485,7 +485,7 @@ draw_header() {
   paint "$CLR_MUTED" "  $(tr_text "Таймер:" "Timer:") ${timer_state}   |   $(tr_text "Расписание:" "Schedule:") ${schedule_label}"
   paint "$CLR_MUTED" "  $(tr_text "Последний backup:" "Latest backup:") $(short_backup_label "$latest_label")"
   paint "$CLR_TITLE" "============================================================"
-  paint "$CLR_MUTED" "$(tr_text "Чё делать будем, босс?" "What are we doing, boss?")"
+  paint "$CLR_MUTED" "$(tr_text "Выберите действие." "Select an action.")"
   echo
 }
 
@@ -685,8 +685,8 @@ choose_ui_lang() {
 
   draw_header "Panel Backup Manager" "Выберите язык / Choose language"
   show_back_hint
-  menu_option "1" "Русский 🇷🇺"
-  menu_option "2" "English (EU) 🇬🇧"
+  menu_option "1" "Русский RU 🇷🇺"
+  menu_option "2" "English EN 🇬🇧"
   print_separator
   read -r -p "Choice [1-2]: " choice
   if is_back_command "$choice"; then

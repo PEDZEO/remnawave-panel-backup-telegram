@@ -130,12 +130,12 @@ configure_schedule_menu() {
     draw_header "$(tr_text "Периодичность backup" "Backup schedule")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Текущее расписание:" "Current schedule:") $(format_schedule_label "$current")"
-    menu_option "1" "$(tr_text "🕒 Ежедневно 03:40 UTC (по умолчанию)" "🕒 Daily at 03:40 UTC (default)")"
-    menu_option "2" "$(tr_text "🕛 Каждые 12 часов" "🕛 Every 12 hours")"
-    menu_option "3" "$(tr_text "⌚ Каждые 6 часов" "⌚ Every 6 hours")"
-    menu_option "4" "$(tr_text "⏰ Каждый час" "⏰ Every hour")"
-    menu_option "5" "$(tr_text "✍️ Свой OnCalendar" "✍️ Custom OnCalendar")"
-    menu_option "6" "$(tr_text "🔙 Назад" "🔙 Back")"
+    menu_option "1" "$(tr_text "Ежедневно 03:40 UTC (по умолчанию)" "Daily at 03:40 UTC (default)")"
+    menu_option "2" "$(tr_text "Каждые 12 часов" "Every 12 hours")"
+    menu_option "3" "$(tr_text "Каждые 6 часов" "Every 6 hours")"
+    menu_option "4" "$(tr_text "Каждый час" "Every hour")"
+    menu_option "5" "$(tr_text "Свой OnCalendar" "Custom OnCalendar")"
+    menu_option "6" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice
     if is_back_command "$choice"; then
@@ -206,4 +206,3 @@ disable_timer() {
   $SUDO systemctl disable --now panel-backup.timer
   $SUDO systemctl status --no-pager panel-backup.timer | sed -n '1,12p' || true
 }
-

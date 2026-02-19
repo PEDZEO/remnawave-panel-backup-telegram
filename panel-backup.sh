@@ -204,7 +204,7 @@ add_backup_item() {
 fail() {
   local msg="$1"
   log "ERROR: ${msg}"
-  send_telegram_text "❌ $(t "Ошибка backup панели" "Panel backup error"): ${HOSTNAME_FQDN}
+  send_telegram_text "ERROR: $(t "Ошибка backup панели" "Panel backup error"): ${HOSTNAME_FQDN}
 ${msg}
 $(t "Время (локальное):" "Time (local):") ${TIMESTAMP_LOCAL}
 $(t "Время (UTC):" "Time (UTC):") ${TIMESTAMP_UTC_HUMAN}"
@@ -269,7 +269,7 @@ normalize_env_file_format() {
 
 build_caption() {
   local file_label="$1"
-  printf '%s' "📦 ${file_label}
+  printf '%s' "Backup: ${file_label}
 $(t "Хост" "Host"): ${HOSTNAME_FQDN}
 $(t "Время" "Time"): ${TIMESTAMP_LOCAL}
 $(t "Размер" "Size"): ${ARCHIVE_SIZE_HUMAN}
@@ -356,7 +356,7 @@ ARCHIVE_SIZE_HUMAN="$(du -h "$ARCHIVE_PATH" | awk '{print $1}')"
 log "Удаляю старые бэкапы (>${KEEP_DAYS} дней)"
 find "$BACKUP_ROOT" -type f \( -name 'pb-*.tar.gz' -o -name 'pb-*.tar.gz.part.*' -o -name 'panel-backup-*.tar.gz' -o -name 'panel-backup-*.tar.gz.part.*' \) -mtime +"$KEEP_DAYS" -delete || true
 
-send_telegram_text "📦 $(t "Backup панели создан" "Panel backup created")
+send_telegram_text "INFO: $(t "Backup панели создан" "Panel backup created")
 $(t "Хост" "Host"): ${HOSTNAME_FQDN}
 $(t "Файл" "File"): $(basename "$ARCHIVE_PATH")
 $(t "Размер" "Size"): ${ARCHIVE_SIZE_HUMAN}
@@ -383,7 +383,7 @@ else
 fi
 
 log "Бэкап и отправка завершены: ${ARCHIVE_PATH} (${ARCHIVE_SIZE_HUMAN})"
-send_telegram_text "✅ $(t "Backup панели отправлен" "Panel backup sent")
+send_telegram_text "OK: $(t "Backup панели отправлен" "Panel backup sent")
 $(t "Хост" "Host"): ${HOSTNAME_FQDN}
 $(t "Размер" "Size"): ${ARCHIVE_SIZE_HUMAN}
 $(t "Время (локальное)" "Time (local)"): ${TIMESTAMP_LOCAL}
