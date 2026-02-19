@@ -1,0 +1,10 @@
+[Unit]
+Description=Run panel backup daily
+
+[Timer]
+OnCalendar=*-*-* 03:40:00 UTC
+Persistent=true
+Unit=panel-backup.service
+
+[Install]
+WantedBy=timers.target

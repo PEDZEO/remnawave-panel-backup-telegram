@@ -1,0 +1,11 @@
+[Unit]
+Description=Panel full backup + Telegram upload
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/panel-backup.env
+ExecStart=/usr/local/bin/panel-backup.sh
+User=root
+Group=root
