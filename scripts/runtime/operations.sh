@@ -87,6 +87,25 @@ run_backup_now() {
   "${backup_cmd[@]}"
 }
 
+humanize_systemd_state() {
+  local value="${1:-unknown}"
+  case "$value" in
+    loaded) echo "$(tr_text "загружен" "loaded")" ;;
+    enabled) echo "$(tr_text "включен" "enabled")" ;;
+    disabled) echo "$(tr_text "выключен" "disabled")" ;;
+    active) echo "$(tr_text "активен" "active")" ;;
+    inactive) echo "$(tr_text "неактивен" "inactive")" ;;
+    waiting) echo "$(tr_text "ожидание" "waiting")" ;;
+    running) echo "$(tr_text "выполняется" "running")" ;;
+    exited) echo "$(tr_text "завершен" "exited")" ;;
+    failed) echo "$(tr_text "ошибка" "failed")" ;;
+    dead) echo "$(tr_text "недоступен" "dead")" ;;
+    exit-code) echo "$(tr_text "код завершения" "exit code")" ;;
+    n/a|"") echo "n/a" ;;
+    *) echo "$value" ;;
+  esac
+}
+
 show_status() {
   local timer_show=""
   local service_show=""
@@ -106,26 +125,29 @@ show_status() {
   local service_started=""
   local service_finished=""
   local schedule_now=""
+  local backup_installed="no"
+  local restore_installed="no"
+  local config_present="no"
 
   draw_header "$(tr_text "Статус panel backup" "Panel backup status")"
 
   if [[ -x /usr/local/bin/panel-backup.sh ]]; then
-    paint "$CLR_OK" "$(tr_text "Скрипт backup: установлен (/usr/local/bin/panel-backup.sh)" "Backup script: installed (/usr/local/bin/panel-backup.sh)")"
-  else
-    paint "$CLR_WARN" "$(tr_text "Скрипт backup: не установлен" "Backup script: not installed")"
+    backup_installed="$(tr_text "да" "yes")"
   fi
 
   if [[ -x /usr/local/bin/panel-restore.sh ]]; then
-    paint "$CLR_OK" "$(tr_text "Скрипт restore: установлен (/usr/local/bin/panel-restore.sh)" "Restore script: installed (/usr/local/bin/panel-restore.sh)")"
-  else
-    paint "$CLR_WARN" "$(tr_text "Скрипт restore: не установлен" "Restore script: not installed")"
+    restore_installed="$(tr_text "да" "yes")"
   fi
 
   if [[ -f /etc/panel-backup.env ]]; then
-    paint "$CLR_OK" "$(tr_text "Файл конфигурации: найден (/etc/panel-backup.env)" "Config file: present (/etc/panel-backup.env)")"
-  else
-    paint "$CLR_WARN" "$(tr_text "Файл конфигурации: отсутствует (/etc/panel-backup.env)" "Config file: missing (/etc/panel-backup.env)")"
+    config_present="$(tr_text "да" "yes")"
   fi
+
+  print_separator
+  paint "$CLR_TITLE" "$(tr_text "Установка" "Installation")"
+  paint "$CLR_MUTED" "  $(tr_text "Backup-скрипт:" "Backup script:") ${backup_installed} (/usr/local/bin/panel-backup.sh)"
+  paint "$CLR_MUTED" "  $(tr_text "Restore-скрипт:" "Restore script:") ${restore_installed} (/usr/local/bin/panel-restore.sh)"
+  paint "$CLR_MUTED" "  $(tr_text "Файл конфигурации:" "Config file:") ${config_present} (/etc/panel-backup.env)"
 
   timer_show="$($SUDO systemctl show panel-backup.timer \
     -p LoadState -p UnitFileState -p ActiveState -p SubState \
@@ -137,14 +159,19 @@ show_status() {
     timer_sub="$(echo "$timer_show" | awk -F= '/^SubState=/{print $2}')"
     timer_next="$(echo "$timer_show" | awk -F= '/^NextElapseUSecRealtime=/{print $2}')"
     timer_last="$(echo "$timer_show" | awk -F= '/^LastTriggerUSecRealtime=/{print $2}')"
-    echo "$(tr_text "Таймер: load=${timer_load:-unknown}, unit-file=${timer_unit_file:-unknown}, active=${timer_active:-unknown}/${timer_sub:-unknown}" "Timer: load=${timer_load:-unknown}, unit-file=${timer_unit_file:-unknown}, active=${timer_active:-unknown}/${timer_sub:-unknown}")"
-    echo "$(tr_text "Следующий запуск таймера: ${timer_next:-n/a}" "Timer next run: ${timer_next:-n/a}")"
-    echo "$(tr_text "Последний запуск таймера: ${timer_last:-n/a}" "Timer last run: ${timer_last:-n/a}")"
+    print_separator
+    paint "$CLR_TITLE" "$(tr_text "Таймер" "Timer")"
+    paint "$CLR_MUTED" "  $(tr_text "Состояние unit:" "Unit state:") $(humanize_systemd_state "${timer_load:-unknown}")"
+    paint "$CLR_MUTED" "  $(tr_text "Автозапуск:" "Autostart:") $(humanize_systemd_state "${timer_unit_file:-unknown}")"
+    paint "$CLR_MUTED" "  $(tr_text "Статус:" "Status:") $(humanize_systemd_state "${timer_active:-unknown}") / $(humanize_systemd_state "${timer_sub:-unknown}")"
+    paint "$CLR_MUTED" "  $(tr_text "Следующий запуск:" "Next run:") ${timer_next:-n/a}"
+    paint "$CLR_MUTED" "  $(tr_text "Последний запуск:" "Last run:") ${timer_last:-n/a}"
   else
-    echo "$(tr_text "Таймер: недоступен" "Timer: not available")"
+    print_separator
+    paint "$CLR_WARN" "$(tr_text "Таймер: недоступен" "Timer: not available")"
   fi
   schedule_now="$(get_current_timer_calendar || true)"
-  echo "$(tr_text "Периодичность backup: $(format_schedule_label "$schedule_now")" "Backup schedule: $(format_schedule_label "$schedule_now")")"
+  paint "$CLR_MUTED" "  $(tr_text "Периодичность backup:" "Backup schedule:") $(format_schedule_label "$schedule_now")"
 
   service_show="$($SUDO systemctl show panel-backup.service \
     -p ActiveState -p SubState -p Result -p ExecMainStatus \
@@ -156,30 +183,39 @@ show_status() {
     service_status="$(echo "$service_show" | awk -F= '/^ExecMainStatus=/{print $2}')"
     service_started="$(echo "$service_show" | awk -F= '/^ExecMainStartTimestamp=/{print $2}')"
     service_finished="$(echo "$service_show" | awk -F= '/^ExecMainExitTimestamp=/{print $2}')"
-    echo "$(tr_text "Сервис: active=${service_active:-unknown}/${service_sub:-unknown}, result=${service_result:-unknown}, exit-code=${service_status:-unknown}" "Service: active=${service_active:-unknown}/${service_sub:-unknown}, result=${service_result:-unknown}, exit-code=${service_status:-unknown}")"
-    echo "$(tr_text "Последний старт сервиса: ${service_started:-n/a}" "Service last start: ${service_started:-n/a}")"
-    echo "$(tr_text "Последнее завершение сервиса: ${service_finished:-n/a}" "Service last finish: ${service_finished:-n/a}")"
+    print_separator
+    paint "$CLR_TITLE" "$(tr_text "Сервис backup" "Backup service")"
+    paint "$CLR_MUTED" "  $(tr_text "Статус:" "Status:") $(humanize_systemd_state "${service_active:-unknown}") / $(humanize_systemd_state "${service_sub:-unknown}")"
+    paint "$CLR_MUTED" "  $(tr_text "Результат:" "Result:") $(humanize_systemd_state "${service_result:-unknown}")"
+    paint "$CLR_MUTED" "  $(tr_text "Код завершения:" "Exit code:") ${service_status:-unknown}"
+    paint "$CLR_MUTED" "  $(tr_text "Последний старт:" "Last start:") ${service_started:-n/a}"
+    paint "$CLR_MUTED" "  $(tr_text "Последнее завершение:" "Last finish:") ${service_finished:-n/a}"
   else
-    echo "$(tr_text "Сервис: недоступен" "Service: not available")"
+    print_separator
+    paint "$CLR_WARN" "$(tr_text "Сервис backup: недоступен" "Backup service: not available")"
   fi
 
   latest_backup="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz 2>/dev/null | head -n1 || true)"
+  print_separator
+  paint "$CLR_TITLE" "$(tr_text "Последний backup" "Latest backup")"
   if [[ -n "$latest_backup" && -f "$latest_backup" ]]; then
     latest_backup_time="$(date -u -r "$latest_backup" '+%Y-%m-%d %H:%M:%S UTC' 2>/dev/null || stat -c '%y' "$latest_backup" 2>/dev/null || echo n/a)"
     latest_backup_size="$(du -h "$latest_backup" 2>/dev/null | awk '{print $1}' || echo n/a)"
-    echo "$(tr_text "Последний backup: $(basename "$latest_backup")" "Latest backup: $(basename "$latest_backup")")"
-    echo "$(tr_text "Дата/время backup: ${latest_backup_time}" "Latest backup time: ${latest_backup_time}")"
-    echo "$(tr_text "Размер backup: ${latest_backup_size}" "Latest backup size: ${latest_backup_size}")"
+    paint "$CLR_MUTED" "  $(tr_text "Файл:" "File:") $(basename "$latest_backup")"
+    paint "$CLR_MUTED" "  $(tr_text "Дата/время:" "Date/time:") ${latest_backup_time}"
+    paint "$CLR_MUTED" "  $(tr_text "Размер:" "Size:") ${latest_backup_size}"
   else
-    echo "$(tr_text "Последний backup: не найден в /var/backups/panel" "Latest backup: not found in /var/backups/panel")"
+    paint "$CLR_WARN" "$(tr_text "Архивы backup не найдены в /var/backups/panel." "No backup archives found in /var/backups/panel.")"
   fi
 
   load_existing_env_defaults
+  print_separator
+  paint "$CLR_TITLE" "$(tr_text "Интеграции" "Integrations")"
   if [[ -n "$TELEGRAM_BOT_TOKEN" && -n "$TELEGRAM_ADMIN_ID" ]]; then
-    echo "$(tr_text "Telegram: настроен" "Telegram: configured")"
+    paint "$CLR_MUTED" "  Telegram: $(tr_text "настроен" "configured")"
   else
-    echo "$(tr_text "Telegram: настроен не полностью" "Telegram: not fully configured")"
+    paint "$CLR_WARN" "  Telegram: $(tr_text "настроен не полностью" "not fully configured")"
   fi
-  echo "$(tr_text "Путь Remnawave: ${REMNAWAVE_DIR:-not-detected}" "Remnawave dir: ${REMNAWAVE_DIR:-not-detected}")"
+  paint "$CLR_MUTED" "  $(tr_text "Путь Remnawave:" "Remnawave path:") ${REMNAWAVE_DIR:-not-detected}"
+  print_separator
 }
-
