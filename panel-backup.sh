@@ -9,12 +9,12 @@ REMNAWAVE_DIR="${REMNAWAVE_DIR:-}"
 BACKUP_ENV_PATH="${BACKUP_ENV_PATH:-/etc/panel-backup.env}"
 
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+TIMESTAMP_SHORT="$(date -u +%m%d-%H%M%S)"
 TIMESTAMP_LOCAL="$(date '+%Y-%m-%d %H:%M:%S %Z')"
 TIMESTAMP_UTC_HUMAN="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 HOSTNAME_FQDN="$(hostname -f 2>/dev/null || hostname)"
-HOSTNAME_SHORT="$(hostname -s 2>/dev/null || hostname)"
 WORKDIR="$(mktemp -d /tmp/panel-backup.XXXXXX)"
-ARCHIVE_BASE="pb-${HOSTNAME_SHORT}-${TIMESTAMP}"
+ARCHIVE_BASE="pb-${TIMESTAMP_SHORT}"
 ARCHIVE_PATH="${BACKUP_ROOT}/${ARCHIVE_BASE}.tar.gz"
 LOG_TAG="panel-backup"
 declare -a BACKUP_ITEMS=()
@@ -121,7 +121,8 @@ build_caption() {
   printf '%s' "📦 ${file_label}
 Host: ${HOSTNAME_FQDN}
 Time: ${TIMESTAMP_LOCAL}
-Size: ${ARCHIVE_SIZE_HUMAN}"
+Size: ${ARCHIVE_SIZE_HUMAN}
+Contents: PostgreSQL, Redis, .env, compose, caddy, subscription"
 }
 
 normalize_env_file_format
