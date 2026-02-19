@@ -124,8 +124,56 @@ container_image_ref() {
 }
 
 container_version_label() {
-  local image_ref="$1"
+  local name="$1"
   local tail=""
+  local image_ref=""
+  local image_id=""
+  local version=""
+  local revision=""
+
+  image_ref="$(container_image_ref "$name")"
+  image_id="$(docker inspect -f '{{.Image}}' "$name" 2>/dev/null || true)"
+
+  if [[ -n "$image_id" ]]; then
+    version="$(docker image inspect -f '{{ index .Config.Labels "org.opencontainers.image.version" }}' "$image_id" 2>/dev/null || true)"
+    [[ "$version" == "<no value>" ]] && version=""
+    if [[ -z "$version" ]]; then
+      version="$(docker image inspect -f '{{ index .Config.Labels "org.label-schema.version" }}' "$image_id" 2>/dev/null || true)"
+      [[ "$version" == "<no value>" ]] && version=""
+    fi
+    if [[ -z "$version" ]]; then
+      revision="$(docker image inspect -f '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image_id" 2>/dev/null || true)"
+      [[ "$revision" == "<no value>" ]] && revision=""
+      if [[ -n "$revision" ]]; then
+        if [[ ${#revision} -gt 12 ]]; then
+          version="${revision:0:12}"
+        else
+          version="$revision"
+        fi
+      fi
+    fi
+  fi
+
+  if [[ -z "$version" && -n "$image_ref" ]]; then
+    tail="${image_ref##*/}"
+    if [[ "$tail" == *:* ]]; then
+      version="${tail##*:}"
+      if [[ "$version" == "latest" ]]; then
+        version=""
+      fi
+    fi
+  fi
+
+  if [[ -n "$version" ]]; then
+    echo "$version"
+    return 0
+  fi
+
+  if [[ -n "$image_id" ]]; then
+    image_id="${image_id#sha256:}"
+    echo "sha-${image_id:0:12}"
+    return 0
+  fi
 
   if [[ -z "$image_ref" ]]; then
     echo "unknown"
@@ -279,8 +327,6 @@ draw_header() {
   local sub_color=""
   local panel_version=""
   local sub_version=""
-  local panel_image=""
-  local sub_image=""
 
   clear
   timer_state="$($SUDO systemctl is-active panel-backup.timer 2>/dev/null || echo "inactive")"
@@ -288,10 +334,8 @@ draw_header() {
   schedule_label="$(format_schedule_label "$schedule_now")"
   panel_state="$(container_state remnawave)"
   sub_state="$(container_state remnawave-subscription-page)"
-  panel_image="$(container_image_ref remnawave)"
-  sub_image="$(container_image_ref remnawave-subscription-page)"
-  panel_version="$(container_version_label "$panel_image")"
-  sub_version="$(container_version_label "$sub_image")"
+  panel_version="$(container_version_label remnawave)"
+  sub_version="$(container_version_label remnawave-subscription-page)"
   ram_label="$(memory_usage_label)"
   disk_label="$(disk_usage_label)"
   ram_percent="$(memory_usage_percent)"

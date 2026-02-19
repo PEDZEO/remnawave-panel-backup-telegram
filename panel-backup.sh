@@ -73,8 +73,56 @@ container_image_ref() {
 }
 
 container_version_label() {
-  local image_ref="$1"
+  local name="$1"
   local tail=""
+  local image_ref=""
+  local image_id=""
+  local version=""
+  local revision=""
+
+  image_ref="$(container_image_ref "$name")"
+  image_id="$(docker inspect -f '{{.Image}}' "$name" 2>/dev/null || true)"
+
+  if [[ -n "$image_id" ]]; then
+    version="$(docker image inspect -f '{{ index .Config.Labels "org.opencontainers.image.version" }}' "$image_id" 2>/dev/null || true)"
+    [[ "$version" == "<no value>" ]] && version=""
+    if [[ -z "$version" ]]; then
+      version="$(docker image inspect -f '{{ index .Config.Labels "org.label-schema.version" }}' "$image_id" 2>/dev/null || true)"
+      [[ "$version" == "<no value>" ]] && version=""
+    fi
+    if [[ -z "$version" ]]; then
+      revision="$(docker image inspect -f '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image_id" 2>/dev/null || true)"
+      [[ "$revision" == "<no value>" ]] && revision=""
+      if [[ -n "$revision" ]]; then
+        if [[ ${#revision} -gt 12 ]]; then
+          version="${revision:0:12}"
+        else
+          version="$revision"
+        fi
+      fi
+    fi
+  fi
+
+  if [[ -z "$version" && -n "$image_ref" ]]; then
+    tail="${image_ref##*/}"
+    if [[ "$tail" == *:* ]]; then
+      version="${tail##*:}"
+      if [[ "$version" == "latest" ]]; then
+        version=""
+      fi
+    fi
+  fi
+
+  if [[ -n "$version" ]]; then
+    printf '%s' "$version"
+    return 0
+  fi
+
+  if [[ -n "$image_id" ]]; then
+    image_id="${image_id#sha256:}"
+    printf '%s' "sha-${image_id:0:12}"
+    return 0
+  fi
 
   if [[ -z "$image_ref" ]]; then
     printf '%s' "unknown"
@@ -179,10 +227,8 @@ fi
 normalize_backup_lang
 
 REMNAWAVE_DIR="${REMNAWAVE_DIR:-$(detect_remnawave_dir || true)}"
-PANEL_IMAGE_REF="$(container_image_ref remnawave)"
-SUBSCRIPTION_IMAGE_REF="$(container_image_ref remnawave-subscription-page)"
-PANEL_VERSION="$(container_version_label "$PANEL_IMAGE_REF")"
-SUBSCRIPTION_VERSION="$(container_version_label "$SUBSCRIPTION_IMAGE_REF")"
+PANEL_VERSION="$(container_version_label remnawave)"
+SUBSCRIPTION_VERSION="$(container_version_label remnawave-subscription-page)"
 
 [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]] || fail "не найден TELEGRAM_BOT_TOKEN в ${BACKUP_ENV_PATH}"
 [[ -n "${TELEGRAM_ADMIN_ID:-}" ]] || fail "не найден TELEGRAM_ADMIN_ID в ${BACKUP_ENV_PATH}"
