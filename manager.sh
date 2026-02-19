@@ -1094,9 +1094,9 @@ show_restore_summary() {
 menu_section_operations() {
   local choice=""
   while true; do
-    draw_header "$(tr_text "Раздел: Операции backup/restore" "Section: Backup/restore operations")"
+    draw_header "$(tr_text "Раздел: Ручное управление backup" "Section: Manual backup control")"
     show_back_hint
-    paint "$CLR_MUTED" "$(tr_text "Создание и восстановление backup вручную." "Run manual backup and restore operations.")"
+    paint "$CLR_MUTED" "$(tr_text "Здесь можно вручную: 1) создать backup, 2) восстановить backup." "Manually: 1) create backup, 2) restore backup.")"
     menu_option "1" "$(tr_text "📦 Создать backup сейчас" "📦 Create backup now")"
     menu_option "2" "$(tr_text "♻️ Восстановить backup" "♻️ Restore backup")"
     menu_option "3" "$(tr_text "🔙 Назад" "🔙 Back")"
@@ -1233,7 +1233,7 @@ interactive_menu() {
     draw_header "$(tr_text "Менеджер бэкапа панели" "Panel Backup Manager")"
     show_back_hint
     menu_option "1" "$(tr_text "🛠 Установка и настройка" "🛠 Setup and configuration")"
-    menu_option "2" "$(tr_text "📦 Операции backup/restore" "📦 Backup/restore operations")"
+    menu_option "2" "$(tr_text "📦 Создать или восстановить backup (вручную)" "📦 Create or restore backup (manual)")"
     menu_option "3" "$(tr_text "⏱ Таймер и периодичность" "⏱ Timer and schedule")"
     menu_option "4" "$(tr_text "📊 Статус и диагностика" "📊 Status and diagnostics")"
     menu_option "q" "$(tr_text "🚪 Выход" "🚪 Exit")" "$CLR_DANGER"
