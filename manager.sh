@@ -283,9 +283,17 @@ ask_value() {
   local input=""
 
   if [[ -n "$current" ]]; then
-    paint "$CLR_MUTED" "${prompt} [${current}]"
+    if [[ "$COLOR" == "1" ]]; then
+      printf "%b%s%b\n" "$CLR_MUTED" "${prompt} [${current}]" "$CLR_RESET" >&2
+    else
+      printf "%s\n" "${prompt} [${current}]" >&2
+    fi
   else
-    paint "$CLR_MUTED" "${prompt}"
+    if [[ "$COLOR" == "1" ]]; then
+      printf "%b%s%b\n" "$CLR_MUTED" "${prompt}" "$CLR_RESET" >&2
+    else
+      printf "%s\n" "${prompt}" >&2
+    fi
   fi
   read -r -p "> " input
 
