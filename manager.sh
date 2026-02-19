@@ -685,8 +685,8 @@ choose_ui_lang() {
 
   draw_header "Panel Backup Manager" "Выберите язык / Choose language"
   show_back_hint
-  menu_option "1" "Русский RU 🇷🇺"
-  menu_option "2" "English EN 🇬🇧"
+  menu_option "1" "Русский [RU]"
+  menu_option "2" "English [EN]"
   print_separator
   read -r -p "Choice [1-2]: " choice
   if is_back_command "$choice"; then
