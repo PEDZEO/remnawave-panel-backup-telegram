@@ -272,6 +272,7 @@ container_version_label() {
   fi
 
   env_version="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$name" 2>/dev/null | awk -F= '
+    $1=="__RW_METADATA_VERSION" {print $2; exit}
     $1=="REMNAWAVE_VERSION" {print $2; exit}
     $1=="SUBSCRIPTION_VERSION" {print $2; exit}
     $1=="APP_VERSION" {print $2; exit}
