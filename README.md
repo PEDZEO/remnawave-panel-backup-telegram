@@ -1,4 +1,4 @@
-# Panel Backup Telegram Manager
+# Remnawave Panel Backup Telegram Manager
 
 Автоматизированный backup/restore менеджер для панели Remnawave.
 
@@ -23,21 +23,21 @@
 ## Быстрый Старт
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/panel-backup-telegram/main/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
 ```
 
 С Telegram:
 
 ```bash
 TELEGRAM_BOT_TOKEN='YOUR_BOT_TOKEN' TELEGRAM_ADMIN_ID='YOUR_CHAT_ID' \
-bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/panel-backup-telegram/main/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
 ```
 
 С Telegram topic:
 
 ```bash
 TELEGRAM_BOT_TOKEN='YOUR_BOT_TOKEN' TELEGRAM_ADMIN_ID='-1001234567890' TELEGRAM_THREAD_ID='42' \
-bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/panel-backup-telegram/main/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
 ```
 
 ## Восстановление Через Ту Же Команду
@@ -46,28 +46,28 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/panel-backup-telegram
 
 ```bash
 MODE=restore BACKUP_FILE='/var/backups/panel/panel-backup-xxx.tar.gz' \
-bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/panel-backup-telegram/main/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
 ```
 
 Восстановить всё из URL (миграция на другой VPS):
 
 ```bash
 MODE=restore BACKUP_URL='https://example.com/panel-backup.tar.gz' \
-bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/panel-backup-telegram/main/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
 ```
 
 Восстановить выборочно:
 
 ```bash
 MODE=restore BACKUP_FILE='/var/backups/panel/panel-backup-xxx.tar.gz' RESTORE_ONLY='db,configs' \
-bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/panel-backup-telegram/main/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
 ```
 
 Dry-run без изменений:
 
 ```bash
 MODE=restore BACKUP_FILE='/var/backups/panel/panel-backup-xxx.tar.gz' RESTORE_ONLY='all' RESTORE_DRY_RUN=1 \
-bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/panel-backup-telegram/main/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
 ```
 
 ## Компоненты Restore (`RESTORE_ONLY`)

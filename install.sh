@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RAW_BASE="${RAW_BASE:-https://raw.githubusercontent.com/PEDZEO/panel-backup-telegram/main}"
+RAW_BASE="${RAW_BASE:-https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main}"
 MODE="${MODE:-install}"
 BACKUP_FILE="${BACKUP_FILE:-}"
 BACKUP_URL="${BACKUP_URL:-}"
