@@ -2,6 +2,8 @@
 set -euo pipefail
 
 RAW_BASE="${RAW_BASE:-https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main}"
+RAW_BASE_RESOLVED="$RAW_BASE"
+REPO_API="${REPO_API:-https://api.github.com/repos/PEDZEO/remnawave-panel-backup-telegram/commits/main}"
 MODE_SET="${MODE+x}"
 MODE="${MODE:-install}"
 INTERACTIVE="${INTERACTIVE:-auto}"
@@ -213,7 +215,7 @@ enter_ui_mode() {
 fetch() {
   local src="$1"
   local dst="$2"
-  local url="${RAW_BASE}/${src}"
+  local url="${RAW_BASE_RESOLVED}/${src}"
   local sep="?"
 
   if [[ "$url" == *\?* ]]; then
@@ -222,6 +224,22 @@ fetch() {
 
   curl -fsSL "${url}${sep}v=$(date +%s)" -o "$dst"
 }
+
+resolve_raw_base() {
+  local sha=""
+  local candidate=""
+
+  sha="$(curl -fsSL "$REPO_API" 2>/dev/null | sed -n 's/.*"sha":[[:space:]]*"\([a-f0-9]\{40\}\)".*/\1/p' | head -n1 || true)"
+  if [[ -z "$sha" ]]; then
+    RAW_BASE_RESOLVED="$RAW_BASE"
+    return 0
+  fi
+
+  candidate="https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/${sha}"
+  RAW_BASE_RESOLVED="$candidate"
+}
+
+resolve_raw_base
 
 is_interactive() {
   if [[ "$INTERACTIVE" == "1" ]]; then
