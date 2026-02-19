@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Runtime backup script: build archive and optionally send to Telegram.
 set -euo pipefail
 
 BACKUP_ROOT="${BACKUP_ROOT:-/var/backups/panel}"
