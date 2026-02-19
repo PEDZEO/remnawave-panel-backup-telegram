@@ -42,6 +42,7 @@ Unified installer/manager for panel backup system.
 Modes:
   MODE=install   install/update scripts, env and timer (default)
   MODE=restore   restore backup (all or selected components)
+  MODE=backup    run backup now
   MODE=status    show install/timer/backup status
 
 INTERACTIVE:
@@ -506,6 +507,23 @@ run_restore() {
   "${restore_cmd[@]}"
 }
 
+run_backup_now() {
+  local backup_cmd
+
+  if [[ ! -x /usr/local/bin/panel-backup.sh ]]; then
+    install_files
+    write_env
+    $SUDO systemctl daemon-reload
+  fi
+
+  backup_cmd=(/usr/local/bin/panel-backup.sh)
+  if [[ -n "$SUDO" ]]; then
+    backup_cmd=("$SUDO" "${backup_cmd[@]}")
+  fi
+
+  "${backup_cmd[@]}"
+}
+
 show_status() {
   local timer_show=""
   local service_show=""
@@ -614,9 +632,10 @@ interactive_menu() {
     paint "$CLR_ACCENT" "  3) $(tr_text "Включить таймер backup" "Enable scheduled backup timer")"
     paint "$CLR_ACCENT" "  4) $(tr_text "Выключить таймер backup" "Disable scheduled backup timer")"
     paint "$CLR_ACCENT" "  5) $(tr_text "Восстановить backup" "Restore backup")"
-    paint "$CLR_ACCENT" "  6) $(tr_text "Показать статус" "Show status")"
-    paint "$CLR_ACCENT" "  7) $(tr_text "Выход" "Exit")"
-    read -r -p "$(tr_text "Выбор [1-7]: " "Choice [1-7]: ")" action
+    paint "$CLR_ACCENT" "  6) $(tr_text "Создать backup сейчас" "Create backup now")"
+    paint "$CLR_ACCENT" "  7) $(tr_text "Показать статус" "Show status")"
+    paint "$CLR_ACCENT" "  8) $(tr_text "Выход" "Exit")"
+    read -r -p "$(tr_text "Выбор [1-8]: " "Choice [1-8]: ")" action
 
     case "$action" in
       1)
@@ -701,10 +720,15 @@ interactive_menu() {
         wait_for_enter
         ;;
       6)
-        show_status
+        draw_header "$(tr_text "Создание backup" "Create backup")"
+        run_backup_now
         wait_for_enter
         ;;
       7)
+        show_status
+        wait_for_enter
+        ;;
+      8)
         echo "$(tr_text "Выход." "Cancelled.")"
         break
         ;;
@@ -738,6 +762,9 @@ case "$MODE" in
       $SUDO systemctl daemon-reload
     fi
     run_restore
+    ;;
+  backup)
+    run_backup_now
     ;;
   status)
     show_status
