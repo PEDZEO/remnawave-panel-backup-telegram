@@ -55,43 +55,6 @@ menu_flow_install_and_setup() {
   wait_for_enter
 }
 
-menu_flow_edit_settings_only() {
-  local old_bot=""
-  local old_admin=""
-  local old_thread=""
-  local old_dir=""
-  local old_lang=""
-  local old_encrypt=""
-  local old_password=""
-  local old_calendar=""
-
-  load_existing_env_defaults
-  old_bot="$TELEGRAM_BOT_TOKEN"
-  old_admin="$TELEGRAM_ADMIN_ID"
-  old_thread="$TELEGRAM_THREAD_ID"
-  old_dir="$REMNAWAVE_DIR"
-  old_lang="$BACKUP_LANG"
-  old_encrypt="$BACKUP_ENCRYPT"
-  old_password="$BACKUP_PASSWORD"
-  old_calendar="$BACKUP_ON_CALENDAR"
-
-  draw_header "$(tr_text "Настройка Telegram и пути" "Configure Telegram and path")"
-  paint "$CLR_MUTED" "$(tr_text "Скрипты не переустанавливаются: меняется только /etc/panel-backup.env." "Scripts are not reinstalled: only /etc/panel-backup.env will be changed.")"
-  if ! prompt_install_settings; then
-    return 0
-  fi
-  show_quick_setup_summary "$old_bot" "$old_admin" "$old_thread" "$old_dir" "$old_lang" "$old_encrypt" "$old_password" "$old_calendar"
-  if ! ask_yes_no "$(tr_text "Сохранить эти настройки?" "Save these settings?")" "y"; then
-    [[ "$?" == "2" ]] && return 0
-    paint "$CLR_WARN" "$(tr_text "Изменения не сохранены." "Changes were not saved.")"
-    wait_for_enter
-    return 0
-  fi
-  write_env
-  paint "$CLR_OK" "$(tr_text "Настройки обновлены." "Settings updated.")"
-  wait_for_enter
-}
-
 render_change_line() {
   local label="$1"
   local before="$2"
@@ -472,20 +435,18 @@ menu_section_setup() {
     paint "$CLR_MUTED" "$(tr_text "Текущее состояние:" "Current state:") Telegram=${tg_state}, $(tr_text "шифрование" "encryption")=${enc_state}"
     menu_option "1" "$(tr_text "Установить/обновить файлы + первичная настройка" "Install/update files + initial setup")"
     menu_option "2" "$(tr_text "Быстрая настройка (3 шага)" "Quick setup (3 steps)")"
-    menu_option "3" "$(tr_text "Изменить только текущие настройки" "Edit current settings only")"
-    menu_option "4" "$(tr_text "Настройки шифрования backup" "Backup encryption settings")"
-    menu_option "5" "$(tr_text "Назад" "Back")"
+    menu_option "3" "$(tr_text "Настройки шифрования backup" "Backup encryption settings")"
+    menu_option "4" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
     case "$choice" in
       1) menu_flow_install_and_setup ;;
       2) menu_flow_quick_setup ;;
-      3) menu_flow_edit_settings_only ;;
-      4) menu_flow_encryption_settings ;;
-      5) break ;;
+      3) menu_flow_encryption_settings ;;
+      4) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
