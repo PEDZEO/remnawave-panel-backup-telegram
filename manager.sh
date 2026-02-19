@@ -219,7 +219,15 @@ container_state() {
   if [[ -z "$state" ]]; then
     echo "$(tr_text "не найден" "not found")"
   else
-    echo "$state"
+    case "$state" in
+      running) echo "$(tr_text "работает" "running")" ;;
+      exited) echo "$(tr_text "остановлен" "stopped")" ;;
+      restarting) echo "$(tr_text "перезапуск" "restarting")" ;;
+      created) echo "$(tr_text "создан" "created")" ;;
+      paused) echo "$(tr_text "на паузе" "paused")" ;;
+      dead) echo "$(tr_text "ошибка" "dead")" ;;
+      *) echo "$state" ;;
+    esac
   fi
 }
 
