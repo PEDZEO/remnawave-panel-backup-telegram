@@ -15,6 +15,7 @@ TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
 TELEGRAM_ADMIN_ID="${TELEGRAM_ADMIN_ID:-}"
 TELEGRAM_THREAD_ID="${TELEGRAM_THREAD_ID:-}"
 REMNAWAVE_DIR="${REMNAWAVE_DIR:-}"
+BACKUP_ON_CALENDAR="${BACKUP_ON_CALENDAR:-}"
 TMP_DIR="$(mktemp -d /tmp/panel-backup-install.XXXXXX)"
 SUDO=""
 COLOR=0
@@ -54,6 +55,9 @@ UI_LANG:
   UI_LANG=auto      prompt language in interactive menu (default)
   UI_LANG=ru        Russian
   UI_LANG=en|eu     English
+
+Schedule:
+  BACKUP_ON_CALENDAR='*-*-* 03:40:00 UTC'  systemd OnCalendar expression
 
 Examples:
   bash <(curl -fsSL ${RAW_BASE}/install.sh)
@@ -147,6 +151,7 @@ show_settings_preview() {
   paint "$CLR_MUTED" "  TELEGRAM_ADMIN_ID: ${TELEGRAM_ADMIN_ID:-$(tr_text "не задан" "not set")}"
   paint "$CLR_MUTED" "  TELEGRAM_THREAD_ID: ${TELEGRAM_THREAD_ID:-$(tr_text "не задан" "not set")}"
   paint "$CLR_MUTED" "  REMNAWAVE_DIR: ${REMNAWAVE_DIR:-$(tr_text "не задан" "not set")}"
+  paint "$CLR_MUTED" "  BACKUP_ON_CALENDAR: ${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}"
 }
 
 wait_for_enter() {
@@ -255,6 +260,22 @@ detect_remnawave_dir() {
   return 1
 }
 
+get_current_timer_calendar() {
+  local path=""
+  local value=""
+
+  for path in /etc/systemd/system/panel-backup.timer /usr/lib/systemd/system/panel-backup.timer /lib/systemd/system/panel-backup.timer; do
+    [[ -f "$path" ]] || continue
+    value="$(grep -E '^OnCalendar=' "$path" | head -n1 | cut -d= -f2- || true)"
+    if [[ -n "$value" ]]; then
+      echo "$value"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 show_remnawave_autodetect() {
   local candidate="$1"
   local env_file=""
@@ -302,6 +323,7 @@ load_existing_env_defaults() {
   local old_admin=""
   local old_thread=""
   local old_dir=""
+  local old_calendar=""
   local detected=""
 
   if [[ -f /etc/panel-backup.env ]]; then
@@ -309,15 +331,19 @@ load_existing_env_defaults() {
     old_admin="$(grep -E '^TELEGRAM_ADMIN_ID=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
     old_thread="$(grep -E '^TELEGRAM_THREAD_ID=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
     old_dir="$(grep -E '^REMNAWAVE_DIR=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
+    old_calendar="$(grep -E '^BACKUP_ON_CALENDAR=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
   fi
 
   TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-$old_bot}"
   TELEGRAM_ADMIN_ID="${TELEGRAM_ADMIN_ID:-$old_admin}"
   TELEGRAM_THREAD_ID="${TELEGRAM_THREAD_ID:-$old_thread}"
   REMNAWAVE_DIR="${REMNAWAVE_DIR:-$old_dir}"
+  BACKUP_ON_CALENDAR="${BACKUP_ON_CALENDAR:-$old_calendar}"
 
   detected="$(detect_remnawave_dir || true)"
   REMNAWAVE_DIR="${REMNAWAVE_DIR:-$detected}"
+  BACKUP_ON_CALENDAR="${BACKUP_ON_CALENDAR:-$(get_current_timer_calendar || true)}"
+  BACKUP_ON_CALENDAR="${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}"
 }
 
 ask_value() {
@@ -441,14 +467,72 @@ ${TELEGRAM_BOT_TOKEN:+TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}}
 ${TELEGRAM_ADMIN_ID:+TELEGRAM_ADMIN_ID=${TELEGRAM_ADMIN_ID}}
 ${TELEGRAM_THREAD_ID:+TELEGRAM_THREAD_ID=${TELEGRAM_THREAD_ID}}
 ${REMNAWAVE_DIR:+REMNAWAVE_DIR=${REMNAWAVE_DIR}}
+${BACKUP_ON_CALENDAR:+BACKUP_ON_CALENDAR=${BACKUP_ON_CALENDAR}}
 ENV"
   $SUDO chmod 600 /etc/panel-backup.env
   $SUDO chown root:root /etc/panel-backup.env
 
   paint "$CLR_MUTED" "REMNAWAVE_DIR=${REMNAWAVE_DIR:-not-detected}"
+  paint "$CLR_MUTED" "BACKUP_ON_CALENDAR=${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}"
+}
+
+write_timer_unit() {
+  local calendar="${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}"
+
+  $SUDO bash -c "cat > /etc/systemd/system/panel-backup.timer <<TIMER
+[Unit]
+Description=Run panel backup by configured schedule
+
+[Timer]
+OnCalendar=${calendar}
+Persistent=true
+Unit=panel-backup.service
+
+[Install]
+WantedBy=timers.target
+TIMER"
+  $SUDO chmod 644 /etc/systemd/system/panel-backup.timer
+  $SUDO chown root:root /etc/systemd/system/panel-backup.timer
+}
+
+configure_schedule_menu() {
+  local choice=""
+  local custom=""
+  local current="${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}"
+
+  while true; do
+    draw_header "$(tr_text "Периодичность backup" "Backup schedule")"
+    show_back_hint
+    paint "$CLR_MUTED" "$(tr_text "Текущее расписание:" "Current schedule:") ${current}"
+    paint "$CLR_ACCENT" "  1) $(tr_text "Ежедневно 03:40 UTC (по умолчанию)" "Daily at 03:40 UTC (default)")"
+    paint "$CLR_ACCENT" "  2) $(tr_text "Каждые 12 часов" "Every 12 hours")"
+    paint "$CLR_ACCENT" "  3) $(tr_text "Каждые 6 часов" "Every 6 hours")"
+    paint "$CLR_ACCENT" "  4) $(tr_text "Каждый час" "Every hour")"
+    paint "$CLR_ACCENT" "  5) $(tr_text "Свой OnCalendar" "Custom OnCalendar")"
+    paint "$CLR_ACCENT" "  6) $(tr_text "Назад" "Back")"
+    read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice
+
+    case "$choice" in
+      1) BACKUP_ON_CALENDAR="*-*-* 03:40:00 UTC"; return 0 ;;
+      2) BACKUP_ON_CALENDAR="*-*-* 00,12:00:00 UTC"; return 0 ;;
+      3) BACKUP_ON_CALENDAR="*-*-* 00,06,12,18:00:00 UTC"; return 0 ;;
+      4) BACKUP_ON_CALENDAR="hourly"; return 0 ;;
+      5)
+        custom="$(ask_value "$(tr_text "Введите OnCalendar (пример: *-*-* 02:00:00 UTC)" "Enter OnCalendar (example: *-*-* 02:00:00 UTC)")" "$current")"
+        [[ "$custom" == "__PBM_BACK__" ]] && continue
+        if [[ -n "$custom" ]]; then
+          BACKUP_ON_CALENDAR="$custom"
+          return 0
+        fi
+        ;;
+      6) return 1 ;;
+      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")" ;;
+    esac
+  done
 }
 
 enable_timer() {
+  write_timer_unit
   paint "$CLR_ACCENT" "[4/5] $(tr_text "Перезагрузка systemd и включение таймера" "Reloading systemd and enabling timer")"
   $SUDO systemctl daemon-reload
   $SUDO systemctl enable --now panel-backup.timer
@@ -542,6 +626,7 @@ show_status() {
   local service_status=""
   local service_started=""
   local service_finished=""
+  local schedule_now=""
 
   draw_header "$(tr_text "Статус panel backup" "Panel backup status")"
 
@@ -579,6 +664,8 @@ show_status() {
   else
     echo "$(tr_text "Таймер: недоступен" "Timer: not available")"
   fi
+  schedule_now="$(get_current_timer_calendar || true)"
+  echo "$(tr_text "Периодичность backup (OnCalendar): ${schedule_now:-unknown}" "Backup schedule (OnCalendar): ${schedule_now:-unknown}")"
 
   service_show="$($SUDO systemctl show panel-backup.service \
     -p ActiveState -p SubState -p Result -p ExecMainStatus \
@@ -631,11 +718,12 @@ interactive_menu() {
     paint "$CLR_ACCENT" "  2) $(tr_text "Изменить только текущие настройки (без переустановки)" "Edit current settings only (no reinstall)")"
     paint "$CLR_ACCENT" "  3) $(tr_text "Включить таймер backup" "Enable scheduled backup timer")"
     paint "$CLR_ACCENT" "  4) $(tr_text "Выключить таймер backup" "Disable scheduled backup timer")"
-    paint "$CLR_ACCENT" "  5) $(tr_text "Восстановить backup" "Restore backup")"
-    paint "$CLR_ACCENT" "  6) $(tr_text "Создать backup сейчас" "Create backup now")"
-    paint "$CLR_ACCENT" "  7) $(tr_text "Показать статус" "Show status")"
-    paint "$CLR_ACCENT" "  8) $(tr_text "Выход" "Exit")"
-    read -r -p "$(tr_text "Выбор [1-8]: " "Choice [1-8]: ")" action
+    paint "$CLR_ACCENT" "  5) $(tr_text "Настроить периодичность backup" "Configure backup schedule")"
+    paint "$CLR_ACCENT" "  6) $(tr_text "Восстановить backup" "Restore backup")"
+    paint "$CLR_ACCENT" "  7) $(tr_text "Создать backup сейчас" "Create backup now")"
+    paint "$CLR_ACCENT" "  8) $(tr_text "Показать статус" "Show status")"
+    paint "$CLR_ACCENT" "  9) $(tr_text "Выход" "Exit")"
+    read -r -p "$(tr_text "Выбор [1-9]: " "Choice [1-9]: ")" action
 
     case "$action" in
       1)
@@ -692,6 +780,18 @@ interactive_menu() {
         wait_for_enter
         ;;
       5)
+        if configure_schedule_menu; then
+          write_env
+          write_timer_unit
+          $SUDO systemctl daemon-reload
+          paint "$CLR_OK" "$(tr_text "Периодичность backup сохранена." "Backup schedule saved.")"
+          if $SUDO systemctl is-enabled --quiet panel-backup.timer 2>/dev/null; then
+            $SUDO systemctl restart panel-backup.timer || true
+          fi
+        fi
+        wait_for_enter
+        ;;
+      6)
         draw_header "$(tr_text "Восстановление backup" "Restore backup")"
         show_back_hint
         MODE="restore"
@@ -719,16 +819,16 @@ interactive_menu() {
         run_restore
         wait_for_enter
         ;;
-      6)
+      7)
         draw_header "$(tr_text "Создание backup" "Create backup")"
         run_backup_now
         wait_for_enter
         ;;
-      7)
+      8)
         show_status
         wait_for_enter
         ;;
-      8)
+      9)
         echo "$(tr_text "Выход." "Cancelled.")"
         break
         ;;
