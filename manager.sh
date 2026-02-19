@@ -165,7 +165,7 @@ is_back_command() {
 }
 
 show_back_hint() {
-  paint "$CLR_MUTED" "$(tr_text "Подсказка: b/и = назад, q = выход" "Hint: b = back, q = exit")"
+  :
 }
 
 mask_secret() {
