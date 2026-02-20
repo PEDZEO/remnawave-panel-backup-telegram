@@ -116,6 +116,7 @@ bedolaga_configure_bot_env() {
   bedolaga_upsert_env_value "$env_file" "WEB_API_DEFAULT_TOKEN" "$web_api_token"
   bedolaga_upsert_env_value "$env_file" "WEB_API_ALLOWED_ORIGINS" "https://${cabinet_domain}"
   bedolaga_upsert_env_value "$env_file" "MENU_LAYOUT_ENABLED" "true"
+  bedolaga_upsert_env_value "$env_file" "ENABLE_LOGO_MODE" "true"
   bedolaga_upsert_env_value "$env_file" "CABINET_ENABLED" "true"
   bedolaga_upsert_env_value "$env_file" "CABINET_URL" "https://${cabinet_domain}"
   bedolaga_upsert_env_value "$env_file" "CABINET_JWT_SECRET" "$cabinet_jwt_secret"
