@@ -691,15 +691,20 @@ write_subscription_template() {
   local panel_domain="$2"
   local sub_port="$3"
   local api_token="$4"
+  local deploy_mode="${5:-same-server}"
+  local sub_domain="${6:-}"
 
   $SUDO install -d -m 755 "$target_dir"
   $SUDO bash -c "cat > '${target_dir}/.env' <<ENV
 APP_PORT=${sub_port}
 REMNAWAVE_PANEL_URL=https://${panel_domain}
 REMNAWAVE_API_TOKEN=${api_token}
+PBM_SUBSCRIPTION_MODE=${deploy_mode}
+PBM_SUBSCRIPTION_DOMAIN=${sub_domain}
 ENV"
 
-  $SUDO bash -c "cat > '${target_dir}/docker-compose.yml' <<COMPOSE
+  if [[ "$deploy_mode" == "same-server" ]]; then
+    $SUDO bash -c "cat > '${target_dir}/docker-compose.yml' <<COMPOSE
 services:
   remnawave-subscription-page:
     image: remnawave/subscription-page:latest
@@ -718,17 +723,129 @@ networks:
     name: remnawave-network
     external: true
 COMPOSE"
+  else
+    $SUDO bash -c "cat > '${target_dir}/docker-compose.yml' <<COMPOSE
+services:
+  remnawave-subscription-page:
+    image: remnawave/subscription-page:latest
+    container_name: remnawave-subscription-page
+    hostname: remnawave-subscription-page
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - 127.0.0.1:${sub_port}:${sub_port}
+COMPOSE"
+  fi
 
   $SUDO chmod 600 "${target_dir}/.env"
   $SUDO chmod 644 "${target_dir}/docker-compose.yml"
 }
 
+write_subscription_caddy_template() {
+  local caddy_dir="$1"
+  local sub_domain="$2"
+  local sub_port="$3"
+
+  $SUDO install -d -m 755 "$caddy_dir"
+  $SUDO bash -c "cat > '${caddy_dir}/Caddyfile' <<CADDY
+{
+  admin off
+}
+
+${sub_domain} {
+  encode gzip zstd
+  reverse_proxy 127.0.0.1:${sub_port}
+}
+CADDY"
+
+  $SUDO bash -c "cat > '${caddy_dir}/docker-compose.yml' <<'COMPOSE'
+services:
+  remnawave-subscription-caddy:
+    image: caddy:2-alpine
+    container_name: remnawave-subscription-caddy
+    hostname: remnawave-subscription-caddy
+    restart: always
+    network_mode: host
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - subscription_caddy_data:/data
+      - subscription_caddy_config:/config
+
+volumes:
+  subscription_caddy_data:
+  subscription_caddy_config:
+COMPOSE"
+
+  $SUDO chmod 644 "${caddy_dir}/Caddyfile" "${caddy_dir}/docker-compose.yml"
+}
+
+run_subscription_caddy_install_flow() {
+  local caddy_dir="${1:-}"
+  local sub_domain="${2:-}"
+  local sub_port="${3:-}"
+  local backup_suffix=""
+
+  if [[ -z "$caddy_dir" ]]; then
+    caddy_dir="$(ask_value "$(tr_text "Путь установки Caddy для подписок" "Subscription Caddy installation path")" "${REMNAWAVE_DIR:-/opt/remnawave}/subscription-caddy")"
+    [[ "$caddy_dir" == "__PBM_BACK__" ]] && return 1
+  fi
+
+  while [[ -z "$sub_domain" ]]; do
+    sub_domain="$(ask_value "$(tr_text "Домен подписок (без http/https)" "Subscription domain (without http/https)")" "${REMNAWAVE_LAST_SUB_DOMAIN}")"
+    [[ "$sub_domain" == "__PBM_BACK__" ]] && return 1
+    [[ -n "$sub_domain" ]] || paint "$CLR_WARN" "$(tr_text "Домен подписок не может быть пустым." "Subscription domain cannot be empty.")"
+  done
+
+  while true; do
+    if [[ -z "$sub_port" ]]; then
+      sub_port="$(ask_value "$(tr_text "Локальный порт subscription" "Subscription local port")" "${REMNAWAVE_LAST_SUB_PORT:-3010}")"
+      [[ "$sub_port" == "__PBM_BACK__" ]] && return 1
+    fi
+    if [[ "$sub_port" =~ ^[0-9]+$ ]]; then
+      break
+    fi
+    paint "$CLR_WARN" "$(tr_text "Порт должен быть числом." "Port must be numeric.")"
+    sub_port=""
+  done
+
+  if ! ensure_docker_available; then
+    return 1
+  fi
+
+  if [[ -f "${caddy_dir}/Caddyfile" || -f "${caddy_dir}/docker-compose.yml" ]]; then
+    backup_suffix="$(date -u +%Y%m%d-%H%M%S)"
+    $SUDO cp "${caddy_dir}/Caddyfile" "${caddy_dir}/Caddyfile.bak-${backup_suffix}" >/dev/null 2>&1 || true
+    $SUDO cp "${caddy_dir}/docker-compose.yml" "${caddy_dir}/docker-compose.yml.bak-${backup_suffix}" >/dev/null 2>&1 || true
+  fi
+
+  paint "$CLR_ACCENT" "$(tr_text "Генерирую Caddy для подписок" "Generating subscription Caddy configuration")"
+  write_subscription_caddy_template "$caddy_dir" "$sub_domain" "$sub_port"
+
+  paint "$CLR_ACCENT" "$(tr_text "Запускаю Caddy для подписок" "Starting subscription Caddy")"
+  if compose_stack_up "$caddy_dir"; then
+    paint "$CLR_OK" "$(tr_text "Caddy для подписок установлен/обновлен." "Subscription Caddy installed/updated.")"
+    return 0
+  fi
+
+  paint "$CLR_DANGER" "$(tr_text "Не удалось запустить Caddy для подписок." "Failed to start subscription Caddy.")"
+  return 1
+}
+
 run_subscription_install_flow() {
   local sub_dir=""
   local panel_domain=""
+  local sub_domain=""
   local sub_port=""
   local api_token=""
   local backup_suffix=""
+  local install_with_panel="1"
+  local panel_dir="${REMNAWAVE_DIR:-/opt/remnawave}"
+  local default_same_server="y"
+  local yn_rc=0
+  local deploy_mode="same-server"
+  local install_caddy_for_separate="0"
+  local caddy_dir=""
 
   load_existing_env_defaults
 
@@ -736,12 +853,46 @@ run_subscription_install_flow() {
   sub_dir="$(ask_value "$(tr_text "Путь установки subscription" "Subscription installation path")" "${REMNAWAVE_DIR:-/opt/remnawave}/subscription")"
   [[ "$sub_dir" == "__PBM_BACK__" ]] && return 1
 
+  if [[ ! -f "${panel_dir}/.env" && ! -f "${panel_dir}/docker-compose.yml" ]]; then
+    default_same_server="n"
+  fi
+
+  if [[ "${AUTO_REMNAWAVE_FULL:-0}" != "1" ]]; then
+    while true; do
+      if ask_yes_no "$(tr_text "Страница подписок на том же сервере, что и панель?" "Install subscription on the same server as panel?")" "$default_same_server"; then
+        if [[ -f "${panel_dir}/.env" || -f "${panel_dir}/docker-compose.yml" ]]; then
+          install_with_panel="1"
+          break
+        fi
+        paint "$CLR_WARN" "$(tr_text "Панель в ${REMNAWAVE_DIR:-/opt/remnawave} не найдена. Для отдельного сервера выберите 'n'." "Panel was not found in ${REMNAWAVE_DIR:-/opt/remnawave}. Select 'n' for separate server mode.")"
+      else
+        yn_rc=$?
+        if [[ "$yn_rc" -eq 2 ]]; then
+          return 1
+        fi
+        install_with_panel="0"
+        break
+      fi
+    done
+  fi
+
   while true; do
     panel_domain="$(ask_value "$(tr_text "Домен панели (без http/https)" "Panel domain (without http/https)")" "${REMNAWAVE_LAST_PANEL_DOMAIN}")"
     [[ "$panel_domain" == "__PBM_BACK__" ]] && return 1
     [[ -n "$panel_domain" ]] && break
     paint "$CLR_WARN" "$(tr_text "Домен панели не может быть пустым." "Panel domain cannot be empty.")"
   done
+
+  if [[ "$install_with_panel" == "0" ]]; then
+    while true; do
+      sub_domain="$(ask_value "$(tr_text "Домен подписок (без http/https)" "Subscription domain (without http/https)")" "${REMNAWAVE_LAST_SUB_DOMAIN}")"
+      [[ "$sub_domain" == "__PBM_BACK__" ]] && return 1
+      [[ -n "$sub_domain" ]] && break
+      paint "$CLR_WARN" "$(tr_text "Домен подписок не может быть пустым." "Subscription domain cannot be empty.")"
+    done
+  else
+    sub_domain="${REMNAWAVE_LAST_SUB_DOMAIN}"
+  fi
 
   while true; do
     sub_port="$(ask_value "$(tr_text "Порт subscription" "Subscription port")" "3010")"
@@ -778,18 +929,38 @@ run_subscription_install_flow() {
   fi
 
   paint "$CLR_ACCENT" "$(tr_text "Генерирую конфигурацию subscription" "Generating subscription configuration")"
-  write_subscription_template "$sub_dir" "$panel_domain" "$sub_port" "$api_token"
+  if [[ "$install_with_panel" == "1" ]]; then
+    deploy_mode="same-server"
+  else
+    deploy_mode="separate-server"
+  fi
+  write_subscription_template "$sub_dir" "$panel_domain" "$sub_port" "$api_token" "$deploy_mode" "$sub_domain"
   REMNAWAVE_DIR="$(dirname "$sub_dir")"
   REMNAWAVE_LAST_PANEL_DOMAIN="$panel_domain"
+  REMNAWAVE_LAST_SUB_DOMAIN="$sub_domain"
   REMNAWAVE_LAST_SUB_PORT="$sub_port"
 
   paint "$CLR_ACCENT" "$(tr_text "Запускаю контейнер subscription" "Starting subscription container")"
-  if ! ensure_remnawave_shared_network; then
-    return 1
+  if [[ "$install_with_panel" == "1" ]]; then
+    if ! ensure_remnawave_shared_network; then
+      return 1
+    fi
   fi
   if compose_stack_up "$sub_dir"; then
     paint "$CLR_OK" "$(tr_text "Страница подписок установлена/обновлена." "Subscription page installed/updated.")"
     paint "$CLR_MUTED" "$(tr_text "Путь:" "Path:") ${sub_dir}"
+    if [[ "$install_with_panel" == "0" ]]; then
+      if ask_yes_no "$(tr_text "Установить Caddy для подписок на этом сервере?" "Install Caddy for subscription on this server?")" "y"; then
+        caddy_dir="${REMNAWAVE_DIR:-/opt/remnawave}/subscription-caddy"
+        install_caddy_for_separate="1"
+      fi
+      if [[ "$install_caddy_for_separate" == "1" ]]; then
+        if ! run_subscription_caddy_install_flow "$caddy_dir" "$sub_domain" "$sub_port"; then
+          paint "$CLR_WARN" "$(tr_text "Subscription запущен, но Caddy для подписок не настроен." "Subscription is running, but subscription Caddy was not configured.")"
+          return 1
+        fi
+      fi
+    fi
     return 0
   fi
 
@@ -800,6 +971,8 @@ run_subscription_install_flow() {
 run_subscription_update_flow() {
   local sub_dir=""
   local env_file=""
+  local deploy_mode="same-server"
+  local caddy_dir=""
 
   load_existing_env_defaults
 
@@ -810,18 +983,32 @@ run_subscription_update_flow() {
   env_file="${sub_dir}/.env"
   if [[ -f "$env_file" ]]; then
     REMNAWAVE_LAST_SUB_PORT="$(awk -F= '/^APP_PORT=/{print $2; exit}' "$env_file")"
+    REMNAWAVE_LAST_SUB_DOMAIN="$(awk -F= '/^PBM_SUBSCRIPTION_DOMAIN=/{print $2; exit}' "$env_file")"
+    deploy_mode="$(awk -F= '/^PBM_SUBSCRIPTION_MODE=/{print $2; exit}' "$env_file")"
+    [[ -z "$deploy_mode" ]] && deploy_mode="same-server"
   fi
 
   if ! ensure_docker_available; then
     return 1
   fi
-  if ! ensure_remnawave_shared_network; then
-    return 1
+  if [[ "$deploy_mode" == "same-server" ]]; then
+    if ! ensure_remnawave_shared_network; then
+      return 1
+    fi
   fi
 
   paint "$CLR_ACCENT" "$(tr_text "Обновляю subscription" "Updating subscription")"
   if compose_stack_update "$sub_dir"; then
     paint "$CLR_OK" "$(tr_text "Страница подписок обновлена." "Subscription page updated.")"
+    if [[ "$deploy_mode" == "separate-server" ]]; then
+      caddy_dir="${REMNAWAVE_DIR:-/opt/remnawave}/subscription-caddy"
+      if [[ -f "${caddy_dir}/docker-compose.yml" ]]; then
+        paint "$CLR_ACCENT" "$(tr_text "Обновляю Caddy для подписок" "Updating subscription Caddy")"
+        if ! compose_stack_update "$caddy_dir"; then
+          paint "$CLR_WARN" "$(tr_text "Subscription обновлен, но Caddy для подписок не обновлен." "Subscription updated, but subscription Caddy update failed.")"
+        fi
+      fi
+    fi
     return 0
   fi
 
@@ -831,6 +1018,7 @@ run_subscription_update_flow() {
 
 run_remnawave_full_install_flow() {
   local prev_auto_caddy="${AUTO_PANEL_CADDY:-0}"
+  local prev_auto_full="${AUTO_REMNAWAVE_FULL:-0}"
   local panel_step_rc=0
   draw_header "$(tr_text "Remnawave: полная установка" "Remnawave: full install")"
   paint "$CLR_MUTED" "$(tr_text "Шаг 1/3: панель, шаг 2/3: страница подписок, шаг 3/3: Caddy." "Step 1/3: panel, step 2/3: subscription page, step 3/3: Caddy.")"
@@ -846,10 +1034,13 @@ run_remnawave_full_install_flow() {
   if [[ "$panel_step_rc" -eq 2 ]]; then
     paint "$CLR_MUTED" "$(tr_text "Шаг панели пропущен: используется текущая установка." "Panel step skipped: using existing installation.")"
   fi
+  AUTO_REMNAWAVE_FULL=1
   if ! run_subscription_install_flow; then
+    AUTO_REMNAWAVE_FULL="$prev_auto_full"
     paint "$CLR_WARN" "$(tr_text "Панель установлена, но шаг подписок не завершен." "Panel installed, but subscription step did not finish.")"
     return 1
   fi
+  AUTO_REMNAWAVE_FULL="$prev_auto_full"
   AUTO_PANEL_CADDY=1
   if ! run_panel_caddy_install_flow; then
     AUTO_PANEL_CADDY="$prev_auto_caddy"
