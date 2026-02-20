@@ -33,6 +33,10 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backu
 - Bot: https://github.com/BEDOLAGA-DEV/remnawave-bedolaga-telegram-bot
 - Cabinet: https://github.com/BEDOLAGA-DEV/bedolaga-cabinet
 
+## Contact
+
+- Telegram: https://t.me/pedzeo (@pedzeo)
+
 ## Requirements
 
 - Linux with systemd.

@@ -18,6 +18,15 @@ draw_subheader() {
 
   clear
   paint "$CLR_TITLE" "============================================================"
+  if [[ "$title" == "$(tr_text "Главное меню" "Main menu")" ]]; then
+    paint "$CLR_ACCENT" "  ____  _____ ____   ___  _        _    ____    _   "
+    paint "$CLR_ACCENT" " | __ )| ____|  _ \\ / _ \\| |      / \\  / ___|  / \\  "
+    paint "$CLR_ACCENT" " |  _ \\|  _| | | | | | | | |     / _ \\| |  _  / _ \\ "
+    paint "$CLR_ACCENT" " | |_) | |___| |_| | |_| | |___ / ___ \\ |_| |/ ___ \\"
+    paint "$CLR_ACCENT" " |____/|_____|____/ \\___/|_____/_/   \\_\\____/_/   \\_\\"
+    paint "$CLR_MUTED" "  BEDOLAGA"
+    print_separator
+  fi
   paint "$CLR_ACCENT" "  ${title}"
   if [[ -n "$subtitle" ]]; then
     paint "$CLR_MUTED" "  ${subtitle}"
