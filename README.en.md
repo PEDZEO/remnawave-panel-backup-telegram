@@ -22,6 +22,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backu
 - Disk usage analysis and safe cleanup without removing active containers or volumes.
 - Dedicated install/update actions for Remnawave panel.
 - Dedicated install/update actions for RemnaNode.
+- RemnaNode network tools: Caddy self-steal, BBR, WARP Native (wgcf), and IPv6 toggle.
 - Dedicated install/update actions for Remnawave subscription page.
 
 ## Run Modes

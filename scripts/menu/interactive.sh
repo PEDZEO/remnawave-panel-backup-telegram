@@ -524,12 +524,16 @@ menu_section_remnanode_components() {
   while true; do
     draw_header "$(tr_text "Раздел: Компоненты RemnaNode" "Section: RemnaNode components")"
     show_back_hint
-    paint "$CLR_MUTED" "$(tr_text "Установка и обновление ноды." "Install and update node.")"
+    paint "$CLR_MUTED" "$(tr_text "Базовые и сетевые инструменты для RemnaNode." "Basic and network tools for RemnaNode.")"
     menu_option "1" "$(tr_text "Установить ноду RemnaNode" "Install RemnaNode")"
     menu_option "2" "$(tr_text "Обновить ноду RemnaNode" "Update RemnaNode")"
-    menu_option "3" "$(tr_text "Назад" "Back")"
+    menu_option "3" "$(tr_text "Настроить Caddy self-steal" "Configure Caddy self-steal")"
+    menu_option "4" "$(tr_text "Включить BBR" "Enable BBR")"
+    menu_option "5" "$(tr_text "Настроить WARP Native (wgcf)" "Configure WARP Native (wgcf)")"
+    menu_option "6" "$(tr_text "Включить/выключить IPv6" "Toggle IPv6")"
+    menu_option "7" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-7]: " "Choice [1-7]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
@@ -542,7 +546,23 @@ menu_section_remnanode_components() {
         run_node_update_flow || true
         wait_for_enter
         ;;
-      3) break ;;
+      3)
+        run_node_caddy_selfsteal_flow || true
+        wait_for_enter
+        ;;
+      4)
+        run_node_bbr_flow || true
+        wait_for_enter
+        ;;
+      5)
+        run_node_warp_native_flow || true
+        wait_for_enter
+        ;;
+      6)
+        run_node_ipv6_toggle_flow || true
+        wait_for_enter
+        ;;
+      7) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done

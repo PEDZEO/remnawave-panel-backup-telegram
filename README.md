@@ -22,6 +22,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backu
 - Анализ использования диска и безопасная очистка мусора без удаления рабочих контейнеров и томов.
 - Отдельные действия по установке и обновлению Remnawave panel.
 - Отдельные действия по установке и обновлению RemnaNode.
+- Сетевые инструменты для RemnaNode: Caddy self-steal, BBR, WARP Native (wgcf), переключение IPv6.
 - Отдельные действия по установке и обновлению страницы подписок Remnawave.
 
 ## Режимы запуска

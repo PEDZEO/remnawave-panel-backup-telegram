@@ -570,3 +570,257 @@ run_subscription_update_flow() {
   paint "$CLR_DANGER" "$(tr_text "Ошибка обновления subscription." "Subscription update failed.")"
   return 1
 }
+
+ensure_remnanode_caddy_installed() {
+  if command -v caddy >/dev/null 2>&1; then
+    return 0
+  fi
+
+  paint "$CLR_WARN" "$(tr_text "Caddy не найден." "Caddy is not installed.")"
+  if ! ask_yes_no "$(tr_text "Установить Caddy сейчас?" "Install Caddy now?")" "y"; then
+    return 1
+  fi
+
+  if command -v apt-get >/dev/null 2>&1; then
+    paint "$CLR_ACCENT" "$(tr_text "Устанавливаю Caddy через официальный репозиторий..." "Installing Caddy from official repository...")"
+    $SUDO apt-get update -y >/dev/null 2>&1 || true
+    $SUDO apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl gpg >/dev/null 2>&1 || true
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | $SUDO gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | $SUDO tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
+    $SUDO apt-get update -y >/dev/null 2>&1 || true
+    $SUDO apt-get install -y caddy >/dev/null 2>&1 || true
+  else
+    paint "$CLR_WARN" "$(tr_text "Автоустановка Caddy поддерживается только на apt-системах. Установите Caddy вручную и повторите." "Automatic Caddy install is supported only on apt-based systems. Install Caddy manually and retry.")"
+    return 1
+  fi
+
+  if ! command -v caddy >/dev/null 2>&1; then
+    paint "$CLR_DANGER" "$(tr_text "Не удалось установить Caddy." "Failed to install Caddy.")"
+    return 1
+  fi
+  return 0
+}
+
+run_node_caddy_selfsteal_flow() {
+  local domain=""
+  local monitor_port=""
+
+  draw_header "$(tr_text "RemnaNode: Caddy self-steal" "RemnaNode: Caddy self-steal")"
+  while true; do
+    domain="$(ask_value "$(tr_text "Домен для self-steal (пример: node.example.com)" "Domain for self-steal (example: node.example.com)")" "")"
+    [[ "$domain" == "__PBM_BACK__" ]] && return 1
+    [[ -n "$domain" ]] && break
+    paint "$CLR_WARN" "$(tr_text "Домен не может быть пустым." "Domain cannot be empty.")"
+  done
+
+  while true; do
+    monitor_port="$(ask_value "$(tr_text "Порт self-steal" "Self-steal port")" "8443")"
+    [[ "$monitor_port" == "__PBM_BACK__" ]] && return 1
+    if [[ "$monitor_port" =~ ^[0-9]+$ ]]; then
+      break
+    fi
+    paint "$CLR_WARN" "$(tr_text "Порт должен быть числом." "Port must be numeric.")"
+  done
+
+  if ! ensure_remnanode_caddy_installed; then
+    return 1
+  fi
+
+  $SUDO install -d -m 755 /var/www/site
+  $SUDO bash -c "cat > /var/www/site/index.html <<HTML
+<!doctype html>
+<html lang=\"en\">
+<head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>OK</title></head>
+<body><h1>OK</h1></body>
+</html>
+HTML"
+
+  $SUDO bash -c "cat > /etc/caddy/Caddyfile <<CADDY
+${domain}:${monitor_port} {
+    @local {
+        remote_ip 127.0.0.1 ::1
+    }
+
+    handle @local {
+        root * /var/www/site
+        try_files {path} /index.html
+        file_server
+    }
+
+    handle {
+        abort
+    }
+}
+CADDY"
+
+  $SUDO systemctl enable --now caddy >/dev/null 2>&1 || true
+  if $SUDO systemctl restart caddy >/dev/null 2>&1; then
+    paint "$CLR_OK" "$(tr_text "Caddy self-steal настроен." "Caddy self-steal configured.")"
+    return 0
+  fi
+
+  paint "$CLR_DANGER" "$(tr_text "Не удалось перезапустить Caddy." "Failed to restart Caddy.")"
+  return 1
+}
+
+run_node_bbr_flow() {
+  draw_header "$(tr_text "RemnaNode: BBR" "RemnaNode: BBR")"
+  if sysctl net.ipv4.tcp_congestion_control 2>/dev/null | grep -q "bbr"; then
+    paint "$CLR_OK" "$(tr_text "BBR уже включен." "BBR is already enabled.")"
+    return 0
+  fi
+
+  if ! ask_yes_no "$(tr_text "Включить BBR сейчас?" "Enable BBR now?")" "y"; then
+    return 1
+  fi
+
+  if ! $SUDO grep -q '^net.core.default_qdisc=fq$' /etc/sysctl.conf 2>/dev/null; then
+    echo "net.core.default_qdisc=fq" | $SUDO tee -a /etc/sysctl.conf >/dev/null
+  fi
+  if ! $SUDO grep -q '^net.ipv4.tcp_congestion_control=bbr$' /etc/sysctl.conf 2>/dev/null; then
+    echo "net.ipv4.tcp_congestion_control=bbr" | $SUDO tee -a /etc/sysctl.conf >/dev/null
+  fi
+
+  $SUDO sysctl -w net.core.default_qdisc=fq >/dev/null 2>&1 || true
+  $SUDO sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1 || true
+  $SUDO sysctl -p >/dev/null 2>&1 || true
+
+  if sysctl net.ipv4.tcp_congestion_control 2>/dev/null | grep -q "bbr"; then
+    paint "$CLR_OK" "$(tr_text "BBR включен." "BBR enabled.")"
+    return 0
+  fi
+  paint "$CLR_WARN" "$(tr_text "BBR не подтвержден. Проверьте sysctl вручную." "BBR not confirmed. Check sysctl manually.")"
+  return 1
+}
+
+run_node_ipv6_toggle_flow() {
+  local state=""
+  local conf_file="/etc/sysctl.d/99-remnanode-ipv6.conf"
+
+  draw_header "$(tr_text "RemnaNode: IPv6" "RemnaNode: IPv6")"
+  state="$(sysctl net.ipv6.conf.all.disable_ipv6 2>/dev/null | awk -F'= ' '{print $2}' || echo "0")"
+  if [[ "$state" == "1" ]]; then
+    paint "$CLR_WARN" "$(tr_text "Текущее состояние: IPv6 выключен." "Current state: IPv6 is disabled.")"
+    if ! ask_yes_no "$(tr_text "Включить IPv6?" "Enable IPv6?")" "y"; then
+      return 1
+    fi
+    $SUDO bash -c "cat > ${conf_file} <<CONF
+net.ipv6.conf.all.disable_ipv6=0
+net.ipv6.conf.default.disable_ipv6=0
+net.ipv6.conf.lo.disable_ipv6=0
+CONF"
+  else
+    paint "$CLR_OK" "$(tr_text "Текущее состояние: IPv6 включен." "Current state: IPv6 is enabled.")"
+    if ! ask_yes_no "$(tr_text "Выключить IPv6?" "Disable IPv6?")" "n"; then
+      return 1
+    fi
+    $SUDO bash -c "cat > ${conf_file} <<CONF
+net.ipv6.conf.all.disable_ipv6=1
+net.ipv6.conf.default.disable_ipv6=1
+net.ipv6.conf.lo.disable_ipv6=1
+CONF"
+  fi
+
+  $SUDO sysctl --system >/dev/null 2>&1 || true
+  paint "$CLR_OK" "$(tr_text "Настройка IPv6 применена." "IPv6 setting applied.")"
+  paint "$CLR_MUTED" "  $(tr_text "Файл:" "File:") ${conf_file}"
+  return 0
+}
+
+install_wgcf_binary() {
+  local release_url="https://api.github.com/repos/ViRb3/wgcf/releases/latest"
+  local version=""
+  local arch=""
+  local wgcf_arch=""
+  local bin_name=""
+  local download_url=""
+
+  version="$(curl -fsSL "$release_url" 2>/dev/null | awk -F'"' '/tag_name/ {print $4; exit}' || true)"
+  [[ -n "$version" ]] || return 1
+
+  arch="$(uname -m)"
+  case "$arch" in
+    x86_64) wgcf_arch="amd64" ;;
+    aarch64|arm64) wgcf_arch="arm64" ;;
+    armv7l) wgcf_arch="armv7" ;;
+    *) wgcf_arch="amd64" ;;
+  esac
+
+  bin_name="wgcf_${version#v}_linux_${wgcf_arch}"
+  download_url="https://github.com/ViRb3/wgcf/releases/download/${version}/${bin_name}"
+  curl -fsSL "$download_url" -o "$TMP_DIR/$bin_name" || return 1
+  chmod +x "$TMP_DIR/$bin_name"
+  $SUDO mv "$TMP_DIR/$bin_name" /usr/local/bin/wgcf
+  return 0
+}
+
+run_node_warp_native_flow() {
+  local wgcf_dir="$TMP_DIR/wgcf"
+  local reconfigure=0
+
+  draw_header "$(tr_text "RemnaNode: WARP Native (wgcf)" "RemnaNode: WARP Native (wgcf)")"
+  paint "$CLR_WARN" "$(tr_text "Режим: best-effort. Скрипт попробует настроить wgcf и интерфейс warp." "Mode: best-effort. Script will try to configure wgcf and warp interface.")"
+
+  if command -v wgcf >/dev/null 2>&1 && [[ -f /etc/wireguard/warp.conf ]]; then
+    if ask_yes_no "$(tr_text "WARP уже настроен. Переустановить/переконфигурировать?" "WARP is already configured. Reconfigure?")" "n"; then
+      reconfigure=1
+    else
+      return 1
+    fi
+  fi
+
+  if ! command -v apt-get >/dev/null 2>&1; then
+    paint "$CLR_DANGER" "$(tr_text "Автонастройка WARP поддерживается только на apt-системах." "Automatic WARP setup is supported only on apt-based systems.")"
+    return 1
+  fi
+
+  paint "$CLR_ACCENT" "$(tr_text "Устанавливаю зависимости (wireguard, curl)..." "Installing dependencies (wireguard, curl)...")"
+  $SUDO apt-get update -y >/dev/null 2>&1 || true
+  $SUDO apt-get install -y wireguard curl >/dev/null 2>&1 || true
+
+  if [[ "$reconfigure" == "1" ]]; then
+    $SUDO systemctl disable --now wg-quick@warp >/dev/null 2>&1 || true
+    $SUDO rm -f /etc/wireguard/warp.conf >/dev/null 2>&1 || true
+  fi
+
+  if ! command -v wgcf >/dev/null 2>&1; then
+    paint "$CLR_ACCENT" "$(tr_text "Скачиваю wgcf..." "Downloading wgcf...")"
+    if ! install_wgcf_binary; then
+      paint "$CLR_DANGER" "$(tr_text "Не удалось скачать wgcf." "Failed to download wgcf.")"
+      return 1
+    fi
+  fi
+
+  mkdir -p "$wgcf_dir"
+  (
+    cd "$wgcf_dir"
+    if [[ ! -f wgcf-account.toml ]]; then
+      yes | wgcf register >/dev/null 2>&1 || true
+    fi
+    wgcf generate >/dev/null 2>&1 || true
+  )
+
+  if [[ ! -f "$wgcf_dir/wgcf-profile.conf" ]]; then
+    paint "$CLR_DANGER" "$(tr_text "wgcf не сгенерировал профиль. Проверьте доступ к Cloudflare API." "wgcf did not generate profile. Check Cloudflare API access.")"
+    return 1
+  fi
+
+  $SUDO install -d -m 700 /etc/wireguard
+  $SUDO cp "$wgcf_dir/wgcf-profile.conf" /etc/wireguard/warp.conf
+  $SUDO sed -i '/^DNS =/d' /etc/wireguard/warp.conf || true
+  if ! $SUDO grep -q '^Table = off$' /etc/wireguard/warp.conf 2>/dev/null; then
+    $SUDO sed -i '/^MTU =/aTable = off' /etc/wireguard/warp.conf || true
+  fi
+  if ! $SUDO grep -q '^PersistentKeepalive = 25$' /etc/wireguard/warp.conf 2>/dev/null; then
+    $SUDO sed -i '/^Endpoint =/aPersistentKeepalive = 25' /etc/wireguard/warp.conf || true
+  fi
+
+  $SUDO systemctl enable --now wg-quick@warp >/dev/null 2>&1 || true
+  if $SUDO systemctl restart wg-quick@warp >/dev/null 2>&1; then
+    paint "$CLR_OK" "$(tr_text "WARP Native настроен." "WARP Native configured.")"
+    return 0
+  fi
+
+  paint "$CLR_WARN" "$(tr_text "WARP применен частично. Проверьте: systemctl status wg-quick@warp и wg show warp" "WARP was applied partially. Check: systemctl status wg-quick@warp and wg show warp")"
+  return 1
+}
