@@ -36,6 +36,8 @@ draw_header() {
   local latest_label=""
   local panel_state=""
   local sub_state=""
+  local bot_state=""
+  local cabinet_state=""
   local ram_label=""
   local disk_label=""
   local ram_percent=""
@@ -46,6 +48,8 @@ draw_header() {
   local sub_color=""
   local panel_version=""
   local sub_version=""
+  local bot_version=""
+  local cabinet_version=""
   local backup_age_h=-1
   local service_show=""
   local service_result=""
@@ -71,6 +75,7 @@ draw_header() {
   local tg_color=""
   local panel_dir_detected=""
   local show_full_header="0"
+  local show_bedolaga_header="0"
 
   clear
   timer_state="$($SUDO systemctl is-active panel-backup.timer 2>/dev/null || echo "inactive")"
@@ -78,8 +83,12 @@ draw_header() {
   schedule_label="$(format_schedule_label "$schedule_now")"
   panel_state="$(container_state remnawave)"
   sub_state="$(container_state remnawave-subscription-page)"
+  bot_state="$(container_state remnawave_bot)"
+  cabinet_state="$(container_state cabinet_frontend)"
   panel_version="$(container_version_label remnawave)"
   sub_version="$(container_version_label remnawave-subscription-page)"
+  bot_version="$(container_version_label remnawave_bot)"
+  cabinet_version="$(container_version_label cabinet_frontend)"
   ram_label="$(memory_usage_label)"
   disk_label="$(disk_usage_label)"
   ram_percent="$(memory_usage_percent)"
@@ -99,6 +108,9 @@ draw_header() {
   panel_dir_detected="$(detect_remnawave_dir || true)"
   if [[ -n "$panel_dir_detected" && -n "$latest_backup" ]]; then
     show_full_header="1"
+  fi
+  if docker inspect remnawave_bot >/dev/null 2>&1 || docker inspect cabinet_frontend >/dev/null 2>&1; then
+    show_bedolaga_header="1"
   fi
   if [[ "$backup_age_sec" =~ ^[0-9]+$ && "$backup_age_sec" -ge 0 ]]; then
     if (( backup_age_sec < 60 )); then
@@ -220,6 +232,13 @@ draw_header() {
     fi
     paint_labeled_value "$(tr_text "Шифрование:" "Encryption:")" "${encrypt_state}" "$encrypt_color"
     paint_labeled_value "Telegram:" "${tg_state}" "$tg_color"
+  fi
+  if [[ "$show_bedolaga_header" == "1" ]]; then
+    print_separator
+    paint_labeled_value "$(tr_text "Бот (bedolaga):" "Bot (bedolaga):")" "$bot_state" "$(state_color "$bot_state")"
+    paint_labeled_value "$(tr_text "Версия бота:" "Bot version:")" "$bot_version" "$CLR_ACCENT"
+    paint_labeled_value "$(tr_text "Кабинет (bedolaga):" "Cabinet (bedolaga):")" "$cabinet_state" "$(state_color "$cabinet_state")"
+    paint_labeled_value "$(tr_text "Версия кабинета:" "Cabinet version:")" "$cabinet_version" "$CLR_ACCENT"
   fi
   paint "$CLR_TITLE" "============================================================"
   paint "$CLR_MUTED" "$(tr_text "Выберите действие." "Select an action.")"
