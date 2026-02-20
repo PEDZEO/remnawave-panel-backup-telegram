@@ -512,6 +512,8 @@ run_panel_caddy_install_flow() {
   local panel_port=""
   local sub_port=""
   local backup_suffix=""
+  local panel_env_file=""
+  local sub_env_file=""
 
   if [[ "${AUTO_PANEL_CADDY:-0}" == "1" ]]; then
     panel_dir="${REMNAWAVE_DIR:-/opt/remnawave}"
@@ -523,6 +525,17 @@ run_panel_caddy_install_flow() {
   else
     panel_dir="$(ask_value "$(tr_text "Путь к панели Remnawave" "Remnawave panel path")" "${REMNAWAVE_DIR:-/opt/remnawave}")"
     [[ "$panel_dir" == "__PBM_BACK__" ]] && return 1
+
+    panel_env_file="${panel_dir}/.env"
+    sub_env_file="${panel_dir}/subscription/.env"
+    if [[ -f "$panel_env_file" ]]; then
+      [[ -z "$REMNAWAVE_LAST_PANEL_DOMAIN" ]] && REMNAWAVE_LAST_PANEL_DOMAIN="$(awk -F= '/^FRONT_END_DOMAIN=/{print $2; exit}' "$panel_env_file")"
+      [[ -z "$REMNAWAVE_LAST_SUB_DOMAIN" ]] && REMNAWAVE_LAST_SUB_DOMAIN="$(awk -F= '/^SUB_PUBLIC_DOMAIN=/{print $2; exit}' "$panel_env_file")"
+      [[ -z "$REMNAWAVE_LAST_PANEL_PORT" ]] && REMNAWAVE_LAST_PANEL_PORT="$(awk -F= '/^APP_PORT=/{print $2; exit}' "$panel_env_file")"
+    fi
+    if [[ -f "$sub_env_file" ]]; then
+      [[ -z "$REMNAWAVE_LAST_SUB_PORT" ]] && REMNAWAVE_LAST_SUB_PORT="$(awk -F= '/^APP_PORT=/{print $2; exit}' "$sub_env_file")"
+    fi
 
     caddy_dir="$(ask_value "$(tr_text "Путь установки Caddy для панели" "Caddy installation path for panel")" "${panel_dir}/caddy")"
     [[ "$caddy_dir" == "__PBM_BACK__" ]] && return 1
@@ -724,7 +737,7 @@ run_subscription_install_flow() {
   [[ "$sub_dir" == "__PBM_BACK__" ]] && return 1
 
   while true; do
-    panel_domain="$(ask_value "$(tr_text "Домен панели (без http/https)" "Panel domain (without http/https)")" "")"
+    panel_domain="$(ask_value "$(tr_text "Домен панели (без http/https)" "Panel domain (without http/https)")" "${REMNAWAVE_LAST_PANEL_DOMAIN}")"
     [[ "$panel_domain" == "__PBM_BACK__" ]] && return 1
     [[ -n "$panel_domain" ]] && break
     paint "$CLR_WARN" "$(tr_text "Домен панели не может быть пустым." "Panel domain cannot be empty.")"

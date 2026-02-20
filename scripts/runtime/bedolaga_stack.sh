@@ -66,6 +66,90 @@ bedolaga_trim_value() {
   echo "$value"
 }
 
+bedolaga_validate_not_empty() {
+  [[ -n "$1" ]]
+}
+
+bedolaga_validate_domain() {
+  local value="$1"
+  [[ "$value" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$ ]]
+}
+
+bedolaga_validate_https_url() {
+  local value="$1"
+  [[ "$value" =~ ^https://[^[:space:]]+$ ]]
+}
+
+bedolaga_validate_bot_token() {
+  local value="$1"
+  [[ "$value" =~ ^[0-9]{6,}:[A-Za-z0-9_-]{20,}$ ]]
+}
+
+bedolaga_validate_admin_ids() {
+  local value="$1"
+  [[ "$value" =~ ^-?[0-9]+(,-?[0-9]+)*$ ]]
+}
+
+bedolaga_validate_bool() {
+  local value="${1,,}"
+  [[ "$value" == "true" || "$value" == "false" ]]
+}
+
+bedolaga_validate_int() {
+  [[ "$1" =~ ^-?[0-9]+$ ]]
+}
+
+bedolaga_validate_optional_int() {
+  [[ -z "$1" ]] || bedolaga_validate_int "$1"
+}
+
+bedolaga_validate_optional_chat_id() {
+  [[ -z "$1" ]] || [[ "$1" =~ ^-?[0-9]+$ ]]
+}
+
+bedolaga_validate_optional_channel_link() {
+  local value="$1"
+  [[ -z "$value" ]] || [[ "$value" =~ ^https?://[^[:space:]]+$ ]]
+}
+
+bedolaga_validate_hhmm() {
+  [[ "$1" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]
+}
+
+bedolaga_prompt_value() {
+  local prompt="$1"
+  local default_value="${2:-}"
+  local validator_func="$3"
+  local error_message="$4"
+  local value=""
+  while true; do
+    value="$(ask_value "$prompt" "$default_value")"
+    [[ "$value" == "__PBM_BACK__" ]] && echo "__PBM_BACK__" && return 0
+    if "$validator_func" "$value"; then
+      echo "$value"
+      return 0
+    fi
+    paint "$CLR_WARN" "$error_message"
+  done
+}
+
+bedolaga_prompt_secret_value() {
+  local prompt="$1"
+  local default_value="${2:-}"
+  local validator_func="$3"
+  local error_message="$4"
+  local value=""
+  while true; do
+    value="$(ask_secret_value "$prompt" "$default_value")"
+    [[ "$value" == "__PBM_BACK__" ]] && echo "__PBM_BACK__" && return 0
+    if "$validator_func" "$value"; then
+      echo "$value"
+      return 0
+    fi
+    paint "$CLR_WARN" "$error_message"
+  done
+}
+
 bedolaga_is_integer_like() {
   local value="$1"
   [[ "$value" =~ ^-?[0-9]+$ ]] && return 0
@@ -642,25 +726,20 @@ run_bedolaga_stack_install_flow() {
     fi
   fi
 
-  hooks_domain="$(ask_value "$(tr_text "Домен для bot webhook/API (пример: hooks.example.com)" "Domain for bot webhook/API (example: hooks.example.com)")" "")"
+  hooks_domain="$(bedolaga_prompt_value "$(tr_text "Домен для bot webhook/API (пример: hooks.example.com)" "Domain for bot webhook/API (example: hooks.example.com)")" "" bedolaga_validate_domain "$(tr_text "Введите корректный домен (без https://)." "Enter a valid domain (without https://).")")"
   [[ "$hooks_domain" == "__PBM_BACK__" ]] && return 1
-  [[ -n "$hooks_domain" ]] || return 1
 
-  cabinet_domain="$(ask_value "$(tr_text "Домен для кабинета (пример: cabinet.example.com)" "Domain for cabinet (example: cabinet.example.com)")" "")"
+  cabinet_domain="$(bedolaga_prompt_value "$(tr_text "Домен для кабинета (пример: cabinet.example.com)" "Domain for cabinet (example: cabinet.example.com)")" "" bedolaga_validate_domain "$(tr_text "Введите корректный домен кабинета (без https://)." "Enter a valid cabinet domain (without https://).")")"
   [[ "$cabinet_domain" == "__PBM_BACK__" ]] && return 1
-  [[ -n "$cabinet_domain" ]] || return 1
 
-  api_domain="$(ask_value "$(tr_text "Домен для API (пример: api.example.com)" "Domain for API (example: api.example.com)")" "")"
+  api_domain="$(bedolaga_prompt_value "$(tr_text "Домен для API (пример: api.example.com)" "Domain for API (example: api.example.com)")" "" bedolaga_validate_domain "$(tr_text "Введите корректный домен API (без https://)." "Enter a valid API domain (without https://).")")"
   [[ "$api_domain" == "__PBM_BACK__" ]] && return 1
-  [[ -n "$api_domain" ]] || return 1
 
-  bot_token="$(ask_value "$(tr_text "BOT_TOKEN Telegram" "Telegram BOT_TOKEN")" "")"
+  bot_token="$(bedolaga_prompt_value "$(tr_text "BOT_TOKEN Telegram" "Telegram BOT_TOKEN")" "" bedolaga_validate_bot_token "$(tr_text "Неверный формат BOT_TOKEN (пример: 123456789:AA...)." "Invalid BOT_TOKEN format (example: 123456789:AA...).")")"
   [[ "$bot_token" == "__PBM_BACK__" ]] && return 1
-  [[ -n "$bot_token" ]] || return 1
 
-  admin_ids="$(ask_value "$(tr_text "ADMIN_IDS (через запятую)" "ADMIN_IDS (comma-separated)")" "")"
+  admin_ids="$(bedolaga_prompt_value "$(tr_text "ADMIN_IDS (через запятую)" "ADMIN_IDS (comma-separated)")" "" bedolaga_validate_admin_ids "$(tr_text "Введите ID через запятую: только числа, например 123456789,987654321." "Use comma-separated numeric IDs, e.g. 123456789,987654321.")")"
   [[ "$admin_ids" == "__PBM_BACK__" ]] && return 1
-  [[ -n "$admin_ids" ]] || return 1
 
   bot_username="$(ask_value "$(tr_text "BOT_USERNAME (без @, опционально)" "BOT_USERNAME (without @, optional)")" "")"
   [[ "$bot_username" == "__PBM_BACK__" ]] && return 1
@@ -673,65 +752,60 @@ run_bedolaga_stack_install_flow() {
     return 1
   fi
 
-  remnawave_api_url="$(ask_value "$(tr_text "REMNAWAVE_API_URL (URL панели, например https://panel.example.com)" "REMNAWAVE_API_URL (panel URL, for example https://panel.example.com)")" "")"
+  remnawave_api_url="$(bedolaga_prompt_value "$(tr_text "REMNAWAVE_API_URL (URL панели, например https://panel.example.com)" "REMNAWAVE_API_URL (panel URL, for example https://panel.example.com)")" "" bedolaga_validate_https_url "$(tr_text "URL панели должен начинаться с https://." "Panel URL must start with https://.")")"
   [[ "$remnawave_api_url" == "__PBM_BACK__" ]] && return 1
-  [[ -n "$remnawave_api_url" ]] || return 1
 
-  remnawave_api_key="$(ask_value "$(tr_text "REMNAWAVE_API_KEY (видимый ввод, Enter = оставить текущее)" "REMNAWAVE_API_KEY (visible input, Enter = keep current)")" "$remnawave_api_key")"
+  remnawave_api_key="$(bedolaga_prompt_value "$(tr_text "REMNAWAVE_API_KEY (видимый ввод, Enter = оставить текущее)" "REMNAWAVE_API_KEY (visible input, Enter = keep current)")" "$remnawave_api_key" bedolaga_validate_not_empty "$(tr_text "REMNAWAVE_API_KEY не может быть пустым." "REMNAWAVE_API_KEY cannot be empty.")")"
   [[ "$remnawave_api_key" == "__PBM_BACK__" ]] && return 1
-  [[ -n "$remnawave_api_key" ]] || return 1
 
-  postgres_db="$(ask_value "$(tr_text "POSTGRES_DB (база данных бота)" "POSTGRES_DB (bot database name)")" "$postgres_db")"
+  postgres_db="$(bedolaga_prompt_value "$(tr_text "POSTGRES_DB (база данных бота)" "POSTGRES_DB (bot database name)")" "$postgres_db" bedolaga_validate_not_empty "$(tr_text "POSTGRES_DB не может быть пустым." "POSTGRES_DB cannot be empty.")")"
   [[ "$postgres_db" == "__PBM_BACK__" ]] && return 1
-  [[ -n "$postgres_db" ]] || return 1
 
-  postgres_user="$(ask_value "$(tr_text "POSTGRES_USER (пользователь БД бота)" "POSTGRES_USER (bot database user)")" "$postgres_user")"
+  postgres_user="$(bedolaga_prompt_value "$(tr_text "POSTGRES_USER (пользователь БД бота)" "POSTGRES_USER (bot database user)")" "$postgres_user" bedolaga_validate_not_empty "$(tr_text "POSTGRES_USER не может быть пустым." "POSTGRES_USER cannot be empty.")")"
   [[ "$postgres_user" == "__PBM_BACK__" ]] && return 1
-  [[ -n "$postgres_user" ]] || return 1
 
   if [[ -z "$postgres_password" ]]; then
     postgres_password="$(generate_hex 24)"
   fi
-  postgres_password="$(ask_secret_value "$(tr_text "POSTGRES_PASSWORD (пароль БД бота, Enter = оставить текущее)" "POSTGRES_PASSWORD (bot database password, Enter = keep current)")" "$postgres_password")"
+  postgres_password="$(bedolaga_prompt_secret_value "$(tr_text "POSTGRES_PASSWORD (пароль БД бота, Enter = оставить текущее)" "POSTGRES_PASSWORD (bot database password, Enter = keep current)")" "$postgres_password" bedolaga_validate_not_empty "$(tr_text "POSTGRES_PASSWORD не может быть пустым." "POSTGRES_PASSWORD cannot be empty.")")"
   [[ "$postgres_password" == "__PBM_BACK__" ]] && return 1
-  [[ -n "$postgres_password" ]] || return 1
 
   if ask_yes_no "$(tr_text "Настроить уведомления админов/отчеты/подписку на канал сейчас?" "Configure admin notifications/reports/channel subscription now?")" "n"; then
     configure_notifications="1"
   fi
 
   if [[ "$configure_notifications" == "1" ]]; then
-    admin_notifications_enabled="$(ask_value "$(tr_text "ADMIN_NOTIFICATIONS_ENABLED (true/false)" "ADMIN_NOTIFICATIONS_ENABLED (true/false)")" "$admin_notifications_enabled")"
+    admin_notifications_enabled="$(bedolaga_prompt_value "$(tr_text "ADMIN_NOTIFICATIONS_ENABLED (true/false)" "ADMIN_NOTIFICATIONS_ENABLED (true/false)")" "$admin_notifications_enabled" bedolaga_validate_bool "$(tr_text "Допустимо только true или false." "Only true or false is allowed.")")"
     [[ "$admin_notifications_enabled" == "__PBM_BACK__" ]] && return 1
 
-    admin_notifications_chat_id="$(ask_value "$(tr_text "ADMIN_NOTIFICATIONS_CHAT_ID (пример: -1001234567890)" "ADMIN_NOTIFICATIONS_CHAT_ID (example: -1001234567890)")" "$admin_notifications_chat_id")"
+    admin_notifications_chat_id="$(bedolaga_prompt_value "$(tr_text "ADMIN_NOTIFICATIONS_CHAT_ID (пример: -1001234567890)" "ADMIN_NOTIFICATIONS_CHAT_ID (example: -1001234567890)")" "$admin_notifications_chat_id" bedolaga_validate_optional_chat_id "$(tr_text "Введите числовой chat_id (например -1001234567890) или оставьте пусто." "Enter numeric chat_id (e.g. -1001234567890) or leave empty.")")"
     [[ "$admin_notifications_chat_id" == "__PBM_BACK__" ]] && return 1
 
-    admin_notifications_topic_id="$(ask_value "$(tr_text "ADMIN_NOTIFICATIONS_TOPIC_ID (опционально, пример: 2)" "ADMIN_NOTIFICATIONS_TOPIC_ID (optional, example: 2)")" "$admin_notifications_topic_id")"
+    admin_notifications_topic_id="$(bedolaga_prompt_value "$(tr_text "ADMIN_NOTIFICATIONS_TOPIC_ID (опционально, пример: 2)" "ADMIN_NOTIFICATIONS_TOPIC_ID (optional, example: 2)")" "$admin_notifications_topic_id" bedolaga_validate_optional_int "$(tr_text "Введите числовой topic_id или оставьте пусто." "Enter numeric topic_id or leave empty.")")"
     [[ "$admin_notifications_topic_id" == "__PBM_BACK__" ]] && return 1
 
-    admin_notifications_ticket_topic_id="$(ask_value "$(tr_text "ADMIN_NOTIFICATIONS_TICKET_TOPIC_ID (опционально, пример: 126)" "ADMIN_NOTIFICATIONS_TICKET_TOPIC_ID (optional, example: 126)")" "$admin_notifications_ticket_topic_id")"
+    admin_notifications_ticket_topic_id="$(bedolaga_prompt_value "$(tr_text "ADMIN_NOTIFICATIONS_TICKET_TOPIC_ID (опционально, пример: 126)" "ADMIN_NOTIFICATIONS_TICKET_TOPIC_ID (optional, example: 126)")" "$admin_notifications_ticket_topic_id" bedolaga_validate_optional_int "$(tr_text "Введите числовой topic_id или оставьте пусто." "Enter numeric topic_id or leave empty.")")"
     [[ "$admin_notifications_ticket_topic_id" == "__PBM_BACK__" ]] && return 1
 
-    admin_reports_enabled="$(ask_value "$(tr_text "ADMIN_REPORTS_ENABLED (true/false)" "ADMIN_REPORTS_ENABLED (true/false)")" "$admin_reports_enabled")"
+    admin_reports_enabled="$(bedolaga_prompt_value "$(tr_text "ADMIN_REPORTS_ENABLED (true/false)" "ADMIN_REPORTS_ENABLED (true/false)")" "$admin_reports_enabled" bedolaga_validate_bool "$(tr_text "Допустимо только true или false." "Only true or false is allowed.")")"
     [[ "$admin_reports_enabled" == "__PBM_BACK__" ]] && return 1
 
-    admin_reports_chat_id="$(ask_value "$(tr_text "ADMIN_REPORTS_CHAT_ID (опционально, пример: -1001234567890)" "ADMIN_REPORTS_CHAT_ID (optional, example: -1001234567890)")" "$admin_reports_chat_id")"
+    admin_reports_chat_id="$(bedolaga_prompt_value "$(tr_text "ADMIN_REPORTS_CHAT_ID (опционально, пример: -1001234567890)" "ADMIN_REPORTS_CHAT_ID (optional, example: -1001234567890)")" "$admin_reports_chat_id" bedolaga_validate_optional_chat_id "$(tr_text "Введите числовой chat_id (например -1001234567890) или оставьте пусто." "Enter numeric chat_id (e.g. -1001234567890) or leave empty.")")"
     [[ "$admin_reports_chat_id" == "__PBM_BACK__" ]] && return 1
 
-    admin_reports_topic_id="$(ask_value "$(tr_text "ADMIN_REPORTS_TOPIC_ID (опционально, пример: 339)" "ADMIN_REPORTS_TOPIC_ID (optional, example: 339)")" "$admin_reports_topic_id")"
+    admin_reports_topic_id="$(bedolaga_prompt_value "$(tr_text "ADMIN_REPORTS_TOPIC_ID (опционально, пример: 339)" "ADMIN_REPORTS_TOPIC_ID (optional, example: 339)")" "$admin_reports_topic_id" bedolaga_validate_optional_int "$(tr_text "Введите числовой topic_id или оставьте пусто." "Enter numeric topic_id or leave empty.")")"
     [[ "$admin_reports_topic_id" == "__PBM_BACK__" ]] && return 1
 
-    admin_reports_send_time="$(ask_value "$(tr_text "ADMIN_REPORTS_SEND_TIME (HH:MM, пример: 10:00)" "ADMIN_REPORTS_SEND_TIME (HH:MM, example: 10:00)")" "$admin_reports_send_time")"
+    admin_reports_send_time="$(bedolaga_prompt_value "$(tr_text "ADMIN_REPORTS_SEND_TIME (HH:MM, пример: 10:00)" "ADMIN_REPORTS_SEND_TIME (HH:MM, example: 10:00)")" "$admin_reports_send_time" bedolaga_validate_hhmm "$(tr_text "Введите время в формате HH:MM (например 10:00)." "Enter time in HH:MM format (e.g. 10:00).")")"
     [[ "$admin_reports_send_time" == "__PBM_BACK__" ]] && return 1
 
-    channel_sub_id="$(ask_value "$(tr_text "CHANNEL_SUB_ID (опционально, формат: -100...)" "CHANNEL_SUB_ID (optional, format: -100...)")" "$channel_sub_id")"
+    channel_sub_id="$(bedolaga_prompt_value "$(tr_text "CHANNEL_SUB_ID (опционально, формат: -100...)" "CHANNEL_SUB_ID (optional, format: -100...)")" "$channel_sub_id" bedolaga_validate_optional_chat_id "$(tr_text "Введите числовой ID канала (например -100...) или оставьте пусто." "Enter numeric channel ID (e.g. -100...) or leave empty.")")"
     [[ "$channel_sub_id" == "__PBM_BACK__" ]] && return 1
 
-    channel_is_required_sub="$(ask_value "$(tr_text "CHANNEL_IS_REQUIRED_SUB (true/false)" "CHANNEL_IS_REQUIRED_SUB (true/false)")" "$channel_is_required_sub")"
+    channel_is_required_sub="$(bedolaga_prompt_value "$(tr_text "CHANNEL_IS_REQUIRED_SUB (true/false)" "CHANNEL_IS_REQUIRED_SUB (true/false)")" "$channel_is_required_sub" bedolaga_validate_bool "$(tr_text "Допустимо только true или false." "Only true or false is allowed.")")"
     [[ "$channel_is_required_sub" == "__PBM_BACK__" ]] && return 1
 
-    channel_link="$(ask_value "$(tr_text "CHANNEL_LINK (опционально, пример: https://t.me/your_channel)" "CHANNEL_LINK (optional, example: https://t.me/your_channel)")" "$channel_link")"
+    channel_link="$(bedolaga_prompt_value "$(tr_text "CHANNEL_LINK (опционально, пример: https://t.me/your_channel)" "CHANNEL_LINK (optional, example: https://t.me/your_channel)")" "$channel_link" bedolaga_validate_optional_channel_link "$(tr_text "Введите корректную ссылку (https://...) или оставьте пусто." "Enter valid URL (https://...) or leave empty.")")"
     [[ "$channel_link" == "__PBM_BACK__" ]] && return 1
   fi
 
@@ -740,13 +814,13 @@ run_bedolaga_stack_install_flow() {
   fi
 
   if [[ "$configure_backup_send" == "1" ]]; then
-    backup_send_enabled="$(ask_value "$(tr_text "BACKUP_SEND_ENABLED (true/false)" "BACKUP_SEND_ENABLED (true/false)")" "$backup_send_enabled")"
+    backup_send_enabled="$(bedolaga_prompt_value "$(tr_text "BACKUP_SEND_ENABLED (true/false)" "BACKUP_SEND_ENABLED (true/false)")" "$backup_send_enabled" bedolaga_validate_bool "$(tr_text "Допустимо только true или false." "Only true or false is allowed.")")"
     [[ "$backup_send_enabled" == "__PBM_BACK__" ]] && return 1
 
-    backup_send_chat_id="$(ask_value "$(tr_text "BACKUP_SEND_CHAT_ID (формат: -100..., пример: -1001234567890)" "BACKUP_SEND_CHAT_ID (format: -100..., example: -1001234567890)")" "$backup_send_chat_id")"
+    backup_send_chat_id="$(bedolaga_prompt_value "$(tr_text "BACKUP_SEND_CHAT_ID (формат: -100..., пример: -1001234567890)" "BACKUP_SEND_CHAT_ID (format: -100..., example: -1001234567890)")" "$backup_send_chat_id" bedolaga_validate_optional_chat_id "$(tr_text "Введите числовой chat_id (например -100...) или оставьте пусто." "Enter numeric chat_id (e.g. -100...) or leave empty.")")"
     [[ "$backup_send_chat_id" == "__PBM_BACK__" ]] && return 1
 
-    backup_send_topic_id="$(ask_value "$(tr_text "BACKUP_SEND_TOPIC_ID (опционально, пример: 8)" "BACKUP_SEND_TOPIC_ID (optional, example: 8)")" "$backup_send_topic_id")"
+    backup_send_topic_id="$(bedolaga_prompt_value "$(tr_text "BACKUP_SEND_TOPIC_ID (опционально, пример: 8)" "BACKUP_SEND_TOPIC_ID (optional, example: 8)")" "$backup_send_topic_id" bedolaga_validate_optional_int "$(tr_text "Введите числовой topic_id или оставьте пусто." "Enter numeric topic_id or leave empty.")")"
     [[ "$backup_send_topic_id" == "__PBM_BACK__" ]] && return 1
   fi
 
@@ -850,17 +924,14 @@ run_bedolaga_stack_update_flow() {
     return 1
   fi
 
-  hooks_domain="$(ask_value "$(tr_text "Домен webhook/API (как в установке)" "Webhook/API domain (same as install)")" "")"
+  hooks_domain="$(bedolaga_prompt_value "$(tr_text "Домен webhook/API (как в установке)" "Webhook/API domain (same as install)")" "" bedolaga_validate_domain "$(tr_text "Введите корректный домен (без https://)." "Enter a valid domain (without https://).")")"
   [[ "$hooks_domain" == "__PBM_BACK__" ]] && return 1
-  [[ -n "$hooks_domain" ]] || return 1
 
-  cabinet_domain="$(ask_value "$(tr_text "Домен кабинета (как в установке)" "Cabinet domain (same as install)")" "")"
+  cabinet_domain="$(bedolaga_prompt_value "$(tr_text "Домен кабинета (как в установке)" "Cabinet domain (same as install)")" "" bedolaga_validate_domain "$(tr_text "Введите корректный домен кабинета (без https://)." "Enter a valid cabinet domain (without https://).")")"
   [[ "$cabinet_domain" == "__PBM_BACK__" ]] && return 1
-  [[ -n "$cabinet_domain" ]] || return 1
 
-  api_domain="$(ask_value "$(tr_text "Домен API (как в установке)" "API domain (same as install)")" "")"
+  api_domain="$(bedolaga_prompt_value "$(tr_text "Домен API (как в установке)" "API domain (same as install)")" "" bedolaga_validate_domain "$(tr_text "Введите корректный домен API (без https://)." "Enter a valid API domain (without https://).")")"
   [[ "$api_domain" == "__PBM_BACK__" ]] && return 1
-  [[ -n "$api_domain" ]] || return 1
 
   cabinet_port="$(ask_value "$(tr_text "Локальный порт cabinet (для Caddy reverse proxy)" "Local cabinet port (for Caddy reverse proxy)")" "3020")"
   [[ "$cabinet_port" == "__PBM_BACK__" ]] && return 1
