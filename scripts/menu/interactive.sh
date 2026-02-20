@@ -21,22 +21,24 @@ menu_section_remnawave_components() {
   while true; do
     draw_subheader "$(tr_text "Раздел: Компоненты Remnawave" "Section: Remnawave components")"
     show_back_hint
-    paint "$CLR_MUTED" "$(tr_text "Установка и обновление панели и страницы подписок." "Install and update panel and subscription page.")"
-    menu_option "1" "$(tr_text "Полная установка (панель + подписки)" "Full install (panel + subscription)")"
+    paint "$CLR_MUTED" "$(tr_text "Установка и обновление панели, подписок и Caddy для панели." "Install and update panel, subscription and panel Caddy.")"
+    menu_option "1" "$(tr_text "Полная установка (панель + подписки + Caddy)" "Full install (panel + subscription + Caddy)")"
     menu_option "2" "$(tr_text "Установить панель Remnawave" "Install Remnawave panel")"
     menu_option "3" "$(tr_text "Установить страницу подписок" "Install subscription page")"
-    menu_option "4" "$(tr_text "Полное обновление (панель + подписки)" "Full update (panel + subscription)")"
+    menu_option "4" "$(tr_text "Полное обновление (панель + подписки + Caddy)" "Full update (panel + subscription + Caddy)")"
     menu_option "5" "$(tr_text "Обновить панель Remnawave" "Update Remnawave panel")"
     menu_option "6" "$(tr_text "Обновить страницу подписок" "Update subscription page")"
-    menu_option "7" "$(tr_text "Назад" "Back")"
+    menu_option "7" "$(tr_text "Установить Caddy для панели" "Install panel Caddy")"
+    menu_option "8" "$(tr_text "Обновить Caddy для панели" "Update panel Caddy")"
+    menu_option "9" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-7]: " "Choice [1-7]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-9]: " "Choice [1-9]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
     case "$choice" in
       1)
-        run_component_flow_action "$(tr_text "Полная установка (панель + подписки)" "Full install (panel + subscription)")" run_remnawave_full_install_flow
+        run_component_flow_action "$(tr_text "Полная установка (панель + подписки + Caddy)" "Full install (panel + subscription + Caddy)")" run_remnawave_full_install_flow
         ;;
       2)
         run_component_flow_action "$(tr_text "Установить панель Remnawave" "Install Remnawave panel")" run_panel_install_flow
@@ -45,7 +47,7 @@ menu_section_remnawave_components() {
         run_component_flow_action "$(tr_text "Установить страницу подписок" "Install subscription page")" run_subscription_install_flow
         ;;
       4)
-        run_component_flow_action "$(tr_text "Полное обновление (панель + подписки)" "Full update (panel + subscription)")" run_remnawave_full_update_flow
+        run_component_flow_action "$(tr_text "Полное обновление (панель + подписки + Caddy)" "Full update (panel + subscription + Caddy)")" run_remnawave_full_update_flow
         ;;
       5)
         run_component_flow_action "$(tr_text "Обновить панель Remnawave" "Update Remnawave panel")" run_panel_update_flow
@@ -53,7 +55,13 @@ menu_section_remnawave_components() {
       6)
         run_component_flow_action "$(tr_text "Обновить страницу подписок" "Update subscription page")" run_subscription_update_flow
         ;;
-      7) break ;;
+      7)
+        run_component_flow_action "$(tr_text "Установить Caddy для панели" "Install panel Caddy")" run_panel_caddy_install_flow
+        ;;
+      8)
+        run_component_flow_action "$(tr_text "Обновить Caddy для панели" "Update panel Caddy")" run_panel_caddy_update_flow
+        ;;
+      9) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done

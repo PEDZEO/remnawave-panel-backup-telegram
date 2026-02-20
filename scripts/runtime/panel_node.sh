@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # update: panel/node install and update operations for manager.sh
 
+REMNAWAVE_LAST_PANEL_DOMAIN=""
+REMNAWAVE_LAST_SUB_DOMAIN=""
+REMNAWAVE_LAST_PANEL_PORT=""
+REMNAWAVE_LAST_SUB_PORT=""
+
 ensure_docker_available() {
   if command -v docker >/dev/null 2>&1; then
     return 0
@@ -207,8 +212,7 @@ services:
 networks:
   remnawave-network:
     name: remnawave-network
-    driver: bridge
-    external: false
+    external: true
 
 volumes:
   remnawave-db-data:
@@ -270,6 +274,72 @@ compose_stack_update() {
     $SUDO docker compose down
     $SUDO docker compose up -d
   )
+}
+
+ensure_remnawave_shared_network() {
+  if ! $SUDO docker network inspect remnawave-network >/dev/null 2>&1; then
+    paint "$CLR_ACCENT" "$(tr_text "Создаю общую Docker сеть remnawave-network" "Creating shared Docker network remnawave-network")"
+    if ! $SUDO docker network create remnawave-network >/dev/null 2>&1; then
+      paint "$CLR_DANGER" "$(tr_text "Не удалось создать сеть remnawave-network." "Failed to create remnawave-network.")"
+      return 1
+    fi
+  fi
+  return 0
+}
+
+write_panel_caddy_templates() {
+  local caddy_dir="$1"
+  local panel_domain="$2"
+  local sub_domain="$3"
+  local panel_port="$4"
+  local sub_port="$5"
+
+  $SUDO install -d -m 755 "$caddy_dir"
+
+  $SUDO bash -c "cat > '${caddy_dir}/Caddyfile' <<CADDY
+{
+  admin off
+}
+
+${panel_domain} {
+  encode gzip zstd
+  reverse_proxy remnawave:${panel_port}
+}
+
+${sub_domain} {
+  encode gzip zstd
+  reverse_proxy remnawave-subscription-page:${sub_port}
+}
+CADDY"
+
+  $SUDO bash -c "cat > '${caddy_dir}/docker-compose.yml' <<'COMPOSE'
+services:
+  remnawave-caddy:
+    image: caddy:2-alpine
+    container_name: remnawave-caddy
+    hostname: remnawave-caddy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - remnawave-network
+
+networks:
+  remnawave-network:
+    name: remnawave-network
+    external: true
+
+volumes:
+  caddy_data:
+  caddy_config:
+COMPOSE"
+
+  $SUDO chmod 644 "${caddy_dir}/Caddyfile" "${caddy_dir}/docker-compose.yml"
 }
 
 run_panel_install_flow() {
@@ -369,6 +439,10 @@ run_panel_install_flow() {
   fi
 
   write_panel_templates "$panel_dir" "$panel_domain" "$sub_domain" "$panel_port" "$db_user" "$db_password" "$jwt_auth_secret" "$jwt_api_tokens_secret" "$metrics_user" "$metrics_pass" "$webhook_secret_header"
+  REMNAWAVE_DIR="$panel_dir"
+  REMNAWAVE_LAST_PANEL_DOMAIN="$panel_domain"
+  REMNAWAVE_LAST_SUB_DOMAIN="$sub_domain"
+  REMNAWAVE_LAST_PANEL_PORT="$panel_port"
 
   if [[ -n "$clean_data" ]]; then
     paint "$CLR_WARN" "$(tr_text "Удаляю volumes панели" "Removing panel volumes")"
@@ -378,6 +452,9 @@ run_panel_install_flow() {
   fi
 
   paint "$CLR_ACCENT" "$(tr_text "Запускаю контейнеры панели" "Starting panel containers")"
+  if ! ensure_remnawave_shared_network; then
+    return 1
+  fi
   if compose_stack_up "$panel_dir"; then
     paint "$CLR_OK" "$(tr_text "Панель установлена/обновлена." "Panel installed/updated.")"
     paint "$CLR_MUTED" "$(tr_text "Путь:" "Path:") ${panel_dir}"
@@ -390,11 +467,23 @@ run_panel_install_flow() {
 
 run_panel_update_flow() {
   local panel_dir=""
+  local env_file=""
   draw_header "$(tr_text "Обновление панели Remnawave" "Update Remnawave panel")"
   panel_dir="$(ask_value "$(tr_text "Путь к панели" "Panel path")" "/opt/remnawave")"
   [[ "$panel_dir" == "__PBM_BACK__" ]] && return 1
 
+  REMNAWAVE_DIR="$panel_dir"
+  env_file="${panel_dir}/.env"
+  if [[ -f "$env_file" ]]; then
+    REMNAWAVE_LAST_PANEL_DOMAIN="$(awk -F= '/^FRONT_END_DOMAIN=/{print $2; exit}' "$env_file")"
+    REMNAWAVE_LAST_SUB_DOMAIN="$(awk -F= '/^SUB_PUBLIC_DOMAIN=/{print $2; exit}' "$env_file")"
+    REMNAWAVE_LAST_PANEL_PORT="$(awk -F= '/^APP_PORT=/{print $2; exit}' "$env_file")"
+  fi
+
   if ! ensure_docker_available; then
+    return 1
+  fi
+  if ! ensure_remnawave_shared_network; then
     return 1
   fi
 
@@ -405,6 +494,111 @@ run_panel_update_flow() {
   fi
 
   paint "$CLR_DANGER" "$(tr_text "Ошибка обновления панели." "Panel update failed.")"
+  return 1
+}
+
+run_panel_caddy_install_flow() {
+  local panel_dir=""
+  local caddy_dir=""
+  local panel_domain=""
+  local sub_domain=""
+  local panel_port=""
+  local sub_port=""
+  local backup_suffix=""
+
+  if [[ "${AUTO_PANEL_CADDY:-0}" == "1" ]]; then
+    panel_dir="${REMNAWAVE_DIR:-/opt/remnawave}"
+    caddy_dir="${panel_dir}/caddy"
+    panel_domain="${REMNAWAVE_LAST_PANEL_DOMAIN}"
+    sub_domain="${REMNAWAVE_LAST_SUB_DOMAIN}"
+    panel_port="${REMNAWAVE_LAST_PANEL_PORT:-3000}"
+    sub_port="${REMNAWAVE_LAST_SUB_PORT:-3010}"
+  else
+    panel_dir="$(ask_value "$(tr_text "Путь к панели Remnawave" "Remnawave panel path")" "${REMNAWAVE_DIR:-/opt/remnawave}")"
+    [[ "$panel_dir" == "__PBM_BACK__" ]] && return 1
+
+    caddy_dir="$(ask_value "$(tr_text "Путь установки Caddy для панели" "Caddy installation path for panel")" "${panel_dir}/caddy")"
+    [[ "$caddy_dir" == "__PBM_BACK__" ]] && return 1
+
+    panel_domain="$(ask_value "$(tr_text "Домен панели (без http/https)" "Panel domain (without http/https)")" "${REMNAWAVE_LAST_PANEL_DOMAIN}")"
+    [[ "$panel_domain" == "__PBM_BACK__" ]] && return 1
+    sub_domain="$(ask_value "$(tr_text "Домен подписки (без http/https)" "Subscription domain (without http/https)")" "${REMNAWAVE_LAST_SUB_DOMAIN}")"
+    [[ "$sub_domain" == "__PBM_BACK__" ]] && return 1
+    panel_port="$(ask_value "$(tr_text "Локальный порт панели" "Panel local port")" "${REMNAWAVE_LAST_PANEL_PORT:-3000}")"
+    [[ "$panel_port" == "__PBM_BACK__" ]] && return 1
+    sub_port="$(ask_value "$(tr_text "Локальный порт subscription" "Subscription local port")" "${REMNAWAVE_LAST_SUB_PORT:-3010}")"
+    [[ "$sub_port" == "__PBM_BACK__" ]] && return 1
+  fi
+
+  if ! [[ "$panel_port" =~ ^[0-9]+$ && "$sub_port" =~ ^[0-9]+$ ]]; then
+    paint "$CLR_DANGER" "$(tr_text "Порты должны быть числовыми." "Ports must be numeric.")"
+    return 1
+  fi
+  if [[ -z "$panel_domain" || -z "$sub_domain" ]]; then
+    paint "$CLR_DANGER" "$(tr_text "Домены не могут быть пустыми." "Domains cannot be empty.")"
+    return 1
+  fi
+
+  if ! ensure_docker_available; then
+    return 1
+  fi
+  if ! ensure_remnawave_shared_network; then
+    return 1
+  fi
+
+  if [[ -f "${caddy_dir}/Caddyfile" || -f "${caddy_dir}/docker-compose.yml" ]]; then
+    backup_suffix="$(date -u +%Y%m%d-%H%M%S)"
+    $SUDO cp "${caddy_dir}/Caddyfile" "${caddy_dir}/Caddyfile.bak-${backup_suffix}" >/dev/null 2>&1 || true
+    $SUDO cp "${caddy_dir}/docker-compose.yml" "${caddy_dir}/docker-compose.yml.bak-${backup_suffix}" >/dev/null 2>&1 || true
+  fi
+
+  paint "$CLR_ACCENT" "$(tr_text "Генерирую конфигурацию Caddy для панели" "Generating Caddy configuration for panel")"
+  write_panel_caddy_templates "$caddy_dir" "$panel_domain" "$sub_domain" "$panel_port" "$sub_port"
+
+  paint "$CLR_ACCENT" "$(tr_text "Запускаю Caddy для панели" "Starting panel Caddy")"
+  if compose_stack_up "$caddy_dir"; then
+    paint "$CLR_OK" "$(tr_text "Caddy для панели установлен/обновлен." "Panel Caddy installed/updated.")"
+    return 0
+  fi
+
+  paint "$CLR_DANGER" "$(tr_text "Не удалось запустить Caddy для панели." "Failed to start panel Caddy.")"
+  return 1
+}
+
+run_panel_caddy_update_flow() {
+  local panel_dir=""
+  local caddy_dir=""
+
+  if [[ "${AUTO_PANEL_CADDY:-0}" == "1" ]]; then
+    panel_dir="${REMNAWAVE_DIR:-/opt/remnawave}"
+    caddy_dir="${panel_dir}/caddy"
+  else
+    panel_dir="$(ask_value "$(tr_text "Путь к панели Remnawave" "Remnawave panel path")" "${REMNAWAVE_DIR:-/opt/remnawave}")"
+    [[ "$panel_dir" == "__PBM_BACK__" ]] && return 1
+    caddy_dir="$(ask_value "$(tr_text "Путь к Caddy панели" "Panel Caddy path")" "${panel_dir}/caddy")"
+    [[ "$caddy_dir" == "__PBM_BACK__" ]] && return 1
+  fi
+
+  if [[ ! -f "${caddy_dir}/docker-compose.yml" ]]; then
+    paint "$CLR_WARN" "$(tr_text "Caddy для панели не найден, запускаю установку." "Panel Caddy not found, starting install flow.")"
+    run_panel_caddy_install_flow
+    return $?
+  fi
+
+  if ! ensure_docker_available; then
+    return 1
+  fi
+  if ! ensure_remnawave_shared_network; then
+    return 1
+  fi
+
+  paint "$CLR_ACCENT" "$(tr_text "Обновляю Caddy для панели" "Updating panel Caddy")"
+  if compose_stack_update "$caddy_dir"; then
+    paint "$CLR_OK" "$(tr_text "Caddy для панели обновлен." "Panel Caddy updated.")"
+    return 0
+  fi
+
+  paint "$CLR_DANGER" "$(tr_text "Ошибка обновления Caddy для панели." "Panel Caddy update failed.")"
   return 1
 }
 
@@ -494,8 +688,15 @@ services:
     restart: always
     env_file:
       - .env
+    networks:
+      - remnawave-network
     ports:
       - 127.0.0.1:${sub_port}:${sub_port}
+
+networks:
+  remnawave-network:
+    name: remnawave-network
+    external: true
 COMPOSE"
 
   $SUDO chmod 600 "${target_dir}/.env"
@@ -558,8 +759,14 @@ run_subscription_install_flow() {
 
   paint "$CLR_ACCENT" "$(tr_text "Генерирую конфигурацию subscription" "Generating subscription configuration")"
   write_subscription_template "$sub_dir" "$panel_domain" "$sub_port" "$api_token"
+  REMNAWAVE_DIR="$(dirname "$sub_dir")"
+  REMNAWAVE_LAST_SUB_PORT="$sub_port"
+  REMNAWAVE_LAST_SUB_DOMAIN="${REMNAWAVE_LAST_SUB_DOMAIN:-$panel_domain}"
 
   paint "$CLR_ACCENT" "$(tr_text "Запускаю контейнер subscription" "Starting subscription container")"
+  if ! ensure_remnawave_shared_network; then
+    return 1
+  fi
   if compose_stack_up "$sub_dir"; then
     paint "$CLR_OK" "$(tr_text "Страница подписок установлена/обновлена." "Subscription page installed/updated.")"
     paint "$CLR_MUTED" "$(tr_text "Путь:" "Path:") ${sub_dir}"
@@ -572,6 +779,7 @@ run_subscription_install_flow() {
 
 run_subscription_update_flow() {
   local sub_dir=""
+  local env_file=""
 
   load_existing_env_defaults
 
@@ -579,7 +787,15 @@ run_subscription_update_flow() {
   sub_dir="$(ask_value "$(tr_text "Путь к subscription" "Subscription path")" "${REMNAWAVE_DIR:-/opt/remnawave}/subscription")"
   [[ "$sub_dir" == "__PBM_BACK__" ]] && return 1
 
+  env_file="${sub_dir}/.env"
+  if [[ -f "$env_file" ]]; then
+    REMNAWAVE_LAST_SUB_PORT="$(awk -F= '/^APP_PORT=/{print $2; exit}' "$env_file")"
+  fi
+
   if ! ensure_docker_available; then
+    return 1
+  fi
+  if ! ensure_remnawave_shared_network; then
     return 1
   fi
 
@@ -594,8 +810,9 @@ run_subscription_update_flow() {
 }
 
 run_remnawave_full_install_flow() {
+  local prev_auto_caddy="${AUTO_PANEL_CADDY:-0}"
   draw_header "$(tr_text "Remnawave: полная установка" "Remnawave: full install")"
-  paint "$CLR_MUTED" "$(tr_text "Шаг 1/2: панель, шаг 2/2: страница подписок." "Step 1/2: panel, step 2/2: subscription page.")"
+  paint "$CLR_MUTED" "$(tr_text "Шаг 1/3: панель, шаг 2/3: страница подписок, шаг 3/3: Caddy." "Step 1/3: panel, step 2/3: subscription page, step 3/3: Caddy.")"
   if ! run_panel_install_flow; then
     paint "$CLR_WARN" "$(tr_text "Полная установка остановлена на шаге панели." "Full install stopped at panel step.")"
     return 1
@@ -604,13 +821,21 @@ run_remnawave_full_install_flow() {
     paint "$CLR_WARN" "$(tr_text "Панель установлена, но шаг подписок не завершен." "Panel installed, but subscription step did not finish.")"
     return 1
   fi
+  AUTO_PANEL_CADDY=1
+  if ! run_panel_caddy_install_flow; then
+    AUTO_PANEL_CADDY="$prev_auto_caddy"
+    paint "$CLR_WARN" "$(tr_text "Панель и подписки установлены, но шаг Caddy не завершен." "Panel and subscription installed, but Caddy step did not finish.")"
+    return 1
+  fi
+  AUTO_PANEL_CADDY="$prev_auto_caddy"
   paint "$CLR_OK" "$(tr_text "Полная установка Remnawave завершена." "Remnawave full install completed.")"
   return 0
 }
 
 run_remnawave_full_update_flow() {
+  local prev_auto_caddy="${AUTO_PANEL_CADDY:-0}"
   draw_header "$(tr_text "Remnawave: полное обновление" "Remnawave: full update")"
-  paint "$CLR_MUTED" "$(tr_text "Шаг 1/2: панель, шаг 2/2: страница подписок." "Step 1/2: panel, step 2/2: subscription page.")"
+  paint "$CLR_MUTED" "$(tr_text "Шаг 1/3: панель, шаг 2/3: страница подписок, шаг 3/3: Caddy." "Step 1/3: panel, step 2/3: subscription page, step 3/3: Caddy.")"
   if ! run_panel_update_flow; then
     paint "$CLR_WARN" "$(tr_text "Полное обновление остановлено на шаге панели." "Full update stopped at panel step.")"
     return 1
@@ -619,6 +844,13 @@ run_remnawave_full_update_flow() {
     paint "$CLR_WARN" "$(tr_text "Панель обновлена, но шаг подписок не завершен." "Panel updated, but subscription step did not finish.")"
     return 1
   fi
+  AUTO_PANEL_CADDY=1
+  if ! run_panel_caddy_update_flow; then
+    AUTO_PANEL_CADDY="$prev_auto_caddy"
+    paint "$CLR_WARN" "$(tr_text "Панель и подписки обновлены, но шаг Caddy не завершен." "Panel and subscription updated, but Caddy step did not finish.")"
+    return 1
+  fi
+  AUTO_PANEL_CADDY="$prev_auto_caddy"
   paint "$CLR_OK" "$(tr_text "Полное обновление Remnawave завершено." "Remnawave full update completed.")"
   return 0
 }
