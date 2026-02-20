@@ -41,6 +41,69 @@ bedolaga_upsert_env_value() {
   mv "$tmp_file" "$file_path"
 }
 
+bedolaga_comment_out_env_key() {
+  local file_path="$1"
+  local key="$2"
+  local tmp_file=""
+
+  [[ -f "$file_path" ]] || return 0
+
+  tmp_file="$(mktemp "${TMP_DIR}/bedolaga-env.XXXXXX")"
+  awk -v key="$key" '
+    $0 ~ "^" key "=" {
+      print "# " $0
+      next
+    }
+    { print }
+  ' "$file_path" > "$tmp_file"
+  mv "$tmp_file" "$file_path"
+}
+
+bedolaga_trim_value() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  echo "$value"
+}
+
+bedolaga_is_integer_like() {
+  local value="$1"
+  [[ "$value" =~ ^-?[0-9]+$ ]] && return 0
+  [[ "$value" =~ ^\"-?[0-9]+\"$ ]] && return 0
+  [[ "$value" =~ ^\'-?[0-9]+\'$ ]] && return 0
+  return 1
+}
+
+bedolaga_comment_invalid_optional_int() {
+  local file_path="$1"
+  local key="$2"
+  local raw_value=""
+  local value=""
+
+  raw_value="$(bedolaga_read_env_value "$file_path" "$key")"
+  value="$(bedolaga_trim_value "$raw_value")"
+
+  if [[ -z "$value" || "$value" =~ ^# || "$value" =~ ^\<.*\>$ ]]; then
+    bedolaga_comment_out_env_key "$file_path" "$key"
+    return 0
+  fi
+  if ! bedolaga_is_integer_like "$value"; then
+    bedolaga_comment_out_env_key "$file_path" "$key"
+    return 0
+  fi
+}
+
+bedolaga_sanitize_bot_optional_int_env() {
+  local env_file="$1"
+
+  bedolaga_comment_invalid_optional_int "$env_file" "ADMIN_REPORTS_TOPIC_ID"
+  bedolaga_comment_invalid_optional_int "$env_file" "MULENPAY_SHOP_ID"
+  bedolaga_comment_invalid_optional_int "$env_file" "FREEKASSA_SHOP_ID"
+  bedolaga_comment_invalid_optional_int "$env_file" "FREEKASSA_PAYMENT_SYSTEM_ID"
+  bedolaga_comment_invalid_optional_int "$env_file" "KASSA_AI_SHOP_ID"
+  bedolaga_comment_invalid_optional_int "$env_file" "LOG_ROTATION_TOPIC_ID"
+}
+
 bedolaga_clone_or_update_repo() {
   local repo_url="$1"
   local target_dir="$2"
@@ -138,6 +201,7 @@ bedolaga_configure_bot_env() {
   if [[ -n "$bot_username" ]]; then
     bedolaga_upsert_env_value "$env_file" "BOT_USERNAME" "$bot_username"
   fi
+  bedolaga_sanitize_bot_optional_int_env "$env_file"
 
   return 0
 }
@@ -243,6 +307,7 @@ bedolaga_sync_bot_env_defaults() {
   if [[ -n "$bot_username" ]]; then
     bedolaga_upsert_env_value "$env_file" "BOT_USERNAME" "$bot_username"
   fi
+  bedolaga_sanitize_bot_optional_int_env "$env_file"
 
   return 0
 }
@@ -582,6 +647,7 @@ run_bedolaga_stack_install_flow() {
       "$backup_send_chat_id" \
       "$backup_send_topic_id"
   fi
+  bedolaga_sanitize_bot_optional_int_env "${bot_dir}/.env"
 
   ( cd "$bot_dir" && $SUDO docker compose up -d --build ) || return 1
 
