@@ -159,6 +159,115 @@ bedolaga_upsert_if_not_empty() {
   bedolaga_upsert_env_value "$file_path" "$key" "$value"
 }
 
+bedolaga_read_env_value() {
+  local file_path="$1"
+  local key="$2"
+  [[ -f "$file_path" ]] || return 0
+  awk -F= -v key="$key" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$file_path"
+}
+
+bedolaga_upsert_env_default() {
+  local file_path="$1"
+  local key="$2"
+  local value="$3"
+  if grep -q "^${key}=" "$file_path" 2>/dev/null; then
+    return 0
+  fi
+  bedolaga_upsert_env_value "$file_path" "$key" "$value"
+}
+
+bedolaga_ensure_env_file_from_example() {
+  local repo_dir="$1"
+  local env_file="${repo_dir}/.env"
+
+  if [[ -f "$env_file" ]]; then
+    return 0
+  fi
+  if [[ -f "${repo_dir}/.env.example" ]]; then
+    cp "${repo_dir}/.env.example" "$env_file"
+    return 0
+  fi
+  return 1
+}
+
+bedolaga_sync_bot_env_defaults() {
+  local bot_dir="$1"
+  local hooks_domain="$2"
+  local cabinet_domain="$3"
+  local bot_username="${4:-}"
+  local env_file="${bot_dir}/.env"
+  local webhook_secret=""
+  local web_api_token=""
+  local cabinet_jwt_secret=""
+
+  if ! bedolaga_ensure_env_file_from_example "$bot_dir"; then
+    paint "$CLR_DANGER" "$(tr_text "Не найден .env.example в репозитории бота." "Missing .env.example in bot repository.")"
+    return 1
+  fi
+
+  webhook_secret="$(bedolaga_read_env_value "$env_file" "WEBHOOK_SECRET_TOKEN")"
+  web_api_token="$(bedolaga_read_env_value "$env_file" "WEB_API_DEFAULT_TOKEN")"
+  cabinet_jwt_secret="$(bedolaga_read_env_value "$env_file" "CABINET_JWT_SECRET")"
+  [[ -n "$webhook_secret" ]] || webhook_secret="$(generate_hex 32)"
+  [[ -n "$web_api_token" ]] || web_api_token="$(generate_hex 32)"
+  [[ -n "$cabinet_jwt_secret" ]] || cabinet_jwt_secret="$(generate_hex 32)"
+
+  bedolaga_upsert_env_default "$env_file" "BOT_RUN_MODE" "webhook"
+  bedolaga_upsert_env_value "$env_file" "WEBHOOK_URL" "https://${hooks_domain}"
+  bedolaga_upsert_env_default "$env_file" "WEBHOOK_PATH" "/webhook"
+  bedolaga_upsert_env_value "$env_file" "WEBHOOK_SECRET_TOKEN" "$webhook_secret"
+  bedolaga_upsert_env_default "$env_file" "WEBHOOK_MAX_QUEUE_SIZE" "1024"
+  bedolaga_upsert_env_default "$env_file" "WEBHOOK_WORKERS" "4"
+  bedolaga_upsert_env_default "$env_file" "WEBHOOK_ENQUEUE_TIMEOUT" "0.1"
+  bedolaga_upsert_env_default "$env_file" "WEBHOOK_WORKER_SHUTDOWN_TIMEOUT" "30.0"
+  bedolaga_upsert_env_default "$env_file" "WEB_API_ENABLED" "true"
+  bedolaga_upsert_env_default "$env_file" "WEB_API_HOST" "0.0.0.0"
+  bedolaga_upsert_env_default "$env_file" "WEB_API_PORT" "8080"
+  bedolaga_upsert_env_value "$env_file" "WEB_API_DEFAULT_TOKEN" "$web_api_token"
+  bedolaga_upsert_env_value "$env_file" "WEB_API_ALLOWED_ORIGINS" "https://${cabinet_domain}"
+  bedolaga_upsert_env_default "$env_file" "MENU_LAYOUT_ENABLED" "true"
+  bedolaga_upsert_env_default "$env_file" "MAIN_MENU_MODE" "text"
+  bedolaga_upsert_env_default "$env_file" "CONNECT_BUTTON_MODE" "miniapp_subscription"
+  bedolaga_upsert_env_default "$env_file" "ENABLE_LOGO_MODE" "true"
+  bedolaga_upsert_env_default "$env_file" "DEFAULT_LANGUAGE" "ru"
+  bedolaga_upsert_env_default "$env_file" "AVAILABLE_LANGUAGES" "ru,en"
+  bedolaga_upsert_env_default "$env_file" "LANGUAGE_SELECTION_ENABLED" "true"
+  bedolaga_upsert_env_default "$env_file" "BACKUP_AUTO_ENABLED" "true"
+  bedolaga_upsert_env_default "$env_file" "BACKUP_INTERVAL_HOURS" "24"
+  bedolaga_upsert_env_default "$env_file" "BACKUP_TIME" "03:00"
+  bedolaga_upsert_env_default "$env_file" "BACKUP_MAX_KEEP" "7"
+  bedolaga_upsert_env_default "$env_file" "BACKUP_COMPRESSION" "true"
+  bedolaga_upsert_env_default "$env_file" "BACKUP_INCLUDE_LOGS" "false"
+  bedolaga_upsert_env_default "$env_file" "BACKUP_LOCATION" "/app/data/backups"
+  bedolaga_upsert_env_default "$env_file" "CABINET_ENABLED" "true"
+  bedolaga_upsert_env_value "$env_file" "CABINET_URL" "https://${cabinet_domain}"
+  bedolaga_upsert_env_value "$env_file" "CABINET_JWT_SECRET" "$cabinet_jwt_secret"
+  bedolaga_upsert_env_value "$env_file" "CABINET_ALLOWED_ORIGINS" "https://${cabinet_domain}"
+  if [[ -n "$bot_username" ]]; then
+    bedolaga_upsert_env_value "$env_file" "BOT_USERNAME" "$bot_username"
+  fi
+
+  return 0
+}
+
+bedolaga_sync_cabinet_env() {
+  local cabinet_dir="$1"
+  local bot_username="$2"
+  local cabinet_port="$3"
+  local env_file="${cabinet_dir}/.env"
+
+  if ! bedolaga_ensure_env_file_from_example "$cabinet_dir"; then
+    paint "$CLR_DANGER" "$(tr_text "Не найден .env.example в репозитории кабинета." "Missing .env.example in cabinet repository.")"
+    return 1
+  fi
+
+  bedolaga_upsert_env_value "$env_file" "VITE_API_URL" "/api"
+  if [[ -n "$bot_username" ]]; then
+    bedolaga_upsert_env_value "$env_file" "VITE_TELEGRAM_BOT_USERNAME" "$bot_username"
+  fi
+  bedolaga_upsert_env_value "$env_file" "CABINET_PORT" "$cabinet_port"
+}
+
 bedolaga_apply_notification_defaults() {
   local env_file="$1"
   local admin_notifications_enabled="$2"
@@ -758,13 +867,8 @@ run_bedolaga_stack_install_flow() {
 
   ( cd "$bot_dir" && $SUDO docker compose up -d --build ) || return 1
 
-  if [[ ! -f "${cabinet_dir}/.env" && -f "${cabinet_dir}/.env.example" ]]; then
-    cp "${cabinet_dir}/.env.example" "${cabinet_dir}/.env"
-  fi
-  if [[ -f "${cabinet_dir}/.env" ]]; then
-    bedolaga_upsert_env_value "${cabinet_dir}/.env" "VITE_API_URL" "/api"
-    bedolaga_upsert_env_value "${cabinet_dir}/.env" "VITE_TELEGRAM_BOT_USERNAME" "$bot_username"
-    bedolaga_upsert_env_value "${cabinet_dir}/.env" "CABINET_PORT" "$cabinet_port"
+  if ! bedolaga_sync_cabinet_env "$cabinet_dir" "$bot_username" "$cabinet_port"; then
+    return 1
   fi
 
   ( cd "$cabinet_dir" && $SUDO docker compose up -d --build ) || return 1
@@ -789,6 +893,9 @@ run_bedolaga_stack_update_flow() {
   local cabinet_domain=""
   local api_domain=""
   local cabinet_port="3020"
+  local bot_env_file="${bot_dir}/.env"
+  local bot_username=""
+  local bot_token=""
 
   draw_subheader "$(tr_text "Bedolaga: обновление (бот + кабинет)" "Bedolaga: update (bot + cabinet)")"
 
@@ -811,14 +918,6 @@ run_bedolaga_stack_update_flow() {
     return 1
   fi
 
-  bedolaga_clone_or_update_repo "$BEDOLAGA_BOT_REPO_DEFAULT" "$bot_dir" || return 1
-  bedolaga_clone_or_update_repo "$BEDOLAGA_CABINET_REPO_DEFAULT" "$cabinet_dir" || return 1
-
-  ( cd "$bot_dir" && $SUDO docker compose up -d --build ) || return 1
-
-  ( cd "$cabinet_dir" && $SUDO docker compose up -d --build ) || return 1
-  bedolaga_attach_stack_to_shared_network || return 1
-
   hooks_domain="$(ask_value "$(tr_text "Домен webhook/API (как в установке)" "Webhook/API domain (same as install)")" "")"
   [[ "$hooks_domain" == "__PBM_BACK__" ]] && return 1
   [[ -n "$hooks_domain" ]] || return 1
@@ -837,6 +936,27 @@ run_bedolaga_stack_update_flow() {
     paint "$CLR_DANGER" "$(tr_text "Порт cabinet должен быть числом." "Cabinet port must be numeric.")"
     return 1
   fi
+
+  bedolaga_clone_or_update_repo "$BEDOLAGA_BOT_REPO_DEFAULT" "$bot_dir" || return 1
+  bedolaga_clone_or_update_repo "$BEDOLAGA_CABINET_REPO_DEFAULT" "$cabinet_dir" || return 1
+
+  bot_username="$(bedolaga_read_env_value "$bot_env_file" "BOT_USERNAME")"
+  if [[ -z "$bot_username" ]]; then
+    bot_token="$(bedolaga_read_env_value "$bot_env_file" "BOT_TOKEN")"
+    if [[ -n "$bot_token" ]]; then
+      bot_username="$(bedolaga_detect_bot_username "$bot_token")"
+    fi
+  fi
+  if ! bedolaga_sync_bot_env_defaults "$bot_dir" "$hooks_domain" "$cabinet_domain" "$bot_username"; then
+    return 1
+  fi
+  if ! bedolaga_sync_cabinet_env "$cabinet_dir" "$bot_username" "$cabinet_port"; then
+    return 1
+  fi
+
+  ( cd "$bot_dir" && $SUDO docker compose up -d --build ) || return 1
+  ( cd "$cabinet_dir" && $SUDO docker compose up -d --build ) || return 1
+  bedolaga_attach_stack_to_shared_network || return 1
 
   if ask_yes_no "$(tr_text "Заменить весь Caddyfile на шаблон Bedolaga? (иначе обновится только автоген-блок)" "Replace full Caddyfile with Bedolaga template? (otherwise only autogen block is updated)")" "n"; then
     replace_caddy_config="1"
