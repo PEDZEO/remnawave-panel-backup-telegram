@@ -79,6 +79,9 @@ bedolaga_configure_bot_env() {
   local remnawave_api_url="$6"
   local remnawave_api_key="$7"
   local bot_username="$8"
+  local postgres_db="$9"
+  local postgres_user="${10}"
+  local postgres_password="${11}"
   local env_file="${bot_dir}/.env"
   local webhook_secret=""
   local web_api_token=""
@@ -113,6 +116,9 @@ bedolaga_configure_bot_env() {
   bedolaga_upsert_env_value "$env_file" "CABINET_ALLOWED_ORIGINS" "https://${cabinet_domain}"
   bedolaga_upsert_env_value "$env_file" "REMNAWAVE_API_URL" "$remnawave_api_url"
   bedolaga_upsert_env_value "$env_file" "REMNAWAVE_API_KEY" "$remnawave_api_key"
+  bedolaga_upsert_env_value "$env_file" "POSTGRES_DB" "$postgres_db"
+  bedolaga_upsert_env_value "$env_file" "POSTGRES_USER" "$postgres_user"
+  bedolaga_upsert_env_value "$env_file" "POSTGRES_PASSWORD" "$postgres_password"
   if [[ -n "$bot_username" ]]; then
     bedolaga_upsert_env_value "$env_file" "BOT_USERNAME" "$bot_username"
   fi
@@ -300,6 +306,9 @@ run_bedolaga_stack_install_flow() {
   local remnawave_api_key=""
   local bot_username=""
   local cabinet_port="3020"
+  local postgres_db="remnawave_bot"
+  local postgres_user="remnawave_user"
+  local postgres_password=""
 
   draw_subheader "$(tr_text "Bedolaga: установка (бот + кабинет + Caddy)" "Bedolaga: install (bot + cabinet + Caddy)")"
 
@@ -352,6 +361,18 @@ run_bedolaga_stack_install_flow() {
   [[ "$remnawave_api_key" == "__PBM_BACK__" ]] && return 1
   [[ -n "$remnawave_api_key" ]] || return 1
 
+  postgres_db="$(ask_value "$(tr_text "POSTGRES_DB (база данных бота)" "POSTGRES_DB (bot database name)")" "$postgres_db")"
+  [[ "$postgres_db" == "__PBM_BACK__" ]] && return 1
+  [[ -n "$postgres_db" ]] || return 1
+
+  postgres_user="$(ask_value "$(tr_text "POSTGRES_USER (пользователь БД бота)" "POSTGRES_USER (bot database user)")" "$postgres_user")"
+  [[ "$postgres_user" == "__PBM_BACK__" ]] && return 1
+  [[ -n "$postgres_user" ]] || return 1
+
+  postgres_password="$(ask_secret_value "$(tr_text "POSTGRES_PASSWORD (пароль БД бота)" "POSTGRES_PASSWORD (bot database password)")" "$(generate_hex 24)")"
+  [[ "$postgres_password" == "__PBM_BACK__" ]] && return 1
+  [[ -n "$postgres_password" ]] || return 1
+
   cabinet_port="$(ask_value "$(tr_text "Локальный порт cabinet (для Caddy reverse proxy)" "Local cabinet port (for Caddy reverse proxy)")" "3020")"
   [[ "$cabinet_port" == "__PBM_BACK__" ]] && return 1
   if [[ ! "$cabinet_port" =~ ^[0-9]+$ ]]; then
@@ -367,7 +388,7 @@ run_bedolaga_stack_install_flow() {
   fi
 
   bedolaga_prepare_bot_dirs "$bot_dir"
-  if ! bedolaga_configure_bot_env "$bot_dir" "$bot_token" "$admin_ids" "$hooks_domain" "$cabinet_domain" "$remnawave_api_url" "$remnawave_api_key" "$bot_username"; then
+  if ! bedolaga_configure_bot_env "$bot_dir" "$bot_token" "$admin_ids" "$hooks_domain" "$cabinet_domain" "$remnawave_api_url" "$remnawave_api_key" "$bot_username" "$postgres_db" "$postgres_user" "$postgres_password"; then
     return 1
   fi
 
