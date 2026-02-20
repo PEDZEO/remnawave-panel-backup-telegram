@@ -443,6 +443,20 @@ paint_labeled_value() {
   fi
 }
 
+draw_subheader() {
+  local title="$1"
+  local subtitle="${2:-}"
+
+  clear
+  paint "$CLR_TITLE" "============================================================"
+  paint "$CLR_ACCENT" "  ${title}"
+  if [[ -n "$subtitle" ]]; then
+    paint "$CLR_MUTED" "  ${subtitle}"
+  fi
+  paint "$CLR_TITLE" "============================================================"
+  echo
+}
+
 draw_header() {
   local title="$1"
   local subtitle="${2:-}"
@@ -865,7 +879,7 @@ choose_ui_lang() {
     UI_LANG="en"
   fi
 
-  draw_header "Panel Backup Manager" "Выберите язык / Choose language"
+  draw_subheader "Panel Backup Manager" "Выберите язык / Choose language"
   show_back_hint
   menu_option "1" "Русский [RU]"
   menu_option "2" "English [EN]"

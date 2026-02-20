@@ -23,7 +23,7 @@ menu_flow_install_and_setup() {
   old_calendar="$BACKUP_ON_CALENDAR"
   old_include="$BACKUP_INCLUDE"
 
-  draw_header "$(tr_text "Установка и настройка" "Install and configure")"
+  draw_subheader "$(tr_text "Установка и настройка" "Install and configure")"
   paint "$CLR_MUTED" "$(tr_text "Используйте этот пункт при первом запуске или обновлении скриптов." "Use this on first run or when updating scripts.")"
   if ! prompt_install_settings; then
     return 0
@@ -87,7 +87,7 @@ show_quick_setup_summary() {
   local old_calendar="$8"
   local old_include="$9"
 
-  draw_header "$(tr_text "Краткий итог изменений" "Quick changes summary")"
+  draw_subheader "$(tr_text "Краткий итог изменений" "Quick changes summary")"
   paint "$CLR_MUTED" "$(tr_text "Легенда: * изменено, = без изменений." "Legend: * changed, = unchanged.")"
   print_separator
   render_change_line "TELEGRAM_BOT_TOKEN" "$old_bot" "$TELEGRAM_BOT_TOKEN"
@@ -131,7 +131,7 @@ menu_flow_quick_setup() {
   while true; do
     case "$step" in
       1)
-        draw_header "$(tr_text "Быстрая настройка" "Quick setup")" "$(tr_text "Шаг 1/3: Telegram и путь" "Step 1/3: Telegram and path")"
+        draw_subheader "$(tr_text "Быстрая настройка" "Quick setup")" "$(tr_text "Шаг 1/3: Telegram и путь" "Step 1/3: Telegram and path")"
         paint "$CLR_MUTED" "$(tr_text "Команды: b = выход из мастера, p = предыдущий шаг." "Commands: b = exit wizard, p = previous step.")"
 
         while true; do
@@ -207,7 +207,7 @@ menu_flow_quick_setup() {
         step=2
         ;;
       2)
-        draw_header "$(tr_text "Быстрая настройка" "Quick setup")" "$(tr_text "Шаг 2/3: Шифрование" "Step 2/3: Encryption")"
+        draw_subheader "$(tr_text "Быстрая настройка" "Quick setup")" "$(tr_text "Шаг 2/3: Шифрование" "Step 2/3: Encryption")"
         paint "$CLR_MUTED" "$(tr_text "1) Включить шифрование  2) Выключить шифрование" "1) Enable encryption  2) Disable encryption")"
         read -r -p "$(tr_text "Выбор [1-2], p назад, b выход: " "Choice [1-2], p back, b exit: ")" input
         if is_back_command "$input"; then
@@ -257,7 +257,7 @@ menu_flow_quick_setup() {
         step=3
         ;;
       3)
-        draw_header "$(tr_text "Быстрая настройка" "Quick setup")" "$(tr_text "Шаг 3/3: Расписание" "Step 3/3: Schedule")"
+        draw_subheader "$(tr_text "Быстрая настройка" "Quick setup")" "$(tr_text "Шаг 3/3: Расписание" "Step 3/3: Schedule")"
         paint "$CLR_MUTED" "$(tr_text "1) Ежедневно 03:40 UTC  2) Каждые 12 часов  3) Каждые 6 часов  4) Каждый час  5) Свой OnCalendar" "1) Daily 03:40 UTC  2) Every 12h  3) Every 6h  4) Hourly  5) Custom OnCalendar")"
         read -r -p "$(tr_text "Выбор [1-5], p назад, b выход: " "Choice [1-5], p back, b exit: ")" input
         if is_back_command "$input"; then
@@ -327,7 +327,7 @@ menu_flow_encryption_settings() {
       password_state="$(tr_text "не задан" "not set")"
     fi
 
-    draw_header "$(tr_text "Настройки шифрования резервной копии" "Backup encryption settings")"
+    draw_subheader "$(tr_text "Настройки шифрования резервной копии" "Backup encryption settings")"
     show_back_hint
     paint "$CLR_MUTED" "  $(tr_text "Шифрование:" "Encryption:") ${encrypt_state}"
     paint "$CLR_MUTED" "  $(tr_text "Пароль:" "Password:") ${password_state}"
@@ -450,7 +450,7 @@ menu_section_setup() {
     fi
     include_state_raw="${BACKUP_INCLUDE:-all}"
     include_state="$(format_backup_scope_label "$include_state_raw")"
-    draw_header "$(tr_text "Раздел: Настройка резервного копирования" "Section: Backup setup and configuration")"
+    draw_subheader "$(tr_text "Раздел: Настройка резервного копирования" "Section: Backup setup and configuration")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Здесь только настройка резервного копирования и уведомлений." "This section is only for backup and notification settings.")"
     paint "$CLR_TITLE" "$(tr_text "Текущее состояние" "Current state")"
@@ -479,7 +479,7 @@ menu_section_setup() {
 menu_section_remnawave_components() {
   local choice=""
   while true; do
-    draw_header "$(tr_text "Раздел: Компоненты Remnawave" "Section: Remnawave components")"
+    draw_subheader "$(tr_text "Раздел: Компоненты Remnawave" "Section: Remnawave components")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Установка и обновление панели и страницы подписок." "Install and update panel and subscription page.")"
     menu_option "1" "$(tr_text "Полная установка (панель + подписки)" "Full install (panel + subscription)")"
@@ -528,7 +528,7 @@ menu_section_remnawave_components() {
 menu_section_remnanode_components() {
   local choice=""
   while true; do
-    draw_header "$(tr_text "Раздел: Компоненты RemnaNode" "Section: RemnaNode components")"
+    draw_subheader "$(tr_text "Раздел: Компоненты RemnaNode" "Section: RemnaNode components")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Базовые и сетевые инструменты для RemnaNode." "Basic and network tools for RemnaNode.")"
     menu_option "1" "$(tr_text "Полная настройка (нода + Caddy + BBR + WARP)" "Full setup (node + Caddy + BBR + WARP)")"
@@ -614,7 +614,7 @@ select_restore_source() {
   local -a files=()
 
   while true; do
-    draw_header "$(tr_text "Источник архива для восстановления" "Restore source selection")"
+    draw_subheader "$(tr_text "Источник архива для восстановления" "Restore source selection")"
     mapfile -t files < <(list_local_backups)
     render_backup_list "${files[@]}"
     print_separator
@@ -678,7 +678,7 @@ select_restore_components() {
   local choice=""
   local custom=""
   while true; do
-    draw_header "$(tr_text "Выбор данных для восстановления" "Restore components selection")"
+    draw_subheader "$(tr_text "Выбор данных для восстановления" "Restore components selection")"
     paint "$CLR_MUTED" "$(tr_text "Выберите, что именно восстанавливать из архива." "Choose which data to restore from backup.")"
     menu_option "1" "$(tr_text "Все (db + redis + configs)" "All (db + redis + configs)")"
     menu_option "2" "$(tr_text "Только PostgreSQL (db)" "PostgreSQL only (db)")"
@@ -871,7 +871,7 @@ draw_restore_step() {
   local step="$1"
   local total="$2"
   local title="$3"
-  draw_header "$(tr_text "Мастер восстановления" "Backup restore wizard")" "$(tr_text "Шаг" "Step") ${step}/${total}: ${title}"
+  draw_subheader "$(tr_text "Мастер восстановления" "Backup restore wizard")" "$(tr_text "Шаг" "Step") ${step}/${total}: ${title}"
 }
 
 confirm_restore_phrase() {
@@ -896,7 +896,7 @@ confirm_restore_phrase() {
 menu_section_operations() {
   local choice=""
   while true; do
-    draw_header "$(tr_text "Раздел: Ручное управление" "Section: Manual backup control")"
+    draw_subheader "$(tr_text "Раздел: Ручное управление" "Section: Manual backup control")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Здесь можно вручную: 1) создать резервную копию, 2) запустить восстановление." "Manually: 1) create backup, 2) restore backup.")"
     menu_option "1" "$(tr_text "Создать резервную копию сейчас" "Create backup now")"
@@ -909,7 +909,7 @@ menu_section_operations() {
     fi
     case "$choice" in
       1)
-        draw_header "$(tr_text "Создание резервной копии" "Create backup")"
+        draw_subheader "$(tr_text "Создание резервной копии" "Create backup")"
         if run_backup_now; then
           paint "$CLR_OK" "$(tr_text "Резервная копия создана успешно." "Backup completed successfully.")"
           show_operation_result_summary "$(tr_text "Создание резервной копии" "Create backup")" "1"
@@ -1007,7 +1007,7 @@ menu_section_timer() {
   local choice=""
   local schedule_now=""
   while true; do
-    draw_header "$(tr_text "Раздел: Таймер и периодичность" "Section: Timer and schedule")"
+    draw_subheader "$(tr_text "Раздел: Таймер и периодичность" "Section: Timer and schedule")"
     show_back_hint
     schedule_now="$(get_current_timer_calendar || true)"
     paint "$CLR_MUTED" "$(tr_text "Текущее расписание:" "Current schedule:") $(format_schedule_label "$schedule_now")"
@@ -1022,12 +1022,12 @@ menu_section_timer() {
     fi
     case "$choice" in
       1)
-        draw_header "$(tr_text "Включение таймера резервного копирования" "Enable backup timer")"
+        draw_subheader "$(tr_text "Включение таймера резервного копирования" "Enable backup timer")"
         enable_timer
         wait_for_enter
         ;;
       2)
-        draw_header "$(tr_text "Отключение таймера резервного копирования" "Disable backup timer")"
+        draw_subheader "$(tr_text "Отключение таймера резервного копирования" "Disable backup timer")"
         disable_timer
         wait_for_enter
         ;;
@@ -1052,7 +1052,7 @@ menu_section_timer() {
 menu_section_status() {
   local choice=""
   while true; do
-    draw_header "$(tr_text "Раздел: Статус и диагностика" "Section: Status and diagnostics")"
+    draw_subheader "$(tr_text "Раздел: Статус и диагностика" "Section: Status and diagnostics")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Проверка состояния скриптов, таймера и последних архивов." "Check scripts, timer and latest backup details.")"
     menu_option "1" "$(tr_text "Показать полный статус" "Show full status")"
