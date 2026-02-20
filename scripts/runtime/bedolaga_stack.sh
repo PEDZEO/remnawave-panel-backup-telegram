@@ -498,8 +498,13 @@ run_bedolaga_stack_install_flow() {
     [[ -n "$existing_value" ]] && postgres_user="$existing_value"
     existing_value="$(bedolaga_read_env_value "$existing_env_file" "POSTGRES_PASSWORD")"
     [[ -n "$existing_value" ]] && postgres_password="$existing_value"
+    existing_value="$(bedolaga_read_env_value "$existing_env_file" "REMNAWAVE_API_KEY")"
+    [[ -n "$existing_value" ]] && remnawave_api_key="$existing_value"
     if [[ -n "$postgres_password" ]]; then
       paint "$CLR_MUTED" "$(tr_text "Обнаружен существующий POSTGRES_PASSWORD: уже задан, можно оставить пустым чтобы не менять." "Detected existing POSTGRES_PASSWORD: already set, leave empty to keep unchanged.")"
+    fi
+    if [[ -n "$remnawave_api_key" ]]; then
+      paint "$CLR_MUTED" "$(tr_text "Обнаружен существующий REMNAWAVE_API_KEY: уже задан, можно оставить пустым чтобы не менять." "Detected existing REMNAWAVE_API_KEY: already set, leave empty to keep unchanged.")"
     fi
   fi
 
@@ -538,7 +543,7 @@ run_bedolaga_stack_install_flow() {
   [[ "$remnawave_api_url" == "__PBM_BACK__" ]] && return 1
   [[ -n "$remnawave_api_url" ]] || return 1
 
-  remnawave_api_key="$(ask_value "$(tr_text "REMNAWAVE_API_KEY (видимый ввод)" "REMNAWAVE_API_KEY (visible input)")" "")"
+  remnawave_api_key="$(ask_value "$(tr_text "REMNAWAVE_API_KEY (видимый ввод, Enter = оставить текущее)" "REMNAWAVE_API_KEY (visible input, Enter = keep current)")" "$remnawave_api_key")"
   [[ "$remnawave_api_key" == "__PBM_BACK__" ]] && return 1
   [[ -n "$remnawave_api_key" ]] || return 1
 
