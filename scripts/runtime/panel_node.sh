@@ -361,12 +361,19 @@ run_panel_install_flow() {
   draw_header "$(tr_text "Установка панели Remnawave" "Install Remnawave panel")"
   panel_dir="$(ask_value "$(tr_text "Путь установки панели" "Panel installation path")" "/opt/remnawave")"
   [[ "$panel_dir" == "__PBM_BACK__" ]] && return 1
+  REMNAWAVE_DIR="$panel_dir"
+
+  if [[ -f "${panel_dir}/.env" ]]; then
+    REMNAWAVE_LAST_PANEL_DOMAIN="$(awk -F= '/^FRONT_END_DOMAIN=/{print $2; exit}' "${panel_dir}/.env")"
+    REMNAWAVE_LAST_SUB_DOMAIN="$(awk -F= '/^SUB_PUBLIC_DOMAIN=/{print $2; exit}' "${panel_dir}/.env")"
+    REMNAWAVE_LAST_PANEL_PORT="$(awk -F= '/^APP_PORT=/{print $2; exit}' "${panel_dir}/.env")"
+  fi
 
   if [[ -f "${panel_dir}/docker-compose.yml" || -f "${panel_dir}/.env" ]]; then
     paint "$CLR_WARN" "$(tr_text "Обнаружена существующая установка панели." "Existing panel installation detected.")"
     if ! ask_yes_no "$(tr_text "Перезаписать конфиги и выполнить переустановку?" "Overwrite config files and reinstall?")" "n"; then
       paint "$CLR_WARN" "$(tr_text "Установка отменена." "Installation cancelled.")"
-      return 1
+      return 2
     fi
     reinstall_choice="1"
 
@@ -386,7 +393,7 @@ run_panel_install_flow() {
   fi
 
   while true; do
-    panel_domain="$(ask_value "$(tr_text "Домен панели (без http/https)" "Panel domain (without http/https)")" "")"
+    panel_domain="$(ask_value "$(tr_text "Домен панели (без http/https)" "Panel domain (without http/https)")" "${REMNAWAVE_LAST_PANEL_DOMAIN}")"
     [[ "$panel_domain" == "__PBM_BACK__" ]] && return 1
     [[ -n "$panel_domain" ]] && break
     paint "$CLR_WARN" "$(tr_text "Домен панели не может быть пустым." "Panel domain cannot be empty.")"
@@ -760,8 +767,8 @@ run_subscription_install_flow() {
   paint "$CLR_ACCENT" "$(tr_text "Генерирую конфигурацию subscription" "Generating subscription configuration")"
   write_subscription_template "$sub_dir" "$panel_domain" "$sub_port" "$api_token"
   REMNAWAVE_DIR="$(dirname "$sub_dir")"
+  REMNAWAVE_LAST_PANEL_DOMAIN="$panel_domain"
   REMNAWAVE_LAST_SUB_PORT="$sub_port"
-  REMNAWAVE_LAST_SUB_DOMAIN="${REMNAWAVE_LAST_SUB_DOMAIN:-$panel_domain}"
 
   paint "$CLR_ACCENT" "$(tr_text "Запускаю контейнер subscription" "Starting subscription container")"
   if ! ensure_remnawave_shared_network; then
@@ -811,11 +818,20 @@ run_subscription_update_flow() {
 
 run_remnawave_full_install_flow() {
   local prev_auto_caddy="${AUTO_PANEL_CADDY:-0}"
+  local panel_step_rc=0
   draw_header "$(tr_text "Remnawave: полная установка" "Remnawave: full install")"
   paint "$CLR_MUTED" "$(tr_text "Шаг 1/3: панель, шаг 2/3: страница подписок, шаг 3/3: Caddy." "Step 1/3: panel, step 2/3: subscription page, step 3/3: Caddy.")"
   if ! run_panel_install_flow; then
+    panel_step_rc=$?
+  fi
+
+  if [[ "$panel_step_rc" -eq 1 ]]; then
     paint "$CLR_WARN" "$(tr_text "Полная установка остановлена на шаге панели." "Full install stopped at panel step.")"
     return 1
+  fi
+
+  if [[ "$panel_step_rc" -eq 2 ]]; then
+    paint "$CLR_MUTED" "$(tr_text "Шаг панели пропущен: используется текущая установка." "Panel step skipped: using existing installation.")"
   fi
   if ! run_subscription_install_flow; then
     paint "$CLR_WARN" "$(tr_text "Панель установлена, но шаг подписок не завершен." "Panel installed, but subscription step did not finish.")"
