@@ -138,6 +138,41 @@ bedolaga_prepare_bot_dirs() {
   chmod -R 755 "${bot_dir}/logs" "${bot_dir}/data"
 }
 
+bedolaga_upsert_if_not_empty() {
+  local file_path="$1"
+  local key="$2"
+  local value="$3"
+  [[ -n "$value" ]] || return 0
+  bedolaga_upsert_env_value "$file_path" "$key" "$value"
+}
+
+bedolaga_apply_notification_defaults() {
+  local env_file="$1"
+  local admin_notifications_enabled="$2"
+  local admin_notifications_chat_id="$3"
+  local admin_notifications_topic_id="$4"
+  local admin_notifications_ticket_topic_id="$5"
+  local admin_reports_enabled="$6"
+  local admin_reports_chat_id="$7"
+  local admin_reports_topic_id="$8"
+  local admin_reports_send_time="$9"
+  local channel_sub_id="${10}"
+  local channel_is_required_sub="${11}"
+  local channel_link="${12}"
+
+  bedolaga_upsert_env_value "$env_file" "ADMIN_NOTIFICATIONS_ENABLED" "$admin_notifications_enabled"
+  bedolaga_upsert_if_not_empty "$env_file" "ADMIN_NOTIFICATIONS_CHAT_ID" "$admin_notifications_chat_id"
+  bedolaga_upsert_if_not_empty "$env_file" "ADMIN_NOTIFICATIONS_TOPIC_ID" "$admin_notifications_topic_id"
+  bedolaga_upsert_if_not_empty "$env_file" "ADMIN_NOTIFICATIONS_TICKET_TOPIC_ID" "$admin_notifications_ticket_topic_id"
+  bedolaga_upsert_env_value "$env_file" "ADMIN_REPORTS_ENABLED" "$admin_reports_enabled"
+  bedolaga_upsert_if_not_empty "$env_file" "ADMIN_REPORTS_CHAT_ID" "$admin_reports_chat_id"
+  bedolaga_upsert_if_not_empty "$env_file" "ADMIN_REPORTS_TOPIC_ID" "$admin_reports_topic_id"
+  bedolaga_upsert_if_not_empty "$env_file" "ADMIN_REPORTS_SEND_TIME" "$admin_reports_send_time"
+  bedolaga_upsert_if_not_empty "$env_file" "CHANNEL_SUB_ID" "$channel_sub_id"
+  bedolaga_upsert_env_value "$env_file" "CHANNEL_IS_REQUIRED_SUB" "$channel_is_required_sub"
+  bedolaga_upsert_if_not_empty "$env_file" "CHANNEL_LINK" "$channel_link"
+}
+
 bedolaga_detect_bot_username() {
   local bot_token="$1"
   local username=""
@@ -315,6 +350,18 @@ run_bedolaga_stack_install_flow() {
   local postgres_db="remnawave_bot"
   local postgres_user="remnawave_user"
   local postgres_password=""
+  local configure_notifications="0"
+  local admin_notifications_enabled="true"
+  local admin_notifications_chat_id="-1002835894832"
+  local admin_notifications_topic_id="2"
+  local admin_notifications_ticket_topic_id="126"
+  local admin_reports_enabled="true"
+  local admin_reports_chat_id="-1002835894832"
+  local admin_reports_topic_id="339"
+  local admin_reports_send_time="10:00"
+  local channel_sub_id="-1002780886698"
+  local channel_is_required_sub="false"
+  local channel_link="https://t.me/PedzeoVPN"
 
   draw_subheader "$(tr_text "Bedolaga: установка (бот + кабинет + Caddy)" "Bedolaga: install (bot + cabinet + Caddy)")"
 
@@ -379,6 +426,45 @@ run_bedolaga_stack_install_flow() {
   [[ "$postgres_password" == "__PBM_BACK__" ]] && return 1
   [[ -n "$postgres_password" ]] || return 1
 
+  if ask_yes_no "$(tr_text "Настроить уведомления админов/отчеты/подписку на канал сейчас?" "Configure admin notifications/reports/channel subscription now?")" "n"; then
+    configure_notifications="1"
+  fi
+
+  if [[ "$configure_notifications" == "1" ]]; then
+    admin_notifications_enabled="$(ask_value "$(tr_text "ADMIN_NOTIFICATIONS_ENABLED (true/false)" "ADMIN_NOTIFICATIONS_ENABLED (true/false)")" "$admin_notifications_enabled")"
+    [[ "$admin_notifications_enabled" == "__PBM_BACK__" ]] && return 1
+
+    admin_notifications_chat_id="$(ask_value "$(tr_text "ADMIN_NOTIFICATIONS_CHAT_ID" "ADMIN_NOTIFICATIONS_CHAT_ID")" "$admin_notifications_chat_id")"
+    [[ "$admin_notifications_chat_id" == "__PBM_BACK__" ]] && return 1
+
+    admin_notifications_topic_id="$(ask_value "$(tr_text "ADMIN_NOTIFICATIONS_TOPIC_ID (опционально)" "ADMIN_NOTIFICATIONS_TOPIC_ID (optional)")" "$admin_notifications_topic_id")"
+    [[ "$admin_notifications_topic_id" == "__PBM_BACK__" ]] && return 1
+
+    admin_notifications_ticket_topic_id="$(ask_value "$(tr_text "ADMIN_NOTIFICATIONS_TICKET_TOPIC_ID (опционально)" "ADMIN_NOTIFICATIONS_TICKET_TOPIC_ID (optional)")" "$admin_notifications_ticket_topic_id")"
+    [[ "$admin_notifications_ticket_topic_id" == "__PBM_BACK__" ]] && return 1
+
+    admin_reports_enabled="$(ask_value "$(tr_text "ADMIN_REPORTS_ENABLED (true/false)" "ADMIN_REPORTS_ENABLED (true/false)")" "$admin_reports_enabled")"
+    [[ "$admin_reports_enabled" == "__PBM_BACK__" ]] && return 1
+
+    admin_reports_chat_id="$(ask_value "$(tr_text "ADMIN_REPORTS_CHAT_ID (опционально)" "ADMIN_REPORTS_CHAT_ID (optional)")" "$admin_reports_chat_id")"
+    [[ "$admin_reports_chat_id" == "__PBM_BACK__" ]] && return 1
+
+    admin_reports_topic_id="$(ask_value "$(tr_text "ADMIN_REPORTS_TOPIC_ID (опционально)" "ADMIN_REPORTS_TOPIC_ID (optional)")" "$admin_reports_topic_id")"
+    [[ "$admin_reports_topic_id" == "__PBM_BACK__" ]] && return 1
+
+    admin_reports_send_time="$(ask_value "$(tr_text "ADMIN_REPORTS_SEND_TIME (HH:MM)" "ADMIN_REPORTS_SEND_TIME (HH:MM)")" "$admin_reports_send_time")"
+    [[ "$admin_reports_send_time" == "__PBM_BACK__" ]] && return 1
+
+    channel_sub_id="$(ask_value "$(tr_text "CHANNEL_SUB_ID (опционально)" "CHANNEL_SUB_ID (optional)")" "$channel_sub_id")"
+    [[ "$channel_sub_id" == "__PBM_BACK__" ]] && return 1
+
+    channel_is_required_sub="$(ask_value "$(tr_text "CHANNEL_IS_REQUIRED_SUB (true/false)" "CHANNEL_IS_REQUIRED_SUB (true/false)")" "$channel_is_required_sub")"
+    [[ "$channel_is_required_sub" == "__PBM_BACK__" ]] && return 1
+
+    channel_link="$(ask_value "$(tr_text "CHANNEL_LINK (опционально)" "CHANNEL_LINK (optional)")" "$channel_link")"
+    [[ "$channel_link" == "__PBM_BACK__" ]] && return 1
+  fi
+
   cabinet_port="$(ask_value "$(tr_text "Локальный порт cabinet (для Caddy reverse proxy)" "Local cabinet port (for Caddy reverse proxy)")" "3020")"
   [[ "$cabinet_port" == "__PBM_BACK__" ]] && return 1
   if [[ ! "$cabinet_port" =~ ^[0-9]+$ ]]; then
@@ -396,6 +482,21 @@ run_bedolaga_stack_install_flow() {
   bedolaga_prepare_bot_dirs "$bot_dir"
   if ! bedolaga_configure_bot_env "$bot_dir" "$bot_token" "$admin_ids" "$hooks_domain" "$cabinet_domain" "$remnawave_api_url" "$remnawave_api_key" "$bot_username" "$postgres_db" "$postgres_user" "$postgres_password"; then
     return 1
+  fi
+  if [[ "$configure_notifications" == "1" ]]; then
+    bedolaga_apply_notification_defaults \
+      "${bot_dir}/.env" \
+      "$admin_notifications_enabled" \
+      "$admin_notifications_chat_id" \
+      "$admin_notifications_topic_id" \
+      "$admin_notifications_ticket_topic_id" \
+      "$admin_reports_enabled" \
+      "$admin_reports_chat_id" \
+      "$admin_reports_topic_id" \
+      "$admin_reports_send_time" \
+      "$channel_sub_id" \
+      "$channel_is_required_sub" \
+      "$channel_link"
   fi
 
   ( cd "$bot_dir" && $SUDO docker compose up -d --build ) || return 1
