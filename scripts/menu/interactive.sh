@@ -1077,15 +1077,17 @@ interactive_menu() {
   choose_ui_lang
 
   while true; do
-    draw_header "$(tr_text "Менеджер бэкапа панели" "Panel Backup Manager")"
+    draw_header "$(tr_text "Главное меню" "Main menu")"
     show_back_hint
-    menu_option "1" "$(tr_text "Установка и настройка" "Setup and configuration")"
-    menu_option "2" "$(tr_text "Создать архив или запустить восстановление (вручную)" "Create or restore backup (manual)")"
-    menu_option "3" "$(tr_text "Таймер и периодичность" "Timer and schedule")"
-    menu_option "4" "$(tr_text "Статус и диагностика" "Status and diagnostics")"
+    menu_option "1" "$(tr_text "Настройка резервного копирования" "Backup setup and configuration")"
+    menu_option "2" "$(tr_text "Remnawave: панель и подписки" "Remnawave: panel and subscriptions")"
+    menu_option "3" "$(tr_text "RemnaNode: нода и сеть" "RemnaNode: node and network")"
+    menu_option "4" "$(tr_text "Резервное копирование и восстановление" "Backup and restore")"
+    menu_option "5" "$(tr_text "Таймер и периодичность" "Timer and schedule")"
+    menu_option "6" "$(tr_text "Статус и диагностика" "Status and diagnostics")"
     menu_option "0" "$(tr_text "Выход" "Exit")" "$CLR_DANGER"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-4/0]: " "Choice [1-4/0]: ")" action
+    read -r -p "$(tr_text "Выбор [1-6/0]: " "Choice [1-6/0]: ")" action
     if is_back_command "$action"; then
       echo "$(tr_text "Выход." "Cancelled.")"
       break
@@ -1093,9 +1095,11 @@ interactive_menu() {
 
     case "$action" in
       1) menu_section_setup ;;
-      2) menu_section_operations ;;
-      3) menu_section_timer ;;
-      4) menu_section_status ;;
+      2) menu_section_remnawave_components ;;
+      3) menu_section_remnanode_components ;;
+      4) menu_section_operations ;;
+      5) menu_section_timer ;;
+      6) menu_section_status ;;
       0)
         echo "$(tr_text "Выход." "Cancelled.")"
         break
