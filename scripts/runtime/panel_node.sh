@@ -299,7 +299,13 @@ run_panel_install_flow() {
     reinstall_choice="1"
 
     if ask_yes_no "$(tr_text "Остановить контейнеры перед переустановкой?" "Stop containers before reinstall?")" "y"; then
-      (cd "$panel_dir" && $SUDO docker compose down) || true
+      if ! (cd "$panel_dir" && $SUDO docker compose down); then
+        paint "$CLR_DANGER" "$(tr_text "Не удалось корректно остановить контейнеры." "Failed to stop containers cleanly.")"
+        if ! ask_yes_no "$(tr_text "Продолжить переустановку без успешной остановки контейнеров?" "Continue reinstall without successful container stop?")" "n"; then
+          paint "$CLR_WARN" "$(tr_text "Установка отменена пользователем." "Installation cancelled by user.")"
+          return 1
+        fi
+      fi
     fi
 
     if ask_yes_no "$(tr_text "Удалить Docker volumes панели (ПОЛНАЯ ОЧИСТКА ДАННЫХ)?" "Remove panel Docker volumes (FULL DATA WIPE)?")" "n"; then

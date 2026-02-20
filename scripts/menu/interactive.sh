@@ -476,6 +476,21 @@ menu_section_setup() {
   done
 }
 
+run_component_flow_action() {
+  local action_title="$1"
+  local flow_func="$2"
+
+  if "$flow_func"; then
+    paint "$CLR_OK" "$(tr_text "Операция завершена:" "Operation completed:") ${action_title}"
+    wait_for_enter
+    return 0
+  fi
+
+  paint "$CLR_DANGER" "$(tr_text "Операция завершилась с ошибкой:" "Operation failed:") ${action_title}"
+  wait_for_enter
+  return 1
+}
+
 menu_section_remnawave_components() {
   local choice=""
   while true; do
@@ -496,28 +511,22 @@ menu_section_remnawave_components() {
     fi
     case "$choice" in
       1)
-        run_remnawave_full_install_flow || true
-        wait_for_enter
+        run_component_flow_action "$(tr_text "Полная установка (панель + подписки)" "Full install (panel + subscription)")" run_remnawave_full_install_flow
         ;;
       2)
-        run_panel_install_flow || true
-        wait_for_enter
+        run_component_flow_action "$(tr_text "Установить панель Remnawave" "Install Remnawave panel")" run_panel_install_flow
         ;;
       3)
-        run_subscription_install_flow || true
-        wait_for_enter
+        run_component_flow_action "$(tr_text "Установить страницу подписок" "Install subscription page")" run_subscription_install_flow
         ;;
       4)
-        run_remnawave_full_update_flow || true
-        wait_for_enter
+        run_component_flow_action "$(tr_text "Полное обновление (панель + подписки)" "Full update (panel + subscription)")" run_remnawave_full_update_flow
         ;;
       5)
-        run_panel_update_flow || true
-        wait_for_enter
+        run_component_flow_action "$(tr_text "Обновить панель Remnawave" "Update Remnawave panel")" run_panel_update_flow
         ;;
       6)
-        run_subscription_update_flow || true
-        wait_for_enter
+        run_component_flow_action "$(tr_text "Обновить страницу подписок" "Update subscription page")" run_subscription_update_flow
         ;;
       7) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
@@ -546,32 +555,25 @@ menu_section_remnanode_components() {
     fi
     case "$choice" in
       1)
-        run_remnanode_full_setup_flow || true
-        wait_for_enter
+        run_component_flow_action "$(tr_text "Полная настройка (нода + Caddy + BBR + WARP)" "Full setup (node + Caddy + BBR + WARP)")" run_remnanode_full_setup_flow
         ;;
       2)
-        run_node_install_flow || true
-        wait_for_enter
+        run_component_flow_action "$(tr_text "Установить ноду RemnaNode" "Install RemnaNode")" run_node_install_flow
         ;;
       3)
-        run_node_update_flow || true
-        wait_for_enter
+        run_component_flow_action "$(tr_text "Обновить ноду RemnaNode" "Update RemnaNode")" run_node_update_flow
         ;;
       4)
-        run_node_caddy_selfsteal_flow || true
-        wait_for_enter
+        run_component_flow_action "$(tr_text "Настроить Caddy self-steal" "Configure Caddy self-steal")" run_node_caddy_selfsteal_flow
         ;;
       5)
-        run_node_bbr_flow || true
-        wait_for_enter
+        run_component_flow_action "$(tr_text "Включить BBR" "Enable BBR")" run_node_bbr_flow
         ;;
       6)
-        run_node_warp_native_flow || true
-        wait_for_enter
+        run_component_flow_action "$(tr_text "Настроить WARP Native (wgcf)" "Configure WARP Native (wgcf)")" run_node_warp_native_flow
         ;;
       7)
-        run_node_ipv6_toggle_flow || true
-        wait_for_enter
+        run_component_flow_action "$(tr_text "Включить/выключить IPv6" "Toggle IPv6")" run_node_ipv6_toggle_flow
         ;;
       8) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
