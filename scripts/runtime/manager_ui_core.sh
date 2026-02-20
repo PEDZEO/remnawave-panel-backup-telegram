@@ -204,6 +204,13 @@ choose_ui_lang() {
   fi
 
   draw_subheader "Panel Backup Manager" "Выберите язык / Choose language"
+  paint "$CLR_ACCENT" "  ____  _____ ____   ___  _        _    ____    _   "
+  paint "$CLR_ACCENT" " | __ )| ____|  _ \\ / _ \\| |      / \\  / ___|  / \\  "
+  paint "$CLR_ACCENT" " |  _ \\|  _| | | | | | | | |     / _ \\| |  _  / _ \\ "
+  paint "$CLR_ACCENT" " | |_) | |___| |_| | |_| | |___ / ___ \\ |_| |/ ___ \\"
+  paint "$CLR_ACCENT" " |____/|_____|____/ \\___/|_____/_/   \\_\\____/_/   \\_\\"
+  paint "$CLR_MUTED" "  BEDOLAGA"
+  print_separator
   show_back_hint
   menu_option "1" "Русский [RU]"
   menu_option "2" "English [EN]"
@@ -532,4 +539,3 @@ ask_yes_no() {
     esac
   done
 }
-
