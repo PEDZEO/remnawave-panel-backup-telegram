@@ -25,6 +25,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backu
 - RemnaNode network tools: Caddy self-steal, BBR, WARP Native (wgcf), and IPv6 toggle.
 - Dedicated install/update actions for Remnawave subscription page.
 - One-VPS Bedolaga stack install/update: `remnawave-bedolaga-telegram-bot`, `bedolaga-cabinet`, and Caddy integration.
+  Install paths: `/root/remnawave-bedolaga-telegram-bot`, `/root/bedolaga-cabinet`, and `/root/caddy` for containerized Caddy setups.
 - Composite flows: full install/update for Remnawave and full setup for RemnaNode.
 
 ## Run Modes

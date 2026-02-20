@@ -255,8 +255,8 @@ CADDY
 }
 
 run_bedolaga_stack_install_flow() {
-  local bot_dir="/opt/remnawave-bedolaga-telegram-bot"
-  local cabinet_dir="/opt/bedolaga-cabinet"
+  local bot_dir="/root/remnawave-bedolaga-telegram-bot"
+  local cabinet_dir="/root/bedolaga-cabinet"
   local bot_repo="$BEDOLAGA_BOT_REPO_DEFAULT"
   local cabinet_repo="$BEDOLAGA_CABINET_REPO_DEFAULT"
   local hooks_domain=""
@@ -267,7 +267,6 @@ run_bedolaga_stack_install_flow() {
   local remnawave_api_key=""
   local bot_username=""
   local cabinet_port="3020"
-  local use_local_override="1"
 
   draw_subheader "$(tr_text "Bedolaga: установка (бот + кабинет + Caddy)" "Bedolaga: install (bot + cabinet + Caddy)")"
 
@@ -304,7 +303,7 @@ run_bedolaga_stack_install_flow() {
   bot_username="$(ask_value "$(tr_text "BOT_USERNAME (без @, опционально)" "BOT_USERNAME (without @, optional)")" "")"
   [[ "$bot_username" == "__PBM_BACK__" ]] && return 1
 
-  remnawave_api_url="$(ask_value "$(tr_text "REMNAWAVE_API_URL" "REMNAWAVE_API_URL")" "http://remnawave:3000")"
+  remnawave_api_url="$(ask_value "$(tr_text "REMNAWAVE_API_URL (URL панели, например https://panel.example.com)" "REMNAWAVE_API_URL (panel URL, for example https://panel.example.com)")" "")"
   [[ "$remnawave_api_url" == "__PBM_BACK__" ]] && return 1
   [[ -n "$remnawave_api_url" ]] || return 1
 
@@ -319,12 +318,6 @@ run_bedolaga_stack_install_flow() {
     return 1
   fi
 
-  if ask_yes_no "$(tr_text "Бот на одном сервере с Remnawave-панелью? (подключить remnawave-network)" "Bot on the same server with Remnawave panel? (attach remnawave-network)")" "y"; then
-    use_local_override="1"
-  else
-    use_local_override="0"
-  fi
-
   if ! bedolaga_clone_or_update_repo "$bot_repo" "$bot_dir"; then
     return 1
   fi
@@ -337,11 +330,7 @@ run_bedolaga_stack_install_flow() {
     return 1
   fi
 
-  if [[ "$use_local_override" == "1" && -f "${bot_dir}/docker-compose.local.yml" ]]; then
-    ( cd "$bot_dir" && $SUDO docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build ) || return 1
-  else
-    ( cd "$bot_dir" && $SUDO docker compose up -d --build ) || return 1
-  fi
+  ( cd "$bot_dir" && $SUDO docker compose up -d --build ) || return 1
 
   if [[ ! -f "${cabinet_dir}/.env" && -f "${cabinet_dir}/.env.example" ]]; then
     cp "${cabinet_dir}/.env.example" "${cabinet_dir}/.env"
@@ -363,9 +352,8 @@ run_bedolaga_stack_install_flow() {
 }
 
 run_bedolaga_stack_update_flow() {
-  local bot_dir="/opt/remnawave-bedolaga-telegram-bot"
-  local cabinet_dir="/opt/bedolaga-cabinet"
-  local use_local_override="1"
+  local bot_dir="/root/remnawave-bedolaga-telegram-bot"
+  local cabinet_dir="/root/bedolaga-cabinet"
 
   draw_subheader "$(tr_text "Bedolaga: обновление (бот + кабинет)" "Bedolaga: update (bot + cabinet)")"
 
@@ -377,28 +365,18 @@ run_bedolaga_stack_update_flow() {
   fi
 
   if [[ ! -d "${bot_dir}/.git" ]]; then
-    paint "$CLR_DANGER" "$(tr_text "Не найден установленный репозиторий бота в /opt/remnawave-bedolaga-telegram-bot" "Installed bot repository not found in /opt/remnawave-bedolaga-telegram-bot")"
+    paint "$CLR_DANGER" "$(tr_text "Не найден установленный репозиторий бота в /root/remnawave-bedolaga-telegram-bot" "Installed bot repository not found in /root/remnawave-bedolaga-telegram-bot")"
     return 1
   fi
   if [[ ! -d "${cabinet_dir}/.git" ]]; then
-    paint "$CLR_DANGER" "$(tr_text "Не найден установленный репозиторий кабинета в /opt/bedolaga-cabinet" "Installed cabinet repository not found in /opt/bedolaga-cabinet")"
+    paint "$CLR_DANGER" "$(tr_text "Не найден установленный репозиторий кабинета в /root/bedolaga-cabinet" "Installed cabinet repository not found in /root/bedolaga-cabinet")"
     return 1
   fi
 
   bedolaga_clone_or_update_repo "$BEDOLAGA_BOT_REPO_DEFAULT" "$bot_dir" || return 1
   bedolaga_clone_or_update_repo "$BEDOLAGA_CABINET_REPO_DEFAULT" "$cabinet_dir" || return 1
 
-  if ask_yes_no "$(tr_text "Использовать docker-compose.local.yml при обновлении бота?" "Use docker-compose.local.yml for bot update?")" "y"; then
-    use_local_override="1"
-  else
-    use_local_override="0"
-  fi
-
-  if [[ "$use_local_override" == "1" && -f "${bot_dir}/docker-compose.local.yml" ]]; then
-    ( cd "$bot_dir" && $SUDO docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build ) || return 1
-  else
-    ( cd "$bot_dir" && $SUDO docker compose up -d --build ) || return 1
-  fi
+  ( cd "$bot_dir" && $SUDO docker compose up -d --build ) || return 1
 
   ( cd "$cabinet_dir" && $SUDO docker compose up -d --build ) || return 1
 
