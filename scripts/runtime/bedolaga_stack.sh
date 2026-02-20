@@ -544,25 +544,8 @@ https://${api_domain} {
         level INFO
     }
 }
-$(if [[ "$BEDOLAGA_CADDY_FRESH_FILE" == "1" ]]; then
-cat <<'EOF'
-
-:80, :443 {
-    respond "Forbidden" 403
-}
-EOF
-fi)
 ${marker_end}
 CADDY
-
-  if [[ "$force_replace" == "1" && "$BEDOLAGA_CADDY_FRESH_FILE" != "1" ]]; then
-    cat >> "$tmp_file" <<'CADDY'
-
-:80, :443 {
-    respond "Forbidden" 403
-}
-CADDY
-  fi
 
   $SUDO mv "$tmp_file" "$caddy_file"
 
