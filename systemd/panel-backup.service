@@ -1,6 +1,6 @@
 # update: panel backup service unit
 [Unit]
-Description=Panel full backup + Telegram upload
+Description=Panel full backup (optional Telegram upload)
 After=network-online.target docker.service
 Wants=network-online.target
 

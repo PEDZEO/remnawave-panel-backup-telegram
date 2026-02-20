@@ -1,6 +1,6 @@
 # update: panel backup timer unit
 [Unit]
-Description=Run panel backup daily
+Description=Run panel backup by configured schedule
 
 [Timer]
 OnCalendar=*-*-* 03:40:00 UTC

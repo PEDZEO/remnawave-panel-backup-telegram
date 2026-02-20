@@ -460,7 +460,7 @@ menu_section_setup() {
     menu_option "1" "$(tr_text "Установка/обновление" "Install/update")"
     menu_option "2" "$(tr_text "Быстрая настройка" "Quick setup")"
     menu_option "3" "$(tr_text "Шифрование" "Encryption")"
-    menu_option "4" "$(tr_text "Панель и нода (установка/обновление)" "Panel and node (install/update)")"
+    menu_option "4" "$(tr_text "Панель, нода и подписки (установка/обновление)" "Panel, node and subscriptions (install/update)")"
     menu_option "5" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
@@ -481,7 +481,7 @@ menu_section_setup() {
 menu_section_panel_node() {
   local choice=""
   while true; do
-    draw_header "$(tr_text "Раздел: Панель и нода" "Section: Panel and node")"
+    draw_header "$(tr_text "Раздел: Панель, нода и подписки" "Section: Panel, node and subscriptions")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Установка и обновление Remnawave/RemnaNode/subscription." "Install and update Remnawave/RemnaNode/subscription.")"
     menu_option "1" "$(tr_text "Установить панель Remnawave" "Install Remnawave panel")"
