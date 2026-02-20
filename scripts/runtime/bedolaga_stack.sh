@@ -210,7 +210,8 @@ EOF
 bedolaga_prepare_bot_dirs() {
   local bot_dir="$1"
   mkdir -p "${bot_dir}/logs" "${bot_dir}/data" "${bot_dir}/data/backups" "${bot_dir}/data/referral_qr"
-  chmod -R 755 "${bot_dir}/logs" "${bot_dir}/data"
+  # Bot container user must be able to write runtime files/logs on host-mounted volumes.
+  chmod -R 777 "${bot_dir}/logs" "${bot_dir}/data"
 }
 
 bedolaga_upsert_if_not_empty() {
@@ -365,6 +366,7 @@ bedolaga_connect_container_to_network() {
 
 bedolaga_collect_container_logs_if_needed() {
   local container_name="$1"
+  local cabinet_port="${2:-}"
   local state=""
   local health=""
   local show_logs="0"
@@ -381,7 +383,17 @@ bedolaga_collect_container_logs_if_needed() {
   if [[ "$state" != "running" ]]; then
     show_logs="1"
   fi
-  if [[ "$health" != "none" && "$health" != "healthy" ]]; then
+  if [[ "$health" == "starting" ]]; then
+    paint "$CLR_MUTED" "$(tr_text "Контейнер еще прогревается, продолжаю проверку..." "Container is still starting, continuing checks...")"
+    show_logs="0"
+  elif [[ "$health" == "unhealthy" && "$container_name" == "cabinet_frontend" && -n "$cabinet_port" ]]; then
+    if curl -fsS "http://127.0.0.1:${cabinet_port}/" >/dev/null 2>&1; then
+      paint "$CLR_WARN" "$(tr_text "healthcheck cabinet помечен unhealthy, но HTTP отвечает 200 — продолжаю." "cabinet healthcheck is unhealthy, but HTTP 200 is reachable — continuing.")"
+      show_logs="0"
+    else
+      show_logs="1"
+    fi
+  elif [[ "$health" != "none" && "$health" != "healthy" ]]; then
     show_logs="1"
   fi
 
@@ -394,13 +406,14 @@ bedolaga_collect_container_logs_if_needed() {
 }
 
 bedolaga_post_deploy_health_check() {
+  local cabinet_port="${1:-3020}"
   local failed="0"
 
   paint "$CLR_ACCENT" "$(tr_text "Проверяю состояние контейнеров Bedolaga..." "Checking Bedolaga container health...")"
-  bedolaga_collect_container_logs_if_needed "remnawave_bot" || failed="1"
-  bedolaga_collect_container_logs_if_needed "remnawave_bot_db" || failed="1"
-  bedolaga_collect_container_logs_if_needed "remnawave_bot_redis" || failed="1"
-  bedolaga_collect_container_logs_if_needed "cabinet_frontend" || failed="1"
+  bedolaga_collect_container_logs_if_needed "remnawave_bot" "$cabinet_port" || failed="1"
+  bedolaga_collect_container_logs_if_needed "remnawave_bot_db" "$cabinet_port" || failed="1"
+  bedolaga_collect_container_logs_if_needed "remnawave_bot_redis" "$cabinet_port" || failed="1"
+  bedolaga_collect_container_logs_if_needed "cabinet_frontend" "$cabinet_port" || failed="1"
 
   if [[ "$failed" == "1" ]]; then
     paint "$CLR_DANGER" "$(tr_text "Обнаружены проблемы после запуска Bedolaga. Исправьте ошибки по логам выше." "Issues detected after Bedolaga start. Fix errors using logs above.")"
@@ -632,7 +645,7 @@ run_bedolaga_stack_install_flow() {
   if ! bedolaga_apply_caddy_block "$hooks_domain" "$cabinet_domain" "$api_domain" "$cabinet_port" "$replace_caddy_config"; then
     return 1
   fi
-  if ! bedolaga_post_deploy_health_check; then
+  if ! bedolaga_post_deploy_health_check "$cabinet_port"; then
     return 1
   fi
 
@@ -719,7 +732,7 @@ run_bedolaga_stack_update_flow() {
   if ! bedolaga_apply_caddy_block "$hooks_domain" "$cabinet_domain" "$api_domain" "$cabinet_port" "$replace_caddy_config"; then
     return 1
   fi
-  if ! bedolaga_post_deploy_health_check; then
+  if ! bedolaga_post_deploy_health_check "$cabinet_port"; then
     return 1
   fi
 

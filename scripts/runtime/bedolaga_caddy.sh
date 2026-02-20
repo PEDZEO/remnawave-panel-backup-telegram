@@ -104,15 +104,13 @@ bedolaga_validate_and_reload_caddy() {
   fi
 
   if [[ "$CADDY_MODE" == "container" ]]; then
-    validate_output="$($SUDO docker exec "$CADDY_CONTAINER_NAME" caddy validate --config /etc/caddy/Caddyfile 2>&1 || true)"
-    if [[ "$validate_output" == *"Error:"* || "$validate_output" == *"error"* ]]; then
+    if ! validate_output="$($SUDO docker exec "$CADDY_CONTAINER_NAME" caddy validate --config /etc/caddy/Caddyfile 2>&1)"; then
       paint "$CLR_DANGER" "$(tr_text "Ошибка проверки Caddy (container mode):" "Caddy validation error (container mode):")"
       printf "%s\n" "$validate_output"
       return 1
     fi
 
-    reload_output="$($SUDO docker exec "$CADDY_CONTAINER_NAME" caddy reload --config /etc/caddy/Caddyfile 2>&1 || true)"
-    if [[ -z "$reload_output" || "$reload_output" != *"Error:"* ]]; then
+    if reload_output="$($SUDO docker exec "$CADDY_CONTAINER_NAME" caddy reload --config /etc/caddy/Caddyfile 2>&1)"; then
       return 0
     fi
     paint "$CLR_WARN" "$(tr_text "Не удалось выполнить caddy reload, пробую restart контейнера." "caddy reload failed, trying container restart.")"
@@ -121,16 +119,18 @@ bedolaga_validate_and_reload_caddy() {
     return $?
   fi
 
-  validate_output="$($SUDO caddy validate --config "$CADDY_FILE_PATH" 2>&1 || true)"
-  if [[ "$validate_output" == *"Error:"* || "$validate_output" == *"error"* ]]; then
+  if ! validate_output="$($SUDO caddy validate --config "$CADDY_FILE_PATH" 2>&1)"; then
     paint "$CLR_DANGER" "$(tr_text "Ошибка проверки Caddy (host mode):" "Caddy validation error (host mode):")"
     printf "%s\n" "$validate_output"
     return 1
   fi
-  reload_output="$($SUDO systemctl reload caddy 2>&1 || true)"
-  if [[ -n "$reload_output" ]]; then
-    paint "$CLR_WARN" "$(tr_text "systemctl reload caddy вернул сообщение:" "systemctl reload caddy returned output:")"
+  if ! reload_output="$($SUDO systemctl reload caddy 2>&1)"; then
+    paint "$CLR_DANGER" "$(tr_text "systemctl reload caddy завершился ошибкой:" "systemctl reload caddy failed:")"
     printf "%s\n" "$reload_output"
+    return 1
+  fi
+  if [[ -n "$reload_output" ]]; then
+    paint "$CLR_MUTED" "$(tr_text "systemctl reload caddy: " "systemctl reload caddy: ")${reload_output}"
   fi
   return 0
 }
@@ -290,6 +290,8 @@ ${marker_end}
 CADDY
 
   $SUDO mv "$tmp_file" "$caddy_file"
+  $SUDO chmod 644 "$caddy_file"
+  $SUDO chown root:root "$caddy_file" >/dev/null 2>&1 || true
 
   if ! bedolaga_validate_and_reload_caddy; then
     paint "$CLR_DANGER" "$(tr_text "Проверка Caddyfile не прошла, откатываю изменения." "Caddyfile validation failed, rolling back changes.")"
