@@ -450,9 +450,9 @@ menu_section_setup() {
     fi
     include_state_raw="${BACKUP_INCLUDE:-all}"
     include_state="$(format_backup_scope_label "$include_state_raw")"
-    draw_header "$(tr_text "Раздел: Установка и настройка" "Section: Setup and configuration")"
+    draw_header "$(tr_text "Раздел: Настройка резервного копирования" "Section: Backup setup and configuration")"
     show_back_hint
-    paint "$CLR_MUTED" "$(tr_text "Здесь первичная установка и изменение конфигурации." "Use this section for initial install and config changes.")"
+    paint "$CLR_MUTED" "$(tr_text "Здесь только настройка резервного копирования и уведомлений." "This section is only for backup and notification settings.")"
     paint "$CLR_TITLE" "$(tr_text "Текущее состояние" "Current state")"
     paint "$CLR_MUTED" "  Telegram: ${tg_state}"
     paint "$CLR_MUTED" "  $(tr_text "Шифрование резервной копии:" "Backup encryption:") ${enc_state}"
@@ -460,11 +460,9 @@ menu_section_setup() {
     menu_option "1" "$(tr_text "Установка/обновление" "Install/update")"
     menu_option "2" "$(tr_text "Быстрая настройка" "Quick setup")"
     menu_option "3" "$(tr_text "Шифрование" "Encryption")"
-    menu_option "4" "$(tr_text "Remnawave: панель и подписки" "Remnawave: panel and subscriptions")"
-    menu_option "5" "$(tr_text "RemnaNode: установка и обновление" "RemnaNode: install and update")"
-    menu_option "6" "$(tr_text "Назад" "Back")"
+    menu_option "4" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
@@ -472,9 +470,7 @@ menu_section_setup() {
       1) menu_flow_install_and_setup ;;
       2) menu_flow_quick_setup ;;
       3) menu_flow_encryption_settings ;;
-      4) menu_section_remnawave_components ;;
-      5) menu_section_remnanode_components ;;
-      6) break ;;
+      4) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
@@ -1094,10 +1090,11 @@ interactive_menu() {
   while true; do
     draw_header "$(tr_text "Главное меню" "Main menu")"
     show_back_hint
-    menu_option "1" "$(tr_text "Настройка резервного копирования" "Backup setup and configuration")"
-    menu_option "2" "$(tr_text "Remnawave: панель и подписки" "Remnawave: panel and subscriptions")"
-    menu_option "3" "$(tr_text "RemnaNode: нода и сеть" "RemnaNode: node and network")"
-    menu_option "4" "$(tr_text "Резервное копирование и восстановление" "Backup and restore")"
+    paint "$CLR_TITLE" "$(tr_text "Разделы" "Sections")"
+    menu_option "1" "$(tr_text "Remnawave: панель и подписки" "Remnawave: panel and subscriptions")"
+    menu_option "2" "$(tr_text "RemnaNode: нода и сеть" "RemnaNode: node and network")"
+    menu_option "3" "$(tr_text "Резервное копирование и восстановление" "Backup and restore")"
+    menu_option "4" "$(tr_text "Настройка резервного копирования" "Backup setup and configuration")"
     menu_option "5" "$(tr_text "Таймер и периодичность" "Timer and schedule")"
     menu_option "6" "$(tr_text "Статус и диагностика" "Status and diagnostics")"
     menu_option "0" "$(tr_text "Выход" "Exit")" "$CLR_DANGER"
@@ -1109,10 +1106,10 @@ interactive_menu() {
     fi
 
     case "$action" in
-      1) menu_section_setup ;;
-      2) menu_section_remnawave_components ;;
-      3) menu_section_remnanode_components ;;
-      4) menu_section_operations ;;
+      1) menu_section_remnawave_components ;;
+      2) menu_section_remnanode_components ;;
+      3) menu_section_operations ;;
+      4) menu_section_setup ;;
       5) menu_section_timer ;;
       6) menu_section_status ;;
       0)
