@@ -28,11 +28,9 @@ menu_section_remnawave_components() {
     menu_option "4" "$(tr_text "Полное обновление (панель + подписки)" "Full update (panel + subscription)")"
     menu_option "5" "$(tr_text "Обновить панель Remnawave" "Update Remnawave panel")"
     menu_option "6" "$(tr_text "Обновить страницу подписок" "Update subscription page")"
-    menu_option "7" "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")"
-    menu_option "8" "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")"
-    menu_option "9" "$(tr_text "Назад" "Back")"
+    menu_option "7" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-9]: " "Choice [1-9]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-7]: " "Choice [1-7]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
@@ -55,13 +53,7 @@ menu_section_remnawave_components() {
       6)
         run_component_flow_action "$(tr_text "Обновить страницу подписок" "Update subscription page")" run_subscription_update_flow
         ;;
-      7)
-        run_component_flow_action "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")" run_bedolaga_stack_install_flow
-        ;;
-      8)
-        run_component_flow_action "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")" run_bedolaga_stack_update_flow
-        ;;
-      9) break ;;
+      7) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
@@ -313,28 +305,45 @@ interactive_menu() {
   while true; do
     draw_header "$(tr_text "Главное меню" "Main menu")"
     show_back_hint
-    paint "$CLR_TITLE" "$(tr_text "Разделы" "Sections")"
-    menu_option "1" "$(tr_text "Remnawave: панель и подписки" "Remnawave: panel and subscriptions")"
-    menu_option "2" "$(tr_text "RemnaNode: нода и сеть" "RemnaNode: node and network")"
-    menu_option "3" "$(tr_text "Резервное копирование и восстановление" "Backup and restore")"
-    menu_option "4" "$(tr_text "Настройка резервного копирования" "Backup setup and configuration")"
-    menu_option "5" "$(tr_text "Таймер и периодичность" "Timer and schedule")"
-    menu_option "6" "$(tr_text "Статус и диагностика" "Status and diagnostics")"
+    paint "$CLR_TITLE" "============================================================"
+    paint "$CLR_ACCENT" "  $(tr_text "Раздел 1. Бот и кабинет" "Section 1. Bot and cabinet")"
+    paint "$CLR_TITLE" "------------------------------------------------------------"
+    menu_option "1" "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")"
+    menu_option "2" "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")"
+    paint "$CLR_TITLE" "============================================================"
+    paint "$CLR_ACCENT" "  $(tr_text "Раздел 2. Панель и ноды" "Section 2. Panel and nodes")"
+    paint "$CLR_TITLE" "------------------------------------------------------------"
+    menu_option "3" "$(tr_text "Панель Remnawave и подписки" "Remnawave panel and subscriptions")"
+    menu_option "4" "$(tr_text "Нода RemnaNode и сеть" "RemnaNode and network")"
+    paint "$CLR_TITLE" "============================================================"
+    paint "$CLR_ACCENT" "  $(tr_text "Раздел 3. Бэкапы" "Section 3. Backups")"
+    paint "$CLR_TITLE" "------------------------------------------------------------"
+    menu_option "5" "$(tr_text "Ручной backup/restore" "Manual backup/restore")"
+    menu_option "6" "$(tr_text "Мастер настройки backup" "Backup setup wizard")"
+    menu_option "7" "$(tr_text "Таймер и периодичность" "Timer and schedule")"
+    menu_option "8" "$(tr_text "Статус и диагностика" "Status and diagnostics")"
+    paint "$CLR_TITLE" "============================================================"
     menu_option "0" "$(tr_text "Выход" "Exit")" "$CLR_DANGER"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-6/0]: " "Choice [1-6/0]: ")" action
+    read -r -p "$(tr_text "Выбор [1-8/0]: " "Choice [1-8/0]: ")" action
     if is_back_command "$action"; then
       echo "$(tr_text "Выход." "Cancelled.")"
       break
     fi
 
     case "$action" in
-      1) menu_section_remnawave_components ;;
-      2) menu_section_remnanode_components ;;
-      3) menu_section_operations ;;
-      4) menu_section_setup ;;
-      5) menu_section_timer ;;
-      6) menu_section_status ;;
+      1)
+        run_component_flow_action "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")" run_bedolaga_stack_install_flow
+        ;;
+      2)
+        run_component_flow_action "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")" run_bedolaga_stack_update_flow
+        ;;
+      3) menu_section_remnawave_components ;;
+      4) menu_section_remnanode_components ;;
+      5) menu_section_operations ;;
+      6) menu_section_setup ;;
+      7) menu_section_timer ;;
+      8) menu_section_status ;;
       0)
         echo "$(tr_text "Выход." "Cancelled.")"
         break
