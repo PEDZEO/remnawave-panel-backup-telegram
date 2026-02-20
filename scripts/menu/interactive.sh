@@ -42,7 +42,7 @@ menu_flow_install_and_setup() {
   fi
   install_files
   write_env
-  if ask_yes_no "$(tr_text "Включить таймер backup сейчас?" "Enable backup timer now?")" "y"; then
+  if ask_yes_no "$(tr_text "Включить таймер резервного копирования сейчас?" "Enable backup timer now?")" "y"; then
     enable_timer
   else
     case $? in
@@ -191,7 +191,7 @@ menu_flow_quick_setup() {
         done
 
         while true; do
-          input="$(ask_value_nav "$(tr_text "Язык backup (ru/en)" "Backup language (ru/en)")" "$BACKUP_LANG")"
+          input="$(ask_value_nav "$(tr_text "Язык описания резервной копии (ru/en)" "Backup language (ru/en)")" "$BACKUP_LANG")"
           [[ "$input" == "__PBM_BACK__" ]] && return 0
           if [[ "$input" == "__PBM_PREV__" ]]; then
             step=1
@@ -327,7 +327,7 @@ menu_flow_encryption_settings() {
       password_state="$(tr_text "не задан" "not set")"
     fi
 
-    draw_header "$(tr_text "Настройки шифрования backup" "Backup encryption settings")"
+    draw_header "$(tr_text "Настройки шифрования резервной копии" "Backup encryption settings")"
     show_back_hint
     paint "$CLR_MUTED" "  $(tr_text "Шифрование:" "Encryption:") ${encrypt_state}"
     paint "$CLR_MUTED" "  $(tr_text "Пароль:" "Password:") ${password_state}"
@@ -455,8 +455,8 @@ menu_section_setup() {
     paint "$CLR_MUTED" "$(tr_text "Здесь первичная установка и изменение конфигурации." "Use this section for initial install and config changes.")"
     paint "$CLR_TITLE" "$(tr_text "Текущее состояние" "Current state")"
     paint "$CLR_MUTED" "  Telegram: ${tg_state}"
-    paint "$CLR_MUTED" "  $(tr_text "Шифрование backup:" "Backup encryption:") ${enc_state}"
-    paint "$CLR_MUTED" "  $(tr_text "Состав backup:" "Backup scope:") ${include_state}"
+    paint "$CLR_MUTED" "  $(tr_text "Шифрование резервной копии:" "Backup encryption:") ${enc_state}"
+    paint "$CLR_MUTED" "  $(tr_text "Состав резервной копии:" "Backup scope:") ${include_state}"
     menu_option "1" "$(tr_text "Установка/обновление" "Install/update")"
     menu_option "2" "$(tr_text "Быстрая настройка" "Quick setup")"
     menu_option "3" "$(tr_text "Шифрование" "Encryption")"
@@ -483,7 +483,7 @@ menu_section_panel_node() {
   while true; do
     draw_header "$(tr_text "Раздел: Панель, нода и подписки" "Section: Panel, node and subscriptions")"
     show_back_hint
-    paint "$CLR_MUTED" "$(tr_text "Установка и обновление Remnawave/RemnaNode/subscription." "Install and update Remnawave/RemnaNode/subscription.")"
+    paint "$CLR_MUTED" "$(tr_text "Установка и обновление панели, ноды и страницы подписок." "Install and update panel, node, and subscription page.")"
     menu_option "1" "$(tr_text "Установить панель Remnawave" "Install Remnawave panel")"
     menu_option "2" "$(tr_text "Обновить панель Remnawave" "Update Remnawave panel")"
     menu_option "3" "$(tr_text "Установить ноду RemnaNode" "Install RemnaNode")"
@@ -539,11 +539,11 @@ render_backup_list() {
   local mtime=""
 
   if [[ ${#files[@]} -eq 0 ]]; then
-    paint "$CLR_WARN" "$(tr_text "В /var/backups/panel нет архивов backup." "No backup archives found in /var/backups/panel.")"
+    paint "$CLR_WARN" "$(tr_text "В /var/backups/panel нет архивов резервной копии." "No backup archives found in /var/backups/panel.")"
     return 0
   fi
 
-  paint "$CLR_TITLE" "$(tr_text "Доступные backup-файлы" "Available backup files")"
+  paint "$CLR_TITLE" "$(tr_text "Доступные архивы резервной копии" "Available backup files")"
   for path in "${files[@]}"; do
     [[ -f "$path" ]] || continue
     size="$(du -h "$path" 2>/dev/null | awk '{print $1}' || echo "n/a")"
@@ -562,7 +562,7 @@ select_restore_source() {
   local -a files=()
 
   while true; do
-    draw_header "$(tr_text "Источник backup для восстановления" "Restore source selection")"
+    draw_header "$(tr_text "Источник архива для восстановления" "Restore source selection")"
     mapfile -t files < <(list_local_backups)
     render_backup_list "${files[@]}"
     print_separator
@@ -583,7 +583,7 @@ select_restore_source() {
           wait_for_enter
           continue
         fi
-        selected="$(ask_value "$(tr_text "Введите номер backup из списка" "Enter backup number from list")" "")"
+        selected="$(ask_value "$(tr_text "Введите номер архива из списка" "Enter backup number from list")" "")"
         [[ "$selected" == "__PBM_BACK__" ]] && continue
         if [[ "$selected" =~ ^[0-9]+$ ]] && (( selected >= 1 && selected <= ${#files[@]} )); then
           index=$((selected - 1))
@@ -595,7 +595,7 @@ select_restore_source() {
         wait_for_enter
         ;;
       2)
-        path="$(ask_value "$(tr_text "Путь к backup-архиву (.tar.gz или .tar.gz.gpg)" "Path to backup archive (.tar.gz or .tar.gz.gpg)")" "$BACKUP_FILE")"
+        path="$(ask_value "$(tr_text "Путь к архиву (.tar.gz или .tar.gz.gpg)" "Path to backup archive (.tar.gz or .tar.gz.gpg)")" "$BACKUP_FILE")"
         [[ "$path" == "__PBM_BACK__" ]] && continue
         if [[ -f "$path" ]]; then
           BACKUP_FILE="$path"
@@ -606,7 +606,7 @@ select_restore_source() {
         wait_for_enter
         ;;
       3)
-        url="$(ask_value "$(tr_text "URL backup-архива" "Backup archive URL")" "$BACKUP_URL")"
+        url="$(ask_value "$(tr_text "URL архива" "Backup archive URL")" "$BACKUP_URL")"
         [[ "$url" == "__PBM_BACK__" ]] && continue
         if [[ -n "$url" ]]; then
           BACKUP_URL="$url"
@@ -627,7 +627,7 @@ select_restore_components() {
   local custom=""
   while true; do
     draw_header "$(tr_text "Выбор данных для восстановления" "Restore components selection")"
-    paint "$CLR_MUTED" "$(tr_text "Выберите, что именно восстанавливать из backup." "Choose which data to restore from backup.")"
+    paint "$CLR_MUTED" "$(tr_text "Выберите, что именно восстанавливать из архива." "Choose which data to restore from backup.")"
     menu_option "1" "$(tr_text "Все (db + redis + configs)" "All (db + redis + configs)")"
     menu_option "2" "$(tr_text "Только PostgreSQL (db)" "PostgreSQL only (db)")"
     menu_option "3" "$(tr_text "Только Redis (redis)" "Redis only (redis)")"
@@ -685,7 +685,7 @@ ensure_restore_password_if_needed() {
 
   paint "$CLR_WARN" "$(tr_text "Архив зашифрован (.gpg). Нужен пароль для восстановления." "Encrypted archive (.gpg). Password is required for restore.")"
   while true; do
-    entered="$(ask_secret_value "$(tr_text "Введите пароль от backup-архива" "Enter backup archive password")" "")"
+    entered="$(ask_secret_value "$(tr_text "Введите пароль от архива" "Enter backup archive password")" "")"
     if [[ "$entered" == "__PBM_BACK__" ]]; then
       return 1
     fi
@@ -777,14 +777,14 @@ show_restore_safety_checklist() {
     paint "$CLR_WARN" "  [WARN] $(tr_text "Источник:" "Source:") ${source_label}"
   fi
   if [[ -n "$latest_local" ]]; then
-    paint "$CLR_MUTED" "  [OK] $(tr_text "Последний локальный backup:" "Latest local backup:") $(basename "$latest_local") ($(tr_text "возраст, ч:" "age, h:") ${latest_age_h})"
+    paint "$CLR_MUTED" "  [OK] $(tr_text "Последний локальный архив:" "Latest local backup:") $(basename "$latest_local") ($(tr_text "возраст, ч:" "age, h:") ${latest_age_h})"
   else
-    paint "$CLR_WARN" "  [WARN] $(tr_text "Локальные backup-файлы не найдены." "No local backup files found.")"
+    paint "$CLR_WARN" "  [WARN] $(tr_text "Локальные архивы не найдены." "No local backup files found.")"
   fi
   if [[ -n "$db_snapshot" ]]; then
     paint "$CLR_MUTED" "  [OK] $(tr_text "Ручной snapshot БД:" "Manual DB snapshot:") $(basename "$db_snapshot")"
   else
-    paint "$CLR_WARN" "  [WARN] $(tr_text "Нет ручного snapshot БД в /var/backups/panel/manual-db-snapshots." "No manual DB snapshot in /var/backups/panel/manual-db-snapshots.")"
+    paint "$CLR_WARN" "  [WARN] $(tr_text "Нет ручного снимка БД в /var/backups/panel/manual-db-snapshots." "No manual DB snapshot in /var/backups/panel/manual-db-snapshots.")"
   fi
   if [[ "${RESTORE_DRY_RUN:-0}" == "1" ]]; then
     paint "$CLR_OK" "  [SAFE] $(tr_text "Выбран тестовый режим (без изменений)." "Test mode selected (no changes).")"
@@ -810,7 +810,7 @@ show_operation_result_summary() {
   paint "$CLR_MUTED" "  $(tr_text "Операция:" "Action:") ${action}"
   paint "$CLR_MUTED" "  $(tr_text "Статус:" "Status:") ${status_text}"
   if [[ -n "$latest_local" ]]; then
-    paint "$CLR_MUTED" "  $(tr_text "Последний backup:" "Latest backup:") $(basename "$latest_local")"
+    paint "$CLR_MUTED" "  $(tr_text "Последний архив:" "Latest backup:") $(basename "$latest_local")"
   fi
   paint "$CLR_MUTED" "  $(tr_text "Дальше:" "Next:") $(tr_text "можно открыть раздел \"Статус и диагностика\"." "you can open \"Status and diagnostics\".")"
 }
@@ -819,7 +819,7 @@ draw_restore_step() {
   local step="$1"
   local total="$2"
   local title="$3"
-  draw_header "$(tr_text "Мастер восстановления backup" "Backup restore wizard")" "$(tr_text "Шаг" "Step") ${step}/${total}: ${title}"
+  draw_header "$(tr_text "Мастер восстановления" "Backup restore wizard")" "$(tr_text "Шаг" "Step") ${step}/${total}: ${title}"
 }
 
 confirm_restore_phrase() {
@@ -844,11 +844,11 @@ confirm_restore_phrase() {
 menu_section_operations() {
   local choice=""
   while true; do
-    draw_header "$(tr_text "Раздел: Ручное управление backup" "Section: Manual backup control")"
+    draw_header "$(tr_text "Раздел: Ручное управление" "Section: Manual backup control")"
     show_back_hint
-    paint "$CLR_MUTED" "$(tr_text "Здесь можно вручную: 1) создать backup, 2) восстановить backup." "Manually: 1) create backup, 2) restore backup.")"
-    menu_option "1" "$(tr_text "Создать backup сейчас" "Create backup now")"
-    menu_option "2" "$(tr_text "Восстановить backup" "Restore backup")"
+    paint "$CLR_MUTED" "$(tr_text "Здесь можно вручную: 1) создать резервную копию, 2) запустить восстановление." "Manually: 1) create backup, 2) restore backup.")"
+    menu_option "1" "$(tr_text "Создать резервную копию сейчас" "Create backup now")"
+    menu_option "2" "$(tr_text "Запустить восстановление" "Restore backup")"
     menu_option "3" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
@@ -857,18 +857,18 @@ menu_section_operations() {
     fi
     case "$choice" in
       1)
-        draw_header "$(tr_text "Создание backup" "Create backup")"
+        draw_header "$(tr_text "Создание резервной копии" "Create backup")"
         if run_backup_now; then
-          paint "$CLR_OK" "$(tr_text "Backup выполнен успешно." "Backup completed successfully.")"
-          show_operation_result_summary "$(tr_text "Создание backup" "Create backup")" "1"
+          paint "$CLR_OK" "$(tr_text "Резервная копия создана успешно." "Backup completed successfully.")"
+          show_operation_result_summary "$(tr_text "Создание резервной копии" "Create backup")" "1"
         else
-          paint "$CLR_DANGER" "$(tr_text "Ошибка создания backup. Проверьте лог выше." "Backup failed. Check the log above.")"
-          show_operation_result_summary "$(tr_text "Создание backup" "Create backup")" "0"
+          paint "$CLR_DANGER" "$(tr_text "Ошибка создания резервной копии. Проверьте лог выше." "Backup failed. Check the log above.")"
+          show_operation_result_summary "$(tr_text "Создание резервной копии" "Create backup")" "0"
         fi
         wait_for_enter
         ;;
       2)
-        draw_restore_step "1" "4" "$(tr_text "Выбор источника backup" "Select backup source")"
+        draw_restore_step "1" "4" "$(tr_text "Выбор источника архива" "Select backup source")"
         MODE="restore"
         RESTORE_DRY_RUN=0
         RESTORE_NO_RESTART=0
@@ -938,10 +938,10 @@ menu_section_operations() {
         fi
         if run_restore; then
           paint "$CLR_OK" "$(tr_text "Восстановление завершено." "Restore completed.")"
-          show_operation_result_summary "$(tr_text "Восстановление backup" "Backup restore")" "1"
+          show_operation_result_summary "$(tr_text "Восстановление" "Backup restore")" "1"
         else
           paint "$CLR_DANGER" "$(tr_text "Ошибка восстановления. Проверьте лог выше." "Restore failed. Check the log above.")"
-          show_operation_result_summary "$(tr_text "Восстановление backup" "Backup restore")" "0"
+          show_operation_result_summary "$(tr_text "Восстановление" "Backup restore")" "0"
         fi
         wait_for_enter
         ;;
@@ -959,9 +959,9 @@ menu_section_timer() {
     show_back_hint
     schedule_now="$(get_current_timer_calendar || true)"
     paint "$CLR_MUTED" "$(tr_text "Текущее расписание:" "Current schedule:") $(format_schedule_label "$schedule_now")"
-    menu_option "1" "$(tr_text "Включить таймер backup" "Enable backup timer")"
-    menu_option "2" "$(tr_text "Выключить таймер backup" "Disable backup timer")"
-    menu_option "3" "$(tr_text "Настроить периодичность backup" "Configure backup schedule")"
+    menu_option "1" "$(tr_text "Включить таймер резервного копирования" "Enable backup timer")"
+    menu_option "2" "$(tr_text "Выключить таймер резервного копирования" "Disable backup timer")"
+    menu_option "3" "$(tr_text "Настроить периодичность резервного копирования" "Configure backup schedule")"
     menu_option "4" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
@@ -970,12 +970,12 @@ menu_section_timer() {
     fi
     case "$choice" in
       1)
-        draw_header "$(tr_text "Включение таймера backup" "Enable backup timer")"
+        draw_header "$(tr_text "Включение таймера резервного копирования" "Enable backup timer")"
         enable_timer
         wait_for_enter
         ;;
       2)
-        draw_header "$(tr_text "Отключение таймера backup" "Disable backup timer")"
+        draw_header "$(tr_text "Отключение таймера резервного копирования" "Disable backup timer")"
         disable_timer
         wait_for_enter
         ;;
@@ -984,7 +984,7 @@ menu_section_timer() {
           write_env
           write_timer_unit
           $SUDO systemctl daemon-reload
-          paint "$CLR_OK" "$(tr_text "Периодичность backup сохранена." "Backup schedule saved.")"
+          paint "$CLR_OK" "$(tr_text "Периодичность резервного копирования сохранена." "Backup schedule saved.")"
           if $SUDO systemctl is-enabled --quiet panel-backup.timer 2>/dev/null; then
             $SUDO systemctl restart panel-backup.timer || true
           fi
@@ -1002,7 +1002,7 @@ menu_section_status() {
   while true; do
     draw_header "$(tr_text "Раздел: Статус и диагностика" "Section: Status and diagnostics")"
     show_back_hint
-    paint "$CLR_MUTED" "$(tr_text "Проверка состояния скриптов, таймера и последних backup." "Check scripts, timer and latest backup details.")"
+    paint "$CLR_MUTED" "$(tr_text "Проверка состояния скриптов, таймера и последних архивов." "Check scripts, timer and latest backup details.")"
     menu_option "1" "$(tr_text "Показать полный статус" "Show full status")"
     menu_option "2" "$(tr_text "Анализ использования диска" "Analyze disk usage")"
     menu_option "3" "$(tr_text "Безопасная очистка диска" "Safe disk cleanup")"
@@ -1039,7 +1039,7 @@ interactive_menu() {
     draw_header "$(tr_text "Менеджер бэкапа панели" "Panel Backup Manager")"
     show_back_hint
     menu_option "1" "$(tr_text "Установка и настройка" "Setup and configuration")"
-    menu_option "2" "$(tr_text "Создать или восстановить backup (вручную)" "Create or restore backup (manual)")"
+    menu_option "2" "$(tr_text "Создать архив или запустить восстановление (вручную)" "Create or restore backup (manual)")"
     menu_option "3" "$(tr_text "Таймер и периодичность" "Timer and schedule")"
     menu_option "4" "$(tr_text "Статус и диагностика" "Status and diagnostics")"
     menu_option "0" "$(tr_text "Выход" "Exit")" "$CLR_DANGER"

@@ -20,10 +20,10 @@ prompt_install_settings() {
   local include_choice=""
   load_existing_env_defaults
 
-  draw_header "$(tr_text "Настройка параметров бэкапа" "Configure backup settings")"
+  draw_header "$(tr_text "Настройка резервного копирования" "Configure backup settings")"
   show_back_hint
   paint "$CLR_MUTED" "$(tr_text "Сейчас вы настраиваете: Telegram-уведомления и путь к панели." "You are configuring: Telegram notifications and panel path.")"
-  paint "$CLR_MUTED" "$(tr_text "Также можно включить шифрование backup-архива." "You can also enable backup archive encryption.")"
+  paint "$CLR_MUTED" "$(tr_text "Также можно включить шифрование архива резервной копии." "You can also enable backup archive encryption.")"
   paint "$CLR_MUTED" "$(tr_text "Пустое значение оставляет текущее (если есть)." "Empty input keeps current value (if any).")"
   echo
   detected_path="$(detect_remnawave_dir || true)"
@@ -74,7 +74,7 @@ prompt_install_settings() {
   done
 
   while true; do
-    val="$(ask_value "$(tr_text "[5/8] Язык описания backup в Telegram (ru/en)" "[5/8] Backup description language in Telegram (ru/en)")" "$BACKUP_LANG")"
+    val="$(ask_value "$(tr_text "[5/8] Язык описания резервной копии в Telegram (ru/en)" "[5/8] Backup description language in Telegram (ru/en)")" "$BACKUP_LANG")"
     [[ "$val" == "__PBM_BACK__" ]] && return 1
     case "${val,,}" in
       en|eu) BACKUP_LANG="en"; break ;;
@@ -85,7 +85,7 @@ prompt_install_settings() {
     esac
   done
 
-  draw_header "$(tr_text "Режим шифрования backup" "Backup encryption mode")"
+  draw_header "$(tr_text "Режим шифрования резервной копии" "Backup encryption mode")"
   show_back_hint
   paint "$CLR_MUTED" "$(tr_text "Выберите режим шифрования архива." "Choose archive encryption mode.")"
   menu_option "1" "$(tr_text "Включить шифрование (GPG)" "Enable encryption (GPG)")"
@@ -131,9 +131,9 @@ prompt_install_settings() {
     BACKUP_PASSWORD=""
   fi
 
-  draw_header "$(tr_text "Состав backup" "Backup scope")"
+  draw_header "$(tr_text "Состав резервной копии" "Backup scope")"
   show_back_hint
-  paint "$CLR_MUTED" "$(tr_text "Выберите, какие данные включать в backup." "Choose what to include in backup.")"
+  paint "$CLR_MUTED" "$(tr_text "Выберите, какие данные включать в резервную копию." "Choose what to include in backup.")"
   menu_option "1" "$(tr_text "Все (db + redis + configs)" "All (db + redis + configs)")"
   menu_option "2" "$(tr_text "Только PostgreSQL (db)" "PostgreSQL only (db)")"
   menu_option "3" "$(tr_text "Только Redis (redis)" "Redis only (redis)")"
@@ -257,7 +257,7 @@ configure_schedule_menu() {
   local current="${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}"
 
   while true; do
-    draw_header "$(tr_text "Периодичность backup" "Backup schedule")"
+    draw_header "$(tr_text "Периодичность резервного копирования" "Backup schedule")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Текущее расписание:" "Current schedule:") $(format_schedule_label "$current")"
     menu_option "1" "$(tr_text "Ежедневно 03:40 UTC (по умолчанию)" "Daily at 03:40 UTC (default)")"
@@ -332,7 +332,7 @@ run_install_pipeline() {
 }
 
 disable_timer() {
-  echo "$(tr_text "Отключаю таймер бэкапа" "Disabling backup timer")"
+  echo "$(tr_text "Отключаю таймер резервного копирования" "Disabling backup timer")"
   $SUDO systemctl disable --now panel-backup.timer
   $SUDO systemctl status --no-pager panel-backup.timer | sed -n '1,12p' || true
 }
