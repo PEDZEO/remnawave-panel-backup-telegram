@@ -319,6 +319,23 @@ https://${cabinet_domain} {
         }
     }
 
+    @cabinet_ws path /cabinet/ws*
+    handle @cabinet_ws {
+        reverse_proxy ${bot_upstream} {
+            transport http {
+                versions 1.1
+                read_timeout 1h
+                write_timeout 1h
+            }
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up Connection "Upgrade"
+            header_up Upgrade "websocket"
+        }
+    }
+
     handle {
         reverse_proxy ${cabinet_upstream}
     }
