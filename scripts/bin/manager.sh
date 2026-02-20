@@ -463,7 +463,7 @@ draw_header() {
   local sub_color=""
   local panel_version=""
   local sub_version=""
-  local backup_age_h="n/a"
+  local backup_age_h=-1
   local service_show=""
   local service_result=""
   local service_code=""
@@ -474,6 +474,13 @@ draw_header() {
   local env_token=""
   local env_chat=""
   local backup_age_label=""
+  local backup_age_sec=-1
+  local next_run_raw=""
+  local next_run_label=""
+  local next_run_color=""
+  local now_ts=0
+  local next_ts=0
+  local next_left_sec=0
   local timer_color=""
   local backup_age_color=""
   local last_run_color=""
@@ -499,16 +506,25 @@ draw_header() {
   latest_backup="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/pb-*.tar.gz.gpg /var/backups/panel/panel-backup-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz.gpg 2>/dev/null | head -n1 || true)"
   if [[ -n "$latest_backup" ]]; then
     latest_label="$(basename "$latest_backup")"
-    backup_age_h="$(( ( $(date +%s) - $(date -r "$latest_backup" +%s) ) / 3600 ))"
+    backup_age_sec="$(( $(date +%s) - $(date -r "$latest_backup" +%s) ))"
+    backup_age_h="$(( backup_age_sec / 3600 ))"
   else
     latest_label="$(tr_text "нет" "none")"
   fi
-  if [[ "$backup_age_h" =~ ^[0-9]+$ ]]; then
-    backup_age_label="${backup_age_h} $(tr_text "ч" "h")"
+  if [[ "$backup_age_sec" =~ ^[0-9]+$ && "$backup_age_sec" -ge 0 ]]; then
+    if (( backup_age_sec < 60 )); then
+      backup_age_label="$(tr_text "меньше минуты" "<1 min")"
+    elif (( backup_age_sec < 3600 )); then
+      backup_age_label="$((backup_age_sec / 60)) $(tr_text "мин" "min")"
+    elif (( backup_age_sec < 86400 )); then
+      backup_age_label="$((backup_age_sec / 3600)) $(tr_text "ч" "h") $(((backup_age_sec % 3600) / 60)) $(tr_text "мин" "min")"
+    else
+      backup_age_label="$((backup_age_sec / 86400)) $(tr_text "д" "d") $(((backup_age_sec % 86400) / 3600)) $(tr_text "ч" "h")"
+    fi
   else
     backup_age_label="n/a"
   fi
-  if [[ "$backup_age_h" =~ ^[0-9]+$ ]]; then
+  if [[ "$backup_age_sec" =~ ^[0-9]+$ && "$backup_age_sec" -ge 0 ]]; then
     if (( backup_age_h <= 6 )); then
       backup_age_color="$CLR_OK"
     elif (( backup_age_h <= 24 )); then
@@ -560,6 +576,33 @@ draw_header() {
     encrypt_state="$(tr_text "выключено" "disabled")"
     encrypt_color="$CLR_WARN"
   fi
+  next_run_raw="$($SUDO systemctl show panel-backup.timer -p NextElapseUSecRealtime --value 2>/dev/null || true)"
+  if [[ -n "$next_run_raw" && "$next_run_raw" != "n/a" ]]; then
+    now_ts="$(date +%s)"
+    next_ts="$(date -d "$next_run_raw" +%s 2>/dev/null || echo 0)"
+    if [[ "$next_ts" =~ ^[0-9]+$ ]] && (( next_ts > 0 )); then
+      next_left_sec=$((next_ts - now_ts))
+      if (( next_left_sec <= 0 )); then
+        next_run_label="$(tr_text "меньше минуты" "<1 min")"
+        next_run_color="$CLR_WARN"
+      elif (( next_left_sec < 3600 )); then
+        next_run_label="$((next_left_sec / 60)) $(tr_text "мин" "min")"
+        next_run_color="$CLR_OK"
+      elif (( next_left_sec < 86400 )); then
+        next_run_label="$((next_left_sec / 3600)) $(tr_text "ч" "h") $(((next_left_sec % 3600) / 60)) $(tr_text "мин" "min")"
+        next_run_color="$CLR_OK"
+      else
+        next_run_label="$((next_left_sec / 86400)) $(tr_text "д" "d") $(((next_left_sec % 86400) / 3600)) $(tr_text "ч" "h")"
+        next_run_color="$CLR_OK"
+      fi
+    else
+      next_run_label="n/a"
+      next_run_color="$CLR_MUTED"
+    fi
+  else
+    next_run_label="n/a"
+    next_run_color="$CLR_MUTED"
+  fi
   timer_color="$(state_color "$timer_state")"
 
   paint "$CLR_TITLE" "============================================================"
@@ -577,6 +620,7 @@ draw_header() {
   print_separator
   paint_labeled_value "$(tr_text "Таймер:" "Timer:")" "${timer_state}" "$timer_color"
   paint_labeled_value "$(tr_text "Расписание:" "Schedule:")" "${schedule_label}" "$CLR_ACCENT"
+  paint_labeled_value "$(tr_text "До следующего backup:" "Until next backup:")" "${next_run_label}" "$next_run_color"
   paint_labeled_value "$(tr_text "Последний backup:" "Latest backup:")" "$(short_backup_label "$latest_label")" "$CLR_ACCENT"
   paint_labeled_value "$(tr_text "Возраст backup:" "Backup age:")" "${backup_age_label}" "$backup_age_color"
   paint_labeled_value "$(tr_text "Последний запуск сервиса:" "Last service run:")" "${last_run_label}" "$last_run_color"
