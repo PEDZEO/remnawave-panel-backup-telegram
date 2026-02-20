@@ -1,0 +1,26 @@
+name: shellcheck
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Run shellcheck
+        run: |
+          mapfile -t shell_files < <(find . -type f -name '*.sh' -not -path './.git/*' | sort)
+          if [ "${#shell_files[@]}" -eq 0 ]; then
+            echo "No shell files found."
+            exit 0
+          fi
+          printf '%s\0' "${shell_files[@]}" | xargs -0 shellcheck -S error -x
