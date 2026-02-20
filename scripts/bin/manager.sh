@@ -474,6 +474,11 @@ draw_header() {
   local env_token=""
   local env_chat=""
   local backup_age_label=""
+  local timer_color=""
+  local backup_age_color=""
+  local last_run_color=""
+  local encrypt_color=""
+  local tg_color=""
 
   clear
   timer_state="$($SUDO systemctl is-active panel-backup.timer 2>/dev/null || echo "inactive")"
@@ -503,6 +508,17 @@ draw_header() {
   else
     backup_age_label="n/a"
   fi
+  if [[ "$backup_age_h" =~ ^[0-9]+$ ]]; then
+    if (( backup_age_h <= 6 )); then
+      backup_age_color="$CLR_OK"
+    elif (( backup_age_h <= 24 )); then
+      backup_age_color="$CLR_WARN"
+    else
+      backup_age_color="$CLR_DANGER"
+    fi
+  else
+    backup_age_color="$CLR_MUTED"
+  fi
 
   service_show="$($SUDO systemctl show panel-backup.service -p Result -p ExecMainStatus -p ExecMainExitTimestamp 2>/dev/null || true)"
   service_result="$(echo "$service_show" | awk -F= '/^Result=/{print $2}')"
@@ -512,26 +528,39 @@ draw_header() {
     success)
       if [[ "${service_code:-}" == "0" ]]; then
         last_run_label="$(tr_text "успешно" "success")"
+        last_run_color="$CLR_OK"
       else
         last_run_label="$(tr_text "код ${service_code}" "code ${service_code}")"
+        last_run_color="$CLR_WARN"
       fi
       ;;
-    failed|exit-code|timeout) last_run_label="$(tr_text "ошибка" "failed")" ;;
-    *) last_run_label="${service_result:-n/a}" ;;
+    failed|exit-code|timeout)
+      last_run_label="$(tr_text "ошибка" "failed")"
+      last_run_color="$CLR_DANGER"
+      ;;
+    *)
+      last_run_label="${service_result:-n/a}"
+      last_run_color="$CLR_MUTED"
+      ;;
   esac
 
   env_token="$(grep -E '^TELEGRAM_BOT_TOKEN=' /etc/panel-backup.env 2>/dev/null | head -n1 | cut -d= -f2- || true)"
   env_chat="$(grep -E '^TELEGRAM_ADMIN_ID=' /etc/panel-backup.env 2>/dev/null | head -n1 | cut -d= -f2- || true)"
   if [[ -n "$env_token" && -n "$env_chat" ]]; then
     tg_state="$(tr_text "настроен" "configured")"
+    tg_color="$CLR_OK"
   else
     tg_state="$(tr_text "не настроен" "not configured")"
+    tg_color="$CLR_WARN"
   fi
   if [[ "$(grep -E '^BACKUP_ENCRYPT=' /etc/panel-backup.env 2>/dev/null | head -n1 | cut -d= -f2- | tr -d '\"' || true)" == "1" ]]; then
     encrypt_state="$(tr_text "включено" "enabled")"
+    encrypt_color="$CLR_OK"
   else
     encrypt_state="$(tr_text "выключено" "disabled")"
+    encrypt_color="$CLR_WARN"
   fi
+  timer_color="$(state_color "$timer_state")"
 
   paint "$CLR_TITLE" "============================================================"
   paint "$CLR_ACCENT" "  ${title}"
@@ -546,11 +575,16 @@ draw_header() {
   paint_labeled_value "RAM:" "$ram_label" "$ram_color"
   paint_labeled_value "$(tr_text "Диск:" "Disk:")" "$disk_label" "$disk_color"
   print_separator
-  paint "$CLR_MUTED" "  $(tr_text "Таймер:" "Timer:") ${timer_state}   |   $(tr_text "Расписание:" "Schedule:") ${schedule_label}"
-  paint "$CLR_MUTED" "  $(tr_text "Последний backup:" "Latest backup:") $(short_backup_label "$latest_label")"
-  paint "$CLR_MUTED" "  $(tr_text "Возраст backup:" "Backup age:") ${backup_age_label}"
-  paint "$CLR_MUTED" "  $(tr_text "Последний запуск сервиса:" "Last service run:") ${last_run_label} ${service_finish:+| ${service_finish}}"
-  paint "$CLR_MUTED" "  $(tr_text "Шифрование:" "Encryption:") ${encrypt_state}   |   Telegram: ${tg_state}"
+  paint_labeled_value "$(tr_text "Таймер:" "Timer:")" "${timer_state}" "$timer_color"
+  paint_labeled_value "$(tr_text "Расписание:" "Schedule:")" "${schedule_label}" "$CLR_ACCENT"
+  paint_labeled_value "$(tr_text "Последний backup:" "Latest backup:")" "$(short_backup_label "$latest_label")" "$CLR_ACCENT"
+  paint_labeled_value "$(tr_text "Возраст backup:" "Backup age:")" "${backup_age_label}" "$backup_age_color"
+  paint_labeled_value "$(tr_text "Последний запуск сервиса:" "Last service run:")" "${last_run_label}" "$last_run_color"
+  if [[ -n "${service_finish:-}" ]]; then
+    paint_labeled_value "$(tr_text "Время последнего запуска:" "Last run time:")" "${service_finish}" "$CLR_MUTED"
+  fi
+  paint_labeled_value "$(tr_text "Шифрование:" "Encryption:")" "${encrypt_state}" "$encrypt_color"
+  paint_labeled_value "Telegram:" "${tg_state}" "$tg_color"
   paint "$CLR_TITLE" "============================================================"
   paint "$CLR_MUTED" "$(tr_text "Выберите действие." "Select an action.")"
   echo
