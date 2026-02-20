@@ -28,20 +28,6 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backu
   Install paths: `/root/remnawave-bedolaga-telegram-bot`, `/root/bedolaga-cabinet`, and `/root/caddy` for containerized Caddy setups.
 - Composite flows: full install/update for Remnawave and full setup for RemnaNode.
 
-## Run Modes
-
-- `MODE=install` - install/update manager, env, and timer.
-- `MODE=backup` - run backup now.
-- `MODE=restore` - run restore.
-- `MODE=status` - show status.
-
-Restore example:
-
-```bash
-MODE=restore BACKUP_FILE='/var/backups/panel/pb-xxxx.tar.gz' \
-bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
-```
-
 ## Requirements
 
 - Linux with systemd.

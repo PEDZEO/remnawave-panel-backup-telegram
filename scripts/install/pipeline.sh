@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Install pipeline functions for manager.sh
+INSTALL_TIMER_ENABLED="1"
 
 is_valid_telegram_token() {
   local token="$1"
@@ -301,6 +302,23 @@ enable_timer() {
   $SUDO systemctl status --no-pager panel-backup.timer | sed -n '1,12p'
 }
 
+is_backup_target_available() {
+  local candidate=""
+
+  candidate="${REMNAWAVE_DIR:-}"
+  if [[ -n "$candidate" && -f "$candidate/.env" && -f "$candidate/docker-compose.yml" ]]; then
+    return 0
+  fi
+
+  candidate="$(detect_remnawave_dir || true)"
+  if [[ -n "$candidate" && -f "$candidate/.env" && -f "$candidate/docker-compose.yml" ]]; then
+    REMNAWAVE_DIR="$candidate"
+    return 0
+  fi
+
+  return 1
+}
+
 post_install_health_check() {
   local timer_active="inactive"
   local service_loaded="unknown"
@@ -315,8 +333,10 @@ post_install_health_check() {
   paint "$CLR_TITLE" "$(tr_text "Проверка после установки" "Post-install check")"
   paint "$CLR_MUTED" "panel-backup.timer: ${timer_active}"
   paint "$CLR_MUTED" "panel-backup.service: ${service_loaded}"
-  if [[ "$timer_active" == "active" && "$service_loaded" == "ok" ]]; then
+  if [[ "$INSTALL_TIMER_ENABLED" == "1" && "$timer_active" == "active" && "$service_loaded" == "ok" ]]; then
     paint "$CLR_OK" "$(tr_text "Установка и запуск таймера подтверждены." "Install and timer activation confirmed.")"
+  elif [[ "$INSTALL_TIMER_ENABLED" == "0" && "$service_loaded" == "ok" ]]; then
+    paint "$CLR_OK" "$(tr_text "Панель не обнаружена: таймер оставлен выключенным до настройки панели." "Panel not detected: timer left disabled until panel is configured.")"
   else
     paint "$CLR_WARN" "$(tr_text "Есть проблемы после установки, проверьте systemctl status." "Post-install checks reported issues, verify with systemctl status.")"
   fi
@@ -326,7 +346,15 @@ run_install_pipeline() {
   preflight_install_environment || return 1
   install_files
   write_env
-  enable_timer
+  if is_backup_target_available; then
+    INSTALL_TIMER_ENABLED="1"
+    enable_timer
+  else
+    INSTALL_TIMER_ENABLED="0"
+    paint "$CLR_WARN" "$(tr_text "Панель Remnawave не найдена: таймер резервного копирования не включен." "Remnawave panel was not found: backup timer was not enabled.")"
+    paint "$CLR_MUTED" "$(tr_text "Установите панель или укажите корректный REMNAWAVE_DIR, затем включите таймер в меню." "Install panel or set a valid REMNAWAVE_DIR, then enable timer from menu.")"
+    $SUDO systemctl disable --now panel-backup.timer >/dev/null 2>&1 || true
+  fi
   post_install_health_check
   return 0
 }

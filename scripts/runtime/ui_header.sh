@@ -69,6 +69,8 @@ draw_header() {
   local last_run_color=""
   local encrypt_color=""
   local tg_color=""
+  local panel_dir_detected=""
+  local show_full_header="0"
 
   clear
   timer_state="$($SUDO systemctl is-active panel-backup.timer 2>/dev/null || echo "inactive")"
@@ -93,6 +95,10 @@ draw_header() {
     backup_age_h="$(( backup_age_sec / 3600 ))"
   else
     latest_label="$(tr_text "нет" "none")"
+  fi
+  panel_dir_detected="$(detect_remnawave_dir || true)"
+  if [[ -n "$panel_dir_detected" && -n "$latest_backup" ]]; then
+    show_full_header="1"
   fi
   if [[ "$backup_age_sec" =~ ^[0-9]+$ && "$backup_age_sec" -ge 0 ]]; then
     if (( backup_age_sec < 60 )); then
@@ -194,24 +200,27 @@ draw_header() {
     paint "$CLR_MUTED" "  ${subtitle}"
   fi
   print_separator
-  paint_labeled_value "$(tr_text "Панель (remnawave):" "Panel (remnawave):")" "$panel_state" "$panel_color"
-  paint_labeled_value "$(tr_text "Версия панели:" "Panel version:")" "$panel_version" "$CLR_ACCENT"
-  paint_labeled_value "$(tr_text "Подписка:" "Subscription:")" "$sub_state" "$sub_color"
-  paint_labeled_value "$(tr_text "Версия подписки:" "Subscription version:")" "$sub_version" "$CLR_ACCENT"
   paint_labeled_value "RAM:" "$ram_label" "$ram_color"
   paint_labeled_value "$(tr_text "Диск:" "Disk:")" "$disk_label" "$disk_color"
-  print_separator
-  paint_labeled_value "$(tr_text "Таймер:" "Timer:")" "${timer_state}" "$timer_color"
-  paint_labeled_value "$(tr_text "Расписание:" "Schedule:")" "${schedule_label}" "$CLR_ACCENT"
-  paint_labeled_value "$(tr_text "До следующего backup:" "Until next backup:")" "${next_run_label}" "$next_run_color"
-  paint_labeled_value "$(tr_text "Последний backup:" "Latest backup:")" "$(short_backup_label "$latest_label")" "$CLR_ACCENT"
-  paint_labeled_value "$(tr_text "Возраст backup:" "Backup age:")" "${backup_age_label}" "$backup_age_color"
-  paint_labeled_value "$(tr_text "Последний запуск сервиса:" "Last service run:")" "${last_run_label}" "$last_run_color"
-  if [[ -n "${service_finish:-}" ]]; then
-    paint_labeled_value "$(tr_text "Время последнего запуска:" "Last run time:")" "${service_finish}" "$CLR_MUTED"
+  if [[ "$show_full_header" == "1" ]]; then
+    print_separator
+    paint_labeled_value "$(tr_text "Панель (remnawave):" "Panel (remnawave):")" "$panel_state" "$panel_color"
+    paint_labeled_value "$(tr_text "Версия панели:" "Panel version:")" "$panel_version" "$CLR_ACCENT"
+    paint_labeled_value "$(tr_text "Подписка:" "Subscription:")" "$sub_state" "$sub_color"
+    paint_labeled_value "$(tr_text "Версия подписки:" "Subscription version:")" "$sub_version" "$CLR_ACCENT"
+    print_separator
+    paint_labeled_value "$(tr_text "Таймер:" "Timer:")" "${timer_state}" "$timer_color"
+    paint_labeled_value "$(tr_text "Расписание:" "Schedule:")" "${schedule_label}" "$CLR_ACCENT"
+    paint_labeled_value "$(tr_text "До следующего backup:" "Until next backup:")" "${next_run_label}" "$next_run_color"
+    paint_labeled_value "$(tr_text "Последний backup:" "Latest backup:")" "$(short_backup_label "$latest_label")" "$CLR_ACCENT"
+    paint_labeled_value "$(tr_text "Возраст backup:" "Backup age:")" "${backup_age_label}" "$backup_age_color"
+    paint_labeled_value "$(tr_text "Последний запуск сервиса:" "Last service run:")" "${last_run_label}" "$last_run_color"
+    if [[ -n "${service_finish:-}" ]]; then
+      paint_labeled_value "$(tr_text "Время последнего запуска:" "Last run time:")" "${service_finish}" "$CLR_MUTED"
+    fi
+    paint_labeled_value "$(tr_text "Шифрование:" "Encryption:")" "${encrypt_state}" "$encrypt_color"
+    paint_labeled_value "Telegram:" "${tg_state}" "$tg_color"
   fi
-  paint_labeled_value "$(tr_text "Шифрование:" "Encryption:")" "${encrypt_state}" "$encrypt_color"
-  paint_labeled_value "Telegram:" "${tg_state}" "$tg_color"
   paint "$CLR_TITLE" "============================================================"
   paint "$CLR_MUTED" "$(tr_text "Выберите действие." "Select an action.")"
   echo

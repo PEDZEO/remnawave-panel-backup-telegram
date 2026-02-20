@@ -237,6 +237,9 @@ bedolaga_apply_caddy_block() {
   local bot_upstream="127.0.0.1:8080"
   local cabinet_upstream="127.0.0.1:${cabinet_port}"
   local bot_for_api="$bot_upstream"
+  local conflict_domain=""
+  local escaped_domain=""
+  local has_conflict="0"
 
   if [[ -z "$caddy_file" || ! -f "$caddy_file" ]]; then
     paint "$CLR_DANGER" "$(tr_text "Не найден Caddyfile для изменения." "Caddyfile for update was not found.")"
@@ -271,6 +274,19 @@ CADDY
       index($0, me) { skip=0; next }
       skip == 0 { print }
     ' "$caddy_file" > "$tmp_file"
+
+    for conflict_domain in "$hooks_domain" "$cabinet_domain" "$api_domain"; do
+      escaped_domain="$(printf '%s' "$conflict_domain" | sed 's/[][(){}.^$*+?|\\]/\\&/g')"
+      if grep -Eq "^[[:space:]]*https://${escaped_domain}[[:space:]]*\\{" "$tmp_file"; then
+        has_conflict="1"
+        paint "$CLR_DANGER" "$(tr_text "Найден существующий блок домена вне автоген-секции:" "Found existing domain block outside autogen section:") https://${conflict_domain}"
+      fi
+    done
+    if [[ "$has_conflict" == "1" ]]; then
+      paint "$CLR_MUTED" "$(tr_text "Чтобы исключить конфликт маршрутов, запустите установку снова и выберите полную замену Caddyfile." "To avoid routing conflicts, run installation again and choose full Caddyfile replace mode.")"
+      rm -f "$tmp_file"
+      return 1
+    fi
   fi
 
   cat >> "$tmp_file" <<CADDY

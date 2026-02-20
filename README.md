@@ -28,20 +28,6 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backu
   Пути установки: `/root/remnawave-bedolaga-telegram-bot`, `/root/bedolaga-cabinet`, Caddy-конфиг в `/root/caddy` (если используется контейнерный Caddy).
 - Составные сценарии: полная установка/обновление Remnawave и полная настройка RemnaNode.
 
-## Режимы запуска
-
-- `MODE=install` — установка/обновление менеджера, env и timer.
-- `MODE=backup` — запустить резервное копирование сейчас.
-- `MODE=restore` — запустить восстановление.
-- `MODE=status` — показать статус.
-
-Пример восстановления:
-
-```bash
-MODE=restore BACKUP_FILE='/var/backups/panel/pb-xxxx.tar.gz' \
-bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
-```
-
 ## Требования
 
 - Linux с systemd.

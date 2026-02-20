@@ -172,7 +172,6 @@ WEB_API_HOST=0.0.0.0
 WEB_API_PORT=8080
 WEB_API_DEFAULT_TOKEN=${web_api_token}
 WEB_API_ALLOWED_ORIGINS=https://${cabinet_domain}
-MENU_LAYOUT_ENABLED=true
 MAIN_MENU_MODE=text
 CONNECT_BUTTON_MODE=miniapp_subscription
 ENABLE_LOGO_MODE=true
@@ -212,6 +211,40 @@ bedolaga_prepare_bot_dirs() {
   mkdir -p "${bot_dir}/logs" "${bot_dir}/data" "${bot_dir}/data/backups" "${bot_dir}/data/referral_qr"
   # Bot container user must be able to write runtime files/logs on host-mounted volumes.
   chmod -R 777 "${bot_dir}/logs" "${bot_dir}/data"
+}
+
+bedolaga_write_bot_compose_override() {
+  local bot_dir="$1"
+  local override_file="${bot_dir}/docker-compose.override.yml"
+  cat > "$override_file" <<EOF
+services:
+  bot:
+    networks:
+      - default
+      - bedolaga-shared
+
+networks:
+  bedolaga-shared:
+    external: true
+    name: ${BEDOLAGA_SHARED_NETWORK}
+EOF
+}
+
+bedolaga_write_cabinet_compose_override() {
+  local cabinet_dir="$1"
+  local override_file="${cabinet_dir}/docker-compose.override.yml"
+  cat > "$override_file" <<EOF
+services:
+  cabinet-frontend:
+    networks:
+      - default
+      - bedolaga-shared
+
+networks:
+  bedolaga-shared:
+    external: true
+    name: ${BEDOLAGA_SHARED_NETWORK}
+EOF
 }
 
 bedolaga_upsert_if_not_empty() {
@@ -470,6 +503,71 @@ bedolaga_repair_shared_network_if_needed() {
   return 0
 }
 
+bedolaga_probe_cabinet_ws_route() {
+  local cabinet_domain="$1"
+  local header_dump=""
+  local status_line=""
+  local status_code=""
+  local server_header=""
+
+  header_dump="$(curl -sS -o /dev/null -D - --http1.1 \
+    -H "Connection: Upgrade" \
+    -H "Upgrade: websocket" \
+    -H "Sec-WebSocket-Version: 13" \
+    -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+    "https://${cabinet_domain}/cabinet/ws" 2>/dev/null || true)"
+
+  status_line="$(printf '%s\n' "$header_dump" | awk 'tolower($1) ~ /^http\// { print; exit }')"
+  status_code="$(printf '%s\n' "$status_line" | awk '{ print $2 }')"
+  server_header="$(printf '%s\n' "$header_dump" | awk 'tolower($1)=="server:" { print tolower($0) }' | tail -n1)"
+
+  if [[ "$status_code" == "101" ]]; then
+    return 0
+  fi
+  if [[ "$status_code" == "200" && "$server_header" == *"nginx"* ]]; then
+    return 1
+  fi
+  if [[ "$server_header" == *"uvicorn"* || "$server_header" == *"caddy"* ]]; then
+    return 0
+  fi
+  return 2
+}
+
+bedolaga_verify_cabinet_ws_route() {
+  local cabinet_domain="$1"
+  local attempts=6
+  local i=1
+  local probe_result=0
+
+  while (( i <= attempts )); do
+    bedolaga_probe_cabinet_ws_route "$cabinet_domain"
+    probe_result=$?
+    if [[ $probe_result -eq 0 ]]; then
+      paint "$CLR_OK" "$(tr_text "WebSocket маршрут кабинета проверен: /cabinet/ws доступен." "Cabinet WebSocket route verified: /cabinet/ws is reachable.")"
+      return 0
+    fi
+    if [[ $probe_result -eq 1 ]]; then
+      break
+    fi
+    sleep 2
+    i=$((i + 1))
+  done
+
+  paint "$CLR_WARN" "$(tr_text "Похоже, /cabinet/ws попадает не в backend. Перезапускаю Caddy и проверяю снова..." "Looks like /cabinet/ws is not reaching backend. Restarting Caddy and checking again...")"
+  $SUDO docker restart remnawave-caddy >/dev/null 2>&1 || true
+  sleep 3
+
+  bedolaga_probe_cabinet_ws_route "$cabinet_domain"
+  probe_result=$?
+  if [[ $probe_result -eq 0 ]]; then
+    paint "$CLR_OK" "$(tr_text "После перезапуска Caddy маршрут /cabinet/ws восстановлен." "After Caddy restart, /cabinet/ws route recovered.")"
+    return 0
+  fi
+
+  paint "$CLR_DANGER" "$(tr_text "WebSocket маршрут /cabinet/ws не прошел проверку. Проверьте Caddyfile и домен кабинета." "WebSocket route /cabinet/ws failed verification. Check Caddyfile and cabinet domain.")"
+  return 1
+}
+
 run_bedolaga_stack_install_flow() {
   local bot_dir="/root/remnawave-bedolaga-telegram-bot"
   local cabinet_dir="/root/bedolaga-cabinet"
@@ -667,6 +765,8 @@ run_bedolaga_stack_install_flow() {
   fi
 
   bedolaga_prepare_bot_dirs "$bot_dir"
+  bedolaga_write_bot_compose_override "$bot_dir"
+  bedolaga_write_cabinet_compose_override "$cabinet_dir"
   if ! bedolaga_configure_bot_env "$bot_dir" "$bot_token" "$admin_ids" "$hooks_domain" "$cabinet_domain" "$remnawave_api_url" "$remnawave_api_key" "$bot_username" "$postgres_db" "$postgres_user" "$postgres_password"; then
     return 1
   fi
@@ -704,6 +804,9 @@ run_bedolaga_stack_install_flow() {
   bedolaga_repair_shared_network_if_needed || return 1
 
   if ! bedolaga_apply_caddy_block "$hooks_domain" "$cabinet_domain" "$api_domain" "$cabinet_port" "$replace_caddy_config"; then
+    return 1
+  fi
+  if ! bedolaga_verify_cabinet_ws_route "$cabinet_domain"; then
     return 1
   fi
   if ! bedolaga_post_deploy_health_check "$cabinet_port"; then
@@ -768,6 +871,8 @@ run_bedolaga_stack_update_flow() {
 
   bedolaga_clone_or_update_repo "$BEDOLAGA_BOT_REPO_DEFAULT" "$bot_dir" || return 1
   bedolaga_clone_or_update_repo "$BEDOLAGA_CABINET_REPO_DEFAULT" "$cabinet_dir" || return 1
+  bedolaga_write_bot_compose_override "$bot_dir"
+  bedolaga_write_cabinet_compose_override "$cabinet_dir"
 
   bot_username="$(bedolaga_read_env_value "$bot_env_file" "BOT_USERNAME")"
   if [[ -z "$bot_username" ]]; then
@@ -791,6 +896,9 @@ run_bedolaga_stack_update_flow() {
     replace_caddy_config="1"
   fi
   if ! bedolaga_apply_caddy_block "$hooks_domain" "$cabinet_domain" "$api_domain" "$cabinet_port" "$replace_caddy_config"; then
+    return 1
+  fi
+  if ! bedolaga_verify_cabinet_ws_route "$cabinet_domain"; then
     return 1
   fi
   if ! bedolaga_post_deploy_health_check "$cabinet_port"; then
