@@ -419,11 +419,23 @@ menu_flow_encryption_settings() {
   done
 }
 
+format_backup_scope_label() {
+  local raw="${1:-all}"
+  case "${raw,,}" in
+    all) echo "$(tr_text "всё (db + redis + конфиги)" "all (db + redis + configs)")" ;;
+    db) echo "$(tr_text "только PostgreSQL (db)" "PostgreSQL only (db)")" ;;
+    redis) echo "$(tr_text "только Redis (redis)" "Redis only (redis)")" ;;
+    configs) echo "$(tr_text "только конфиги (configs)" "configs only (configs)")" ;;
+    *) echo "${raw}" ;;
+  esac
+}
+
 menu_section_setup() {
   local choice=""
   local tg_state=""
   local enc_state=""
   local include_state=""
+  local include_state_raw=""
   while true; do
     load_existing_env_defaults
     if [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_ADMIN_ID:-}" ]]; then
@@ -436,11 +448,15 @@ menu_section_setup() {
     else
       enc_state="$(tr_text "выключено" "disabled")"
     fi
-    include_state="${BACKUP_INCLUDE:-all}"
+    include_state_raw="${BACKUP_INCLUDE:-all}"
+    include_state="$(format_backup_scope_label "$include_state_raw")"
     draw_header "$(tr_text "Раздел: Установка и настройка" "Section: Setup and configuration")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Здесь первичная установка и изменение конфигурации." "Use this section for initial install and config changes.")"
-    paint "$CLR_MUTED" "$(tr_text "Текущее состояние:" "Current state:") Telegram=${tg_state}, $(tr_text "шифрование" "encryption")=${enc_state}, $(tr_text "состав" "scope")=${include_state}"
+    paint "$CLR_TITLE" "$(tr_text "Текущее состояние" "Current state")"
+    paint "$CLR_MUTED" "  Telegram: ${tg_state}"
+    paint "$CLR_MUTED" "  $(tr_text "Шифрование backup:" "Backup encryption:") ${enc_state}"
+    paint "$CLR_MUTED" "  $(tr_text "Состав backup:" "Backup scope:") ${include_state}"
     menu_option "1" "$(tr_text "Установка/обновление" "Install/update")"
     menu_option "2" "$(tr_text "Быстрая настройка" "Quick setup")"
     menu_option "3" "$(tr_text "Шифрование" "Encryption")"
