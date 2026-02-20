@@ -354,25 +354,37 @@ run_safe_cleanup() {
 
   if command -v journalctl >/dev/null 2>&1; then
     paint "$CLR_MUTED" "  - $(tr_text "Очищаю system journal старше 7 дней" "Vacuuming system journal older than 7 days")"
-    $SUDO journalctl --vacuum-time=7d >/dev/null 2>&1 || true
+    if ! $SUDO journalctl --vacuum-time=7d >/dev/null 2>&1; then
+      paint "$CLR_WARN" "    $(tr_text "Предупреждение: не удалось очистить system journal" "Warning: failed to vacuum system journal")"
+    fi
   fi
 
   if command -v apt-get >/dev/null 2>&1; then
     paint "$CLR_MUTED" "  - $(tr_text "Очищаю apt cache (autoclean)" "Cleaning apt cache (autoclean)")"
-    $SUDO apt-get autoclean -y >/dev/null 2>&1 || true
+    if ! $SUDO apt-get autoclean -y >/dev/null 2>&1; then
+      paint "$CLR_WARN" "    $(tr_text "Предупреждение: не удалось выполнить apt autoclean" "Warning: failed to run apt autoclean")"
+    fi
   fi
 
   paint "$CLR_MUTED" "  - $(tr_text "Удаляю временные файлы panel-* в /tmp" "Removing panel-* temporary files in /tmp")"
-  $SUDO rm -rf /tmp/panel-backup* /tmp/panel-restore* /tmp/panel-backup-install.* 2>/dev/null || true
+  if ! $SUDO rm -rf /tmp/panel-backup* /tmp/panel-restore* /tmp/panel-backup-install.* 2>/dev/null; then
+    paint "$CLR_WARN" "    $(tr_text "Предупреждение: часть panel-* файлов не удалена" "Warning: some panel-* files were not removed")"
+  fi
 
   paint "$CLR_MUTED" "  - $(tr_text "Удаляю старые файлы (>7 дней) в /tmp и /var/tmp" "Removing old files (>7 days) in /tmp and /var/tmp")"
-  $SUDO find /tmp /var/tmp -xdev -type f -mtime +7 -delete 2>/dev/null || true
+  if ! $SUDO find /tmp /var/tmp -xdev -type f -mtime +7 -delete 2>/dev/null; then
+    paint "$CLR_WARN" "    $(tr_text "Предупреждение: часть старых файлов не удалена" "Warning: some old files were not removed")"
+  fi
 
   if command -v docker >/dev/null 2>&1; then
     paint "$CLR_MUTED" "  - $(tr_text "Docker: image prune (dangling only)" "Docker: image prune (dangling only)")"
-    $SUDO docker image prune -f >/dev/null 2>&1 || true
+    if ! $SUDO docker image prune -f >/dev/null 2>&1; then
+      paint "$CLR_WARN" "    $(tr_text "Предупреждение: docker image prune завершился с ошибкой" "Warning: docker image prune failed")"
+    fi
     paint "$CLR_MUTED" "  - $(tr_text "Docker: builder prune" "Docker: builder prune")"
-    $SUDO docker builder prune -f >/dev/null 2>&1 || true
+    if ! $SUDO docker builder prune -f >/dev/null 2>&1; then
+      paint "$CLR_WARN" "    $(tr_text "Предупреждение: docker builder prune завершился с ошибкой" "Warning: docker builder prune failed")"
+    fi
   fi
 
   after_used_kb="$(disk_used_kb)"

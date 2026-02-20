@@ -266,12 +266,23 @@ send_telegram_text() {
   if [[ -n "${TELEGRAM_THREAD_ID:-}" ]]; then
     thread_args+=(-d "message_thread_id=${TELEGRAM_THREAD_ID}")
   fi
-  curl -sS --max-time 20 \
+  if ! curl -sS --max-time 20 \
     -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
     -d "chat_id=${TELEGRAM_ADMIN_ID}" \
     "${thread_args[@]}" \
     --data-urlencode "text=${text}" \
-    >/dev/null || true
+    >/dev/null; then
+    log "$(t "Предупреждение: не удалось отправить текстовое сообщение в Telegram" "Warning: failed to send Telegram text message")"
+  fi
+}
+
+copy_backup_entry() {
+  local source_path="$1"
+  local target_path="$2"
+  local label="$3"
+  if ! cp -a "$source_path" "$target_path" 2>/dev/null; then
+    fail "$(t "не удалось добавить в backup" "failed to include in backup"): ${label}"
+  fi
 }
 
 send_telegram_file() {
@@ -502,21 +513,22 @@ fi
 
 if (( WANT_REDIS == 1 )); then
   log "Сохраняю Redis dump"
-  docker exec remnawave-redis sh -lc 'valkey-cli save >/dev/null 2>&1 || redis-cli save >/dev/null 2>&1 || true' || true
-  docker cp remnawave-redis:/data/dump.rdb "$WORKDIR/payload/remnawave-redis.rdb" 2>/dev/null || true
-  if [[ -f "$WORKDIR/payload/remnawave-redis.rdb" ]]; then
-    BACKUP_ITEMS+=("- Redis dump: включено ($(du -h "$WORKDIR/payload/remnawave-redis.rdb" | awk '{print $1}'))")
-  else
-    BACKUP_ITEMS+=("- Redis dump: не найден или не создан")
+  if ! docker exec remnawave-redis sh -lc 'valkey-cli save >/dev/null 2>&1 || redis-cli save >/dev/null 2>&1'; then
+    log "$(t "Предупреждение: команда сохранения Redis вернула ошибку, пробую забрать существующий dump.rdb" "Warning: Redis save command failed, trying to copy existing dump.rdb")"
   fi
+  docker cp remnawave-redis:/data/dump.rdb "$WORKDIR/payload/remnawave-redis.rdb" 2>/dev/null \
+    || fail "$(t "не удалось получить Redis dump" "failed to get Redis dump")"
+  [[ -f "$WORKDIR/payload/remnawave-redis.rdb" ]] \
+    || fail "$(t "Redis dump не найден после копирования" "Redis dump not found after copy")"
+  BACKUP_ITEMS+=("- Redis dump: включено ($(du -h "$WORKDIR/payload/remnawave-redis.rdb" | awk '{print $1}'))")
 fi
 
 if (( WANT_COMPOSE == 1 || WANT_ENV == 1 || WANT_CADDY == 1 || WANT_SUBSCRIPTION == 1 )); then
   log "Копирую конфиги Remnawave"
-  (( WANT_COMPOSE == 1 )) && cp -a "${REMNAWAVE_DIR}/docker-compose.yml" "$WORKDIR/payload/remnawave/" 2>/dev/null || true
-  (( WANT_ENV == 1 )) && cp -a "${REMNAWAVE_DIR}/.env" "$WORKDIR/payload/remnawave/" 2>/dev/null || true
-  (( WANT_CADDY == 1 )) && cp -a "${REMNAWAVE_DIR}/caddy" "$WORKDIR/payload/remnawave/" 2>/dev/null || true
-  (( WANT_SUBSCRIPTION == 1 )) && cp -a "${REMNAWAVE_DIR}/subscription" "$WORKDIR/payload/remnawave/" 2>/dev/null || true
+  (( WANT_COMPOSE == 1 )) && copy_backup_entry "${REMNAWAVE_DIR}/docker-compose.yml" "$WORKDIR/payload/remnawave/" "docker-compose.yml"
+  (( WANT_ENV == 1 )) && copy_backup_entry "${REMNAWAVE_DIR}/.env" "$WORKDIR/payload/remnawave/" ".env"
+  (( WANT_CADDY == 1 )) && copy_backup_entry "${REMNAWAVE_DIR}/caddy" "$WORKDIR/payload/remnawave/" "caddy"
+  (( WANT_SUBSCRIPTION == 1 )) && copy_backup_entry "${REMNAWAVE_DIR}/subscription" "$WORKDIR/payload/remnawave/" "subscription"
   (( WANT_COMPOSE == 1 )) && add_backup_item "Docker Compose (remnawave/docker-compose.yml)" "$WORKDIR/payload/remnawave/docker-compose.yml"
   (( WANT_ENV == 1 )) && add_backup_item "ENV (remnawave/.env)" "$WORKDIR/payload/remnawave/.env"
   (( WANT_CADDY == 1 )) && add_backup_item "Caddy config (remnawave/caddy)" "$WORKDIR/payload/remnawave/caddy"
@@ -557,7 +569,9 @@ ARCHIVE_SIZE_BYTES="$(stat -c '%s' "$ARCHIVE_PATH")"
 ARCHIVE_SIZE_HUMAN="$(du -h "$ARCHIVE_PATH" | awk '{print $1}')"
 
 log "Удаляю старые бэкапы (>${KEEP_DAYS} дней)"
-find "$BACKUP_ROOT" -type f \( -name 'pb-*.tar.gz' -o -name 'pb-*.tar.gz.gpg' -o -name 'pb-*.tar.gz.part.*' -o -name 'pb-*.tar.gz.gpg.part.*' -o -name 'panel-backup-*.tar.gz' -o -name 'panel-backup-*.tar.gz.gpg' -o -name 'panel-backup-*.tar.gz.part.*' -o -name 'panel-backup-*.tar.gz.gpg.part.*' \) -mtime +"$KEEP_DAYS" -delete || true
+if ! find "$BACKUP_ROOT" -type f \( -name 'pb-*.tar.gz' -o -name 'pb-*.tar.gz.gpg' -o -name 'pb-*.tar.gz.part.*' -o -name 'pb-*.tar.gz.gpg.part.*' -o -name 'panel-backup-*.tar.gz' -o -name 'panel-backup-*.tar.gz.gpg' -o -name 'panel-backup-*.tar.gz.part.*' -o -name 'panel-backup-*.tar.gz.gpg.part.*' \) -mtime +"$KEEP_DAYS" -delete; then
+  log "$(t "Предупреждение: не удалось удалить часть старых backup-файлов" "Warning: failed to remove some old backup files")"
+fi
 
 if (( ARCHIVE_SIZE_BYTES <= TG_SINGLE_LIMIT_BYTES )); then
   log "Отправляю архив одним файлом в Telegram"

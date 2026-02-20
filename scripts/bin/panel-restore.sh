@@ -185,7 +185,13 @@ PRE_ARCHIVE="${PRE_RESTORE_BACKUP_ROOT}/pre-restore-${PRESTAMP}.tar.gz"
 
 if [[ -n "${WANT[env]:-}" || -n "${WANT[compose]:-}" || -n "${WANT[caddy]:-}" || -n "${WANT[subscription]:-}" ]]; then
   log "Create pre-restore snapshot: $PRE_ARCHIVE"
-  run_cmd "tar -czf \"$PRE_ARCHIVE\" -C \"$REMNAWAVE_DIR\" .env docker-compose.yml caddy subscription 2>/dev/null || true"
+  if (( DRY_RUN == 1 )); then
+    echo "[dry-run] tar -czf \"$PRE_ARCHIVE\" -C \"$REMNAWAVE_DIR\" .env docker-compose.yml caddy subscription"
+  else
+    if ! tar -czf "$PRE_ARCHIVE" -C "$REMNAWAVE_DIR" .env docker-compose.yml caddy subscription 2>/dev/null; then
+      log "WARNING: pre-restore snapshot failed, restore will continue"
+    fi
+  fi
 fi
 
 ENV_SOURCE="${SRC_REMNAWAVE}/.env"
