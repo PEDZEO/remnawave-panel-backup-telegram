@@ -322,6 +322,34 @@ show_safe_cleanup_preview() {
 }
 
 run_safe_cleanup() {
+  local before_used_kb=0
+  local after_used_kb=0
+  local freed_kb=0
+  local panel_tmp_count=0
+  local old_tmp_count=0
+  local before_df=""
+  local after_df=""
+
+  disk_used_kb() {
+    df -Pk / 2>/dev/null | awk 'NR==2 {print $3+0}' || echo 0
+  }
+
+  kb_to_human() {
+    local kb="${1:-0}"
+    awk -v kb="$kb" 'BEGIN {
+      split("KB MB GB TB", u, " ");
+      v=kb+0;
+      i=1;
+      while (v>=1024 && i<4) { v=v/1024; i++; }
+      printf("%.2f %s", v, u[i]);
+    }'
+  }
+
+  before_used_kb="$(disk_used_kb)"
+  before_df="$(df -h / 2>/dev/null | awk 'NR==2 {print $3" / "$2" ("$5")"}' || true)"
+  panel_tmp_count="$(find /tmp -maxdepth 1 \( -name 'panel-backup*' -o -name 'panel-restore*' -o -name 'panel-backup-install.*' \) 2>/dev/null | wc -l | awk '{print $1}' || echo 0)"
+  old_tmp_count="$(find /tmp /var/tmp -xdev -type f -mtime +7 2>/dev/null | wc -l | awk '{print $1}' || echo 0)"
+
   paint "$CLR_ACCENT" "$(tr_text "Запуск безопасной очистки..." "Running safe cleanup...")"
 
   if command -v journalctl >/dev/null 2>&1; then
@@ -346,6 +374,21 @@ run_safe_cleanup() {
     paint "$CLR_MUTED" "  - $(tr_text "Docker: builder prune" "Docker: builder prune")"
     $SUDO docker builder prune -f >/dev/null 2>&1 || true
   fi
+
+  after_used_kb="$(disk_used_kb)"
+  after_df="$(df -h / 2>/dev/null | awk 'NR==2 {print $3" / "$2" ("$5")"}' || true)"
+  freed_kb=$((before_used_kb - after_used_kb))
+  if (( freed_kb < 0 )); then
+    freed_kb=0
+  fi
+
+  print_separator
+  paint "$CLR_TITLE" "$(tr_text "Отчет по очистке" "Cleanup report")"
+  paint "$CLR_MUTED" "  $(tr_text "Удалено panel-* во временных файлах:" "Removed panel-* temporary entries:") ${panel_tmp_count}"
+  paint "$CLR_MUTED" "  $(tr_text "Удалено старых файлов (>7 дней) в /tmp и /var/tmp:" "Removed old files (>7 days) in /tmp and /var/tmp:") ${old_tmp_count}"
+  paint "$CLR_MUTED" "  $(tr_text "Диск / до:" "Disk / before:") ${before_df:-n/a}"
+  paint "$CLR_MUTED" "  $(tr_text "Диск / после:" "Disk / after:") ${after_df:-n/a}"
+  paint "$CLR_OK" "  $(tr_text "Освобождено на /:" "Freed on /:") $(kb_to_human "$freed_kb")"
 
   paint "$CLR_OK" "$(tr_text "Безопасная очистка завершена." "Safe cleanup completed.")"
 }

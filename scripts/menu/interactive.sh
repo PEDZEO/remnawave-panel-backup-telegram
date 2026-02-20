@@ -1003,7 +1003,6 @@ menu_section_status() {
         show_safe_cleanup_preview
         if ask_yes_no "$(tr_text "Запустить безопасную очистку сейчас?" "Run safe cleanup now?")" "n"; then
           run_safe_cleanup
-          show_status
         fi
         wait_for_enter
         ;;
