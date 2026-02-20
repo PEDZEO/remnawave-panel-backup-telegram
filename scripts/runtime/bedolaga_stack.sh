@@ -3,6 +3,7 @@
 
 BEDOLAGA_BOT_REPO_DEFAULT="https://github.com/BEDOLAGA-DEV/remnawave-bedolaga-telegram-bot.git"
 BEDOLAGA_CABINET_REPO_DEFAULT="https://github.com/BEDOLAGA-DEV/bedolaga-cabinet.git"
+BEDOLAGA_SHARED_NETWORK="bedolaga-network"
 CADDY_MODE=""
 CADDY_CONTAINER_NAME=""
 CADDY_FILE_PATH=""
@@ -123,6 +124,31 @@ bedolaga_prepare_bot_dirs() {
   local bot_dir="$1"
   mkdir -p "${bot_dir}/logs" "${bot_dir}/data" "${bot_dir}/data/backups" "${bot_dir}/data/referral_qr"
   chmod -R 755 "${bot_dir}/logs" "${bot_dir}/data"
+}
+
+bedolaga_ensure_shared_network() {
+  if ! $SUDO docker network inspect "$BEDOLAGA_SHARED_NETWORK" >/dev/null 2>&1; then
+    $SUDO docker network create "$BEDOLAGA_SHARED_NETWORK" >/dev/null
+  fi
+}
+
+bedolaga_connect_container_to_network() {
+  local container_name="$1"
+  if ! $SUDO docker ps -a --format '{{.Names}}' | grep -qx "$container_name"; then
+    return 0
+  fi
+  if $SUDO docker inspect "$container_name" --format '{{json .NetworkSettings.Networks}}' | grep -q "\"${BEDOLAGA_SHARED_NETWORK}\""; then
+    return 0
+  fi
+  $SUDO docker network connect "$BEDOLAGA_SHARED_NETWORK" "$container_name" >/dev/null 2>&1 || true
+}
+
+bedolaga_attach_stack_to_shared_network() {
+  bedolaga_ensure_shared_network || return 1
+  bedolaga_connect_container_to_network "remnawave_bot"
+  bedolaga_connect_container_to_network "remnawave_bot_db"
+  bedolaga_connect_container_to_network "remnawave_bot_redis"
+  bedolaga_connect_container_to_network "cabinet_frontend"
 }
 
 bedolaga_detect_caddy_runtime() {
@@ -342,6 +368,7 @@ run_bedolaga_stack_install_flow() {
   fi
 
   ( cd "$cabinet_dir" && $SUDO docker compose up -d --build ) || return 1
+  bedolaga_attach_stack_to_shared_network || return 1
 
   if ! bedolaga_apply_caddy_block "$hooks_domain" "$cabinet_domain" "$cabinet_port"; then
     return 1
@@ -379,6 +406,7 @@ run_bedolaga_stack_update_flow() {
   ( cd "$bot_dir" && $SUDO docker compose up -d --build ) || return 1
 
   ( cd "$cabinet_dir" && $SUDO docker compose up -d --build ) || return 1
+  bedolaga_attach_stack_to_shared_network || return 1
 
   paint "$CLR_OK" "$(tr_text "Bedolaga stack обновлен." "Bedolaga stack updated.")"
   return 0
