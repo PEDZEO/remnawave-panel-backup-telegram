@@ -126,6 +126,13 @@ bedolaga_prepare_bot_dirs() {
   chmod -R 755 "${bot_dir}/logs" "${bot_dir}/data"
 }
 
+bedolaga_detect_bot_username() {
+  local bot_token="$1"
+  local username=""
+  username="$(curl -fsSL "https://api.telegram.org/bot${bot_token}/getMe" 2>/dev/null | sed -n 's/.*"username":"\([^"]*\)".*/\1/p' | head -n1 || true)"
+  echo "$username"
+}
+
 bedolaga_ensure_shared_network() {
   if ! $SUDO docker network inspect "$BEDOLAGA_SHARED_NETWORK" >/dev/null 2>&1; then
     $SUDO docker network create "$BEDOLAGA_SHARED_NETWORK" >/dev/null
@@ -328,6 +335,14 @@ run_bedolaga_stack_install_flow() {
 
   bot_username="$(ask_value "$(tr_text "BOT_USERNAME (без @, опционально)" "BOT_USERNAME (without @, optional)")" "")"
   [[ "$bot_username" == "__PBM_BACK__" ]] && return 1
+  if [[ -z "$bot_username" ]]; then
+    paint "$CLR_MUTED" "$(tr_text "Пробую определить BOT_USERNAME автоматически..." "Trying to detect BOT_USERNAME automatically...")"
+    bot_username="$(bedolaga_detect_bot_username "$bot_token")"
+  fi
+  if [[ -z "$bot_username" ]]; then
+    paint "$CLR_DANGER" "$(tr_text "Не удалось определить BOT_USERNAME. Укажите username бота вручную (без @)." "Failed to detect BOT_USERNAME. Provide bot username manually (without @).")"
+    return 1
+  fi
 
   remnawave_api_url="$(ask_value "$(tr_text "REMNAWAVE_API_URL (URL панели, например https://panel.example.com)" "REMNAWAVE_API_URL (panel URL, for example https://panel.example.com)")" "")"
   [[ "$remnawave_api_url" == "__PBM_BACK__" ]] && return 1
