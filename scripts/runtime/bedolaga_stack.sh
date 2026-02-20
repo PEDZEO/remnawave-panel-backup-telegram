@@ -7,6 +7,7 @@ BEDOLAGA_SHARED_NETWORK="bedolaga-network"
 CADDY_MODE=""
 CADDY_CONTAINER_NAME=""
 CADDY_FILE_PATH=""
+BEDOLAGA_CADDY_FRESH_FILE="0"
 
 ensure_git_available() {
   if command -v git >/dev/null 2>&1; then
@@ -116,7 +117,19 @@ bedolaga_configure_bot_env() {
   bedolaga_upsert_env_value "$env_file" "WEB_API_DEFAULT_TOKEN" "$web_api_token"
   bedolaga_upsert_env_value "$env_file" "WEB_API_ALLOWED_ORIGINS" "https://${cabinet_domain}"
   bedolaga_upsert_env_value "$env_file" "MENU_LAYOUT_ENABLED" "true"
+  bedolaga_upsert_env_value "$env_file" "MAIN_MENU_MODE" "text"
+  bedolaga_upsert_env_value "$env_file" "CONNECT_BUTTON_MODE" "miniapp_subscription"
   bedolaga_upsert_env_value "$env_file" "ENABLE_LOGO_MODE" "true"
+  bedolaga_upsert_env_value "$env_file" "DEFAULT_LANGUAGE" "ru"
+  bedolaga_upsert_env_value "$env_file" "AVAILABLE_LANGUAGES" "ru,en"
+  bedolaga_upsert_env_value "$env_file" "LANGUAGE_SELECTION_ENABLED" "true"
+  bedolaga_upsert_env_value "$env_file" "BACKUP_AUTO_ENABLED" "true"
+  bedolaga_upsert_env_value "$env_file" "BACKUP_INTERVAL_HOURS" "24"
+  bedolaga_upsert_env_value "$env_file" "BACKUP_TIME" "03:00"
+  bedolaga_upsert_env_value "$env_file" "BACKUP_MAX_KEEP" "7"
+  bedolaga_upsert_env_value "$env_file" "BACKUP_COMPRESSION" "true"
+  bedolaga_upsert_env_value "$env_file" "BACKUP_INCLUDE_LOGS" "false"
+  bedolaga_upsert_env_value "$env_file" "BACKUP_LOCATION" "/app/data/backups"
   bedolaga_upsert_env_value "$env_file" "CABINET_ENABLED" "true"
   bedolaga_upsert_env_value "$env_file" "CABINET_URL" "https://${cabinet_domain}"
   bedolaga_upsert_env_value "$env_file" "CABINET_JWT_SECRET" "$cabinet_jwt_secret"
@@ -174,6 +187,17 @@ bedolaga_apply_notification_defaults() {
   bedolaga_upsert_if_not_empty "$env_file" "CHANNEL_LINK" "$channel_link"
 }
 
+bedolaga_apply_backup_send_defaults() {
+  local env_file="$1"
+  local backup_send_enabled="$2"
+  local backup_send_chat_id="$3"
+  local backup_send_topic_id="$4"
+
+  bedolaga_upsert_env_value "$env_file" "BACKUP_SEND_ENABLED" "$backup_send_enabled"
+  bedolaga_upsert_if_not_empty "$env_file" "BACKUP_SEND_CHAT_ID" "$backup_send_chat_id"
+  bedolaga_upsert_if_not_empty "$env_file" "BACKUP_SEND_TOPIC_ID" "$backup_send_topic_id"
+}
+
 bedolaga_detect_bot_username() {
   local bot_token="$1"
   local username=""
@@ -198,6 +222,54 @@ bedolaga_connect_container_to_network() {
   $SUDO docker network connect "$BEDOLAGA_SHARED_NETWORK" "$container_name" >/dev/null 2>&1 || true
 }
 
+bedolaga_collect_container_logs_if_needed() {
+  local container_name="$1"
+  local state=""
+  local health=""
+  local show_logs="0"
+
+  if ! $SUDO docker ps -a --format '{{.Names}}' | grep -qx "$container_name"; then
+    paint "$CLR_DANGER" "$(tr_text "Контейнер не найден:" "Container not found:") ${container_name}"
+    return 1
+  fi
+
+  state="$($SUDO docker inspect -f '{{.State.Status}}' "$container_name" 2>/dev/null || echo "unknown")"
+  health="$($SUDO docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_name" 2>/dev/null || echo "none")"
+  paint "$CLR_MUTED" "  - ${container_name}: state=${state}, health=${health}"
+
+  if [[ "$state" != "running" ]]; then
+    show_logs="1"
+  fi
+  if [[ "$health" != "none" && "$health" != "healthy" ]]; then
+    show_logs="1"
+  fi
+
+  if [[ "$show_logs" == "1" ]]; then
+    paint "$CLR_WARN" "$(tr_text "Проблема в контейнере, показываю последние логи:" "Container issue detected, showing recent logs:") ${container_name}"
+    $SUDO docker logs --tail 120 "$container_name" 2>&1 || true
+    return 1
+  fi
+  return 0
+}
+
+bedolaga_post_deploy_health_check() {
+  local failed="0"
+
+  paint "$CLR_ACCENT" "$(tr_text "Проверяю состояние контейнеров Bedolaga..." "Checking Bedolaga container health...")"
+  bedolaga_collect_container_logs_if_needed "remnawave_bot" || failed="1"
+  bedolaga_collect_container_logs_if_needed "remnawave_bot_db" || failed="1"
+  bedolaga_collect_container_logs_if_needed "remnawave_bot_redis" || failed="1"
+  bedolaga_collect_container_logs_if_needed "cabinet_frontend" || failed="1"
+
+  if [[ "$failed" == "1" ]]; then
+    paint "$CLR_DANGER" "$(tr_text "Обнаружены проблемы после запуска Bedolaga. Исправьте ошибки по логам выше." "Issues detected after Bedolaga start. Fix errors using logs above.")"
+    return 1
+  fi
+
+  paint "$CLR_OK" "$(tr_text "Контейнеры Bedolaga запущены корректно." "Bedolaga containers are healthy.")"
+  return 0
+}
+
 bedolaga_attach_stack_to_shared_network() {
   bedolaga_ensure_shared_network || return 1
   bedolaga_connect_container_to_network "remnawave_bot"
@@ -220,6 +292,7 @@ bedolaga_detect_caddy_runtime() {
   CADDY_MODE=""
   CADDY_CONTAINER_NAME=""
   CADDY_FILE_PATH=""
+  BEDOLAGA_CADDY_FRESH_FILE="0"
 
   for container in remnawave-caddy remnawave_caddy caddy; do
     if $SUDO docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$container"; then
@@ -256,6 +329,43 @@ bedolaga_detect_caddy_runtime() {
   return 1
 }
 
+bedolaga_ensure_caddy_runtime() {
+  if bedolaga_detect_caddy_runtime; then
+    return 0
+  fi
+
+  paint "$CLR_WARN" "$(tr_text "Caddy не найден, требуется установка для публикации webhook и кабинета." "Caddy was not found, installation is required to publish webhook and cabinet.")"
+  if ! ask_yes_no "$(tr_text "Установить Caddy и создать базовый Caddyfile сейчас?" "Install Caddy and create base Caddyfile now?")" "y"; then
+    return 1
+  fi
+
+  if ! ensure_remnanode_caddy_installed; then
+    return 1
+  fi
+
+  CADDY_MODE="host"
+  CADDY_CONTAINER_NAME=""
+  CADDY_FILE_PATH="/etc/caddy/Caddyfile"
+  BEDOLAGA_CADDY_FRESH_FILE="0"
+
+  if [[ ! -f "$CADDY_FILE_PATH" ]]; then
+    $SUDO install -d -m 755 /etc/caddy
+    $SUDO bash -c "cat > '$CADDY_FILE_PATH' <<'CADDY'
+{
+    servers :443 {
+        protocols h1 h2 h3
+    }
+    servers :80 {
+        protocols h1
+    }
+}
+CADDY"
+    BEDOLAGA_CADDY_FRESH_FILE="1"
+  fi
+
+  return 0
+}
+
 bedolaga_validate_and_reload_caddy() {
   if [[ "$CADDY_MODE" == "container" ]]; then
     if ! $SUDO docker exec "$CADDY_CONTAINER_NAME" caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1; then
@@ -277,50 +387,173 @@ bedolaga_validate_and_reload_caddy() {
 bedolaga_apply_caddy_block() {
   local hooks_domain="$1"
   local cabinet_domain="$2"
-  local cabinet_port="$3"
+  local api_domain="$3"
+  local cabinet_port="$4"
+  local force_replace="${5:-0}"
   local marker_begin="# BEGIN BEDOLAGA_AUTOGEN"
   local marker_end="# END BEDOLAGA_AUTOGEN"
   local tmp_file=""
   local backup_file=""
   local caddy_file="$CADDY_FILE_PATH"
+  local bot_upstream="127.0.0.1:8080"
+  local cabinet_upstream="127.0.0.1:${cabinet_port}"
+  local bot_for_api="$bot_upstream"
 
   if [[ -z "$caddy_file" || ! -f "$caddy_file" ]]; then
     paint "$CLR_DANGER" "$(tr_text "Не найден Caddyfile для изменения." "Caddyfile for update was not found.")"
     return 1
   fi
 
+  if [[ "$CADDY_MODE" == "container" ]]; then
+    bot_upstream="remnawave_bot:8080"
+    cabinet_upstream="cabinet_frontend:80"
+    bot_for_api="remnawave_bot:8080"
+  fi
+
   backup_file="${caddy_file}.bak-$(date -u +%Y%m%d-%H%M%S)"
   $SUDO cp "$caddy_file" "$backup_file"
 
   tmp_file="$(mktemp "${TMP_DIR}/caddy.XXXXXX")"
-  awk -v mb="$marker_begin" -v me="$marker_end" '
-    BEGIN { skip=0 }
-    index($0, mb) { skip=1; next }
-    index($0, me) { skip=0; next }
-    skip == 0 { print }
-  ' "$caddy_file" > "$tmp_file"
+  if [[ "$force_replace" == "1" ]]; then
+    cat > "$tmp_file" <<'CADDY'
+{
+    servers :443 {
+        protocols h1 h2 h3
+    }
+    servers :80 {
+        protocols h1
+    }
+}
+CADDY
+  else
+    awk -v mb="$marker_begin" -v me="$marker_end" '
+      BEGIN { skip=0 }
+      index($0, mb) { skip=1; next }
+      index($0, me) { skip=0; next }
+      skip == 0 { print }
+    ' "$caddy_file" > "$tmp_file"
+  fi
 
   cat >> "$tmp_file" <<CADDY
 
 ${marker_begin}
 https://${hooks_domain} {
     encode gzip zstd
-    reverse_proxy 127.0.0.1:8080
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer-when-downgrade"
+    }
+    reverse_proxy ${bot_upstream} {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+    log {
+        output file /var/log/caddy/hooks.access.log {
+            roll_size 50mb
+            roll_keep 5
+            roll_keep_for 720h
+        }
+        level INFO
+    }
 }
 
 https://${cabinet_domain} {
     encode gzip zstd
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
 
-    handle_path /api/* {
-        reverse_proxy 127.0.0.1:8080
+    handle /api/* {
+        uri strip_prefix /api
+        reverse_proxy ${bot_upstream} {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
     }
 
     handle {
-        reverse_proxy 127.0.0.1:${cabinet_port}
+        reverse_proxy ${cabinet_upstream}
+    }
+    log {
+        output file /var/log/caddy/cabinet.access.log {
+            roll_size 50mb
+            roll_keep 5
+            roll_keep_for 720h
+        }
+        level INFO
     }
 }
+
+https://${api_domain} {
+    encode gzip zstd
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer-when-downgrade"
+    }
+    @ws path /central/ws*
+    handle @ws {
+        uri strip_prefix /central
+        reverse_proxy ${bot_for_api} {
+            transport http {
+                versions 1.1
+                read_timeout 1h
+                write_timeout 1h
+            }
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up Connection "Upgrade"
+            header_up Upgrade "websocket"
+        }
+    }
+    handle {
+        reverse_proxy ${bot_for_api} {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+    log {
+        output file /var/log/caddy/api.access.log {
+            roll_size 50mb
+            roll_keep 5
+            roll_keep_for 720h
+        }
+        level INFO
+    }
+}
+$(if [[ "$BEDOLAGA_CADDY_FRESH_FILE" == "1" ]]; then
+cat <<'EOF'
+
+:80, :443 {
+    respond "Forbidden" 403
+}
+EOF
+fi)
 ${marker_end}
 CADDY
+
+  if [[ "$force_replace" == "1" && "$BEDOLAGA_CADDY_FRESH_FILE" != "1" ]]; then
+    cat >> "$tmp_file" <<'CADDY'
+
+:80, :443 {
+    respond "Forbidden" 403
+}
+CADDY
+  fi
 
   $SUDO mv "$tmp_file" "$caddy_file"
 
@@ -342,6 +575,7 @@ run_bedolaga_stack_install_flow() {
   local cabinet_repo="$BEDOLAGA_CABINET_REPO_DEFAULT"
   local hooks_domain=""
   local cabinet_domain=""
+  local api_domain=""
   local bot_token=""
   local admin_ids=""
   local remnawave_api_url=""
@@ -352,6 +586,7 @@ run_bedolaga_stack_install_flow() {
   local postgres_user="remnawave_user"
   local postgres_password=""
   local configure_notifications="0"
+  local configure_backup_send="0"
   local admin_notifications_enabled="true"
   local admin_notifications_chat_id=""
   local admin_notifications_topic_id=""
@@ -363,6 +598,10 @@ run_bedolaga_stack_install_flow() {
   local channel_sub_id=""
   local channel_is_required_sub="false"
   local channel_link=""
+  local backup_send_enabled="true"
+  local backup_send_chat_id=""
+  local backup_send_topic_id=""
+  local replace_caddy_config="0"
 
   draw_subheader "$(tr_text "Bedolaga: установка (бот + кабинет + Caddy)" "Bedolaga: install (bot + cabinet + Caddy)")"
 
@@ -375,10 +614,13 @@ run_bedolaga_stack_install_flow() {
   if ! ensure_git_available; then
     return 1
   fi
-  if ! bedolaga_detect_caddy_runtime; then
+  if ! bedolaga_ensure_caddy_runtime; then
     return 1
   fi
   paint "$CLR_MUTED" "$(tr_text "Обнаружен Caddy: " "Detected Caddy: ")${CADDY_MODE} (${CADDY_FILE_PATH})"
+  if ask_yes_no "$(tr_text "Заменить весь Caddyfile на шаблон Bedolaga? (иначе обновится только автоген-блок)" "Replace full Caddyfile with Bedolaga template? (otherwise only autogen block is updated)")" "n"; then
+    replace_caddy_config="1"
+  fi
 
   hooks_domain="$(ask_value "$(tr_text "Домен для bot webhook/API (пример: hooks.example.com)" "Domain for bot webhook/API (example: hooks.example.com)")" "")"
   [[ "$hooks_domain" == "__PBM_BACK__" ]] && return 1
@@ -387,6 +629,10 @@ run_bedolaga_stack_install_flow() {
   cabinet_domain="$(ask_value "$(tr_text "Домен для кабинета (пример: cabinet.example.com)" "Domain for cabinet (example: cabinet.example.com)")" "")"
   [[ "$cabinet_domain" == "__PBM_BACK__" ]] && return 1
   [[ -n "$cabinet_domain" ]] || return 1
+
+  api_domain="$(ask_value "$(tr_text "Домен для API (пример: api.example.com)" "Domain for API (example: api.example.com)")" "")"
+  [[ "$api_domain" == "__PBM_BACK__" ]] && return 1
+  [[ -n "$api_domain" ]] || return 1
 
   bot_token="$(ask_value "$(tr_text "BOT_TOKEN Telegram" "Telegram BOT_TOKEN")" "")"
   [[ "$bot_token" == "__PBM_BACK__" ]] && return 1
@@ -466,6 +712,21 @@ run_bedolaga_stack_install_flow() {
     [[ "$channel_link" == "__PBM_BACK__" ]] && return 1
   fi
 
+  if ask_yes_no "$(tr_text "Настроить отправку backup в Telegram сейчас?" "Configure backup send to Telegram now?")" "n"; then
+    configure_backup_send="1"
+  fi
+
+  if [[ "$configure_backup_send" == "1" ]]; then
+    backup_send_enabled="$(ask_value "$(tr_text "BACKUP_SEND_ENABLED (true/false)" "BACKUP_SEND_ENABLED (true/false)")" "$backup_send_enabled")"
+    [[ "$backup_send_enabled" == "__PBM_BACK__" ]] && return 1
+
+    backup_send_chat_id="$(ask_value "$(tr_text "BACKUP_SEND_CHAT_ID (формат: -100..., пример: -1001234567890)" "BACKUP_SEND_CHAT_ID (format: -100..., example: -1001234567890)")" "$backup_send_chat_id")"
+    [[ "$backup_send_chat_id" == "__PBM_BACK__" ]] && return 1
+
+    backup_send_topic_id="$(ask_value "$(tr_text "BACKUP_SEND_TOPIC_ID (опционально, пример: 8)" "BACKUP_SEND_TOPIC_ID (optional, example: 8)")" "$backup_send_topic_id")"
+    [[ "$backup_send_topic_id" == "__PBM_BACK__" ]] && return 1
+  fi
+
   cabinet_port="$(ask_value "$(tr_text "Локальный порт cabinet (для Caddy reverse proxy)" "Local cabinet port (for Caddy reverse proxy)")" "3020")"
   [[ "$cabinet_port" == "__PBM_BACK__" ]] && return 1
   if [[ ! "$cabinet_port" =~ ^[0-9]+$ ]]; then
@@ -499,6 +760,13 @@ run_bedolaga_stack_install_flow() {
       "$channel_is_required_sub" \
       "$channel_link"
   fi
+  if [[ "$configure_backup_send" == "1" ]]; then
+    bedolaga_apply_backup_send_defaults \
+      "${bot_dir}/.env" \
+      "$backup_send_enabled" \
+      "$backup_send_chat_id" \
+      "$backup_send_topic_id"
+  fi
 
   ( cd "$bot_dir" && $SUDO docker compose up -d --build ) || return 1
 
@@ -514,7 +782,10 @@ run_bedolaga_stack_install_flow() {
   ( cd "$cabinet_dir" && $SUDO docker compose up -d --build ) || return 1
   bedolaga_attach_stack_to_shared_network || return 1
 
-  if ! bedolaga_apply_caddy_block "$hooks_domain" "$cabinet_domain" "$cabinet_port"; then
+  if ! bedolaga_apply_caddy_block "$hooks_domain" "$cabinet_domain" "$api_domain" "$cabinet_port" "$replace_caddy_config"; then
+    return 1
+  fi
+  if ! bedolaga_post_deploy_health_check; then
     return 1
   fi
 
@@ -525,6 +796,11 @@ run_bedolaga_stack_install_flow() {
 run_bedolaga_stack_update_flow() {
   local bot_dir="/root/remnawave-bedolaga-telegram-bot"
   local cabinet_dir="/root/bedolaga-cabinet"
+  local replace_caddy_config="0"
+  local hooks_domain=""
+  local cabinet_domain=""
+  local api_domain=""
+  local cabinet_port="3020"
 
   draw_subheader "$(tr_text "Bedolaga: обновление (бот + кабинет)" "Bedolaga: update (bot + cabinet)")"
 
@@ -532,6 +808,9 @@ run_bedolaga_stack_update_flow() {
     return 1
   fi
   if ! ensure_git_available; then
+    return 1
+  fi
+  if ! bedolaga_ensure_caddy_runtime; then
     return 1
   fi
 
@@ -551,6 +830,35 @@ run_bedolaga_stack_update_flow() {
 
   ( cd "$cabinet_dir" && $SUDO docker compose up -d --build ) || return 1
   bedolaga_attach_stack_to_shared_network || return 1
+
+  hooks_domain="$(ask_value "$(tr_text "Домен webhook/API (как в установке)" "Webhook/API domain (same as install)")" "")"
+  [[ "$hooks_domain" == "__PBM_BACK__" ]] && return 1
+  [[ -n "$hooks_domain" ]] || return 1
+
+  cabinet_domain="$(ask_value "$(tr_text "Домен кабинета (как в установке)" "Cabinet domain (same as install)")" "")"
+  [[ "$cabinet_domain" == "__PBM_BACK__" ]] && return 1
+  [[ -n "$cabinet_domain" ]] || return 1
+
+  api_domain="$(ask_value "$(tr_text "Домен API (как в установке)" "API domain (same as install)")" "")"
+  [[ "$api_domain" == "__PBM_BACK__" ]] && return 1
+  [[ -n "$api_domain" ]] || return 1
+
+  cabinet_port="$(ask_value "$(tr_text "Локальный порт cabinet (для Caddy reverse proxy)" "Local cabinet port (for Caddy reverse proxy)")" "3020")"
+  [[ "$cabinet_port" == "__PBM_BACK__" ]] && return 1
+  if [[ ! "$cabinet_port" =~ ^[0-9]+$ ]]; then
+    paint "$CLR_DANGER" "$(tr_text "Порт cabinet должен быть числом." "Cabinet port must be numeric.")"
+    return 1
+  fi
+
+  if ask_yes_no "$(tr_text "Заменить весь Caddyfile на шаблон Bedolaga? (иначе обновится только автоген-блок)" "Replace full Caddyfile with Bedolaga template? (otherwise only autogen block is updated)")" "n"; then
+    replace_caddy_config="1"
+  fi
+  if ! bedolaga_apply_caddy_block "$hooks_domain" "$cabinet_domain" "$api_domain" "$cabinet_port" "$replace_caddy_config"; then
+    return 1
+  fi
+  if ! bedolaga_post_deploy_health_check; then
+    return 1
+  fi
 
   paint "$CLR_OK" "$(tr_text "Bedolaga stack обновлен." "Bedolaga stack updated.")"
   return 0
