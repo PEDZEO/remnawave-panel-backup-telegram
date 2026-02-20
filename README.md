@@ -2,7 +2,7 @@
 
 [English](README.en.md) | [Русский](README.md)
 
-Этот скрипт нужен, чтобы спокойно обслуживать Remnawave без ручной рутины: сделать резервную копию, проверить состояние, безопасно запустить восстановление и при необходимости обновить панель, ноду или страницу подписок через одно понятное меню.
+Интерактивный менеджер для Remnawave: резервное копирование и восстановление, расписание, шифрование, мониторинг состояния и установка/обновление компонентов в одном интерфейсе.
 
 ## Установка
 
@@ -27,6 +27,11 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backu
 - Автоустановка и обновление Bedolaga-стека на одном VPS: бот `remnawave-bedolaga-telegram-bot`, кабинет `bedolaga-cabinet` и интеграция в Caddy.
   Пути установки: `/root/remnawave-bedolaga-telegram-bot`, `/root/bedolaga-cabinet`, Caddy-конфиг в `/root/caddy` (если используется контейнерный Caddy).
 - Составные сценарии: полная установка/обновление Remnawave и полная настройка RemnaNode.
+
+## Bedolaga компоненты
+
+- Бот: https://github.com/BEDOLAGA-DEV/remnawave-bedolaga-telegram-bot
+- Кабинет: https://github.com/BEDOLAGA-DEV/bedolaga-cabinet
 
 ## Требования
 

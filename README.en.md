@@ -2,7 +2,7 @@
 
 [English](README.en.md) | [Русский](README.md)
 
-This script helps you operate Remnawave without manual routine work: create backups, check health, run safer restore flows, and update panel/node/subscription components from one clear menu.
+Interactive Remnawave manager: backup/restore, scheduling, encryption, status diagnostics, and install/update flows for related components in one interface.
 
 ## Installation
 
@@ -27,6 +27,11 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backu
 - One-VPS Bedolaga stack install/update: `remnawave-bedolaga-telegram-bot`, `bedolaga-cabinet`, and Caddy integration.
   Install paths: `/root/remnawave-bedolaga-telegram-bot`, `/root/bedolaga-cabinet`, and `/root/caddy` for containerized Caddy setups.
 - Composite flows: full install/update for Remnawave and full setup for RemnaNode.
+
+## Bedolaga components
+
+- Bot: https://github.com/BEDOLAGA-DEV/remnawave-bedolaga-telegram-bot
+- Cabinet: https://github.com/BEDOLAGA-DEV/bedolaga-cabinet
 
 ## Requirements
 
