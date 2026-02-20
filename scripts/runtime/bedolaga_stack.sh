@@ -468,6 +468,8 @@ run_bedolaga_stack_install_flow() {
   local backup_send_chat_id=""
   local backup_send_topic_id=""
   local replace_caddy_config="0"
+  local existing_env_file="${bot_dir}/.env"
+  local existing_value=""
 
   draw_subheader "$(tr_text "Bedolaga: установка (бот + кабинет + Caddy)" "Bedolaga: install (bot + cabinet + Caddy)")"
 
@@ -486,6 +488,19 @@ run_bedolaga_stack_install_flow() {
   paint "$CLR_MUTED" "$(tr_text "Обнаружен Caddy: " "Detected Caddy: ")${CADDY_MODE} (${CADDY_FILE_PATH})"
   if ask_yes_no "$(tr_text "Заменить весь Caddyfile на шаблон Bedolaga? (иначе обновится только автоген-блок)" "Replace full Caddyfile with Bedolaga template? (otherwise only autogen block is updated)")" "n"; then
     replace_caddy_config="1"
+  fi
+
+  # Keep DB credentials stable on reinstall if the bot is already configured.
+  if [[ -f "$existing_env_file" ]]; then
+    existing_value="$(bedolaga_read_env_value "$existing_env_file" "POSTGRES_DB")"
+    [[ -n "$existing_value" ]] && postgres_db="$existing_value"
+    existing_value="$(bedolaga_read_env_value "$existing_env_file" "POSTGRES_USER")"
+    [[ -n "$existing_value" ]] && postgres_user="$existing_value"
+    existing_value="$(bedolaga_read_env_value "$existing_env_file" "POSTGRES_PASSWORD")"
+    [[ -n "$existing_value" ]] && postgres_password="$existing_value"
+    if [[ -n "$postgres_password" ]]; then
+      paint "$CLR_MUTED" "$(tr_text "Обнаружен существующий POSTGRES_PASSWORD: уже задан, можно оставить пустым чтобы не менять." "Detected existing POSTGRES_PASSWORD: already set, leave empty to keep unchanged.")"
+    fi
   fi
 
   hooks_domain="$(ask_value "$(tr_text "Домен для bot webhook/API (пример: hooks.example.com)" "Domain for bot webhook/API (example: hooks.example.com)")" "")"
@@ -535,7 +550,10 @@ run_bedolaga_stack_install_flow() {
   [[ "$postgres_user" == "__PBM_BACK__" ]] && return 1
   [[ -n "$postgres_user" ]] || return 1
 
-  postgres_password="$(ask_secret_value "$(tr_text "POSTGRES_PASSWORD (пароль БД бота)" "POSTGRES_PASSWORD (bot database password)")" "$(generate_hex 24)")"
+  if [[ -z "$postgres_password" ]]; then
+    postgres_password="$(generate_hex 24)"
+  fi
+  postgres_password="$(ask_secret_value "$(tr_text "POSTGRES_PASSWORD (пароль БД бота, Enter = оставить текущее)" "POSTGRES_PASSWORD (bot database password, Enter = keep current)")" "$postgres_password")"
   [[ "$postgres_password" == "__PBM_BACK__" ]] && return 1
   [[ -n "$postgres_password" ]] || return 1
 
