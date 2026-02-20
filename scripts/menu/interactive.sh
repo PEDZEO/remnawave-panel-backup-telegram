@@ -28,9 +28,11 @@ menu_section_remnawave_components() {
     menu_option "4" "$(tr_text "Полное обновление (панель + подписки)" "Full update (panel + subscription)")"
     menu_option "5" "$(tr_text "Обновить панель Remnawave" "Update Remnawave panel")"
     menu_option "6" "$(tr_text "Обновить страницу подписок" "Update subscription page")"
-    menu_option "7" "$(tr_text "Назад" "Back")"
+    menu_option "7" "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")"
+    menu_option "8" "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")"
+    menu_option "9" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-7]: " "Choice [1-7]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-9]: " "Choice [1-9]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
@@ -53,7 +55,13 @@ menu_section_remnawave_components() {
       6)
         run_component_flow_action "$(tr_text "Обновить страницу подписок" "Update subscription page")" run_subscription_update_flow
         ;;
-      7) break ;;
+      7)
+        run_component_flow_action "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")" run_bedolaga_stack_install_flow
+        ;;
+      8)
+        run_component_flow_action "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")" run_bedolaga_stack_update_flow
+        ;;
+      9) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done

@@ -24,6 +24,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backu
 - Отдельные действия по установке и обновлению RemnaNode.
 - Сетевые инструменты для RemnaNode: Caddy self-steal, BBR, WARP Native (wgcf), переключение IPv6.
 - Отдельные действия по установке и обновлению страницы подписок Remnawave.
+- Автоустановка и обновление Bedolaga-стека на одном VPS: бот `remnawave-bedolaga-telegram-bot`, кабинет `bedolaga-cabinet` и интеграция в Caddy.
 - Составные сценарии: полная установка/обновление Remnawave и полная настройка RemnaNode.
 
 ## Режимы запуска
