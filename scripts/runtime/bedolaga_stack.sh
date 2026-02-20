@@ -434,34 +434,34 @@ run_bedolaga_stack_install_flow() {
     admin_notifications_enabled="$(ask_value "$(tr_text "ADMIN_NOTIFICATIONS_ENABLED (true/false)" "ADMIN_NOTIFICATIONS_ENABLED (true/false)")" "$admin_notifications_enabled")"
     [[ "$admin_notifications_enabled" == "__PBM_BACK__" ]] && return 1
 
-    admin_notifications_chat_id="$(ask_value "$(tr_text "ADMIN_NOTIFICATIONS_CHAT_ID" "ADMIN_NOTIFICATIONS_CHAT_ID")" "$admin_notifications_chat_id")"
+    admin_notifications_chat_id="$(ask_value "$(tr_text "ADMIN_NOTIFICATIONS_CHAT_ID (пример: -1001234567890)" "ADMIN_NOTIFICATIONS_CHAT_ID (example: -1001234567890)")" "$admin_notifications_chat_id")"
     [[ "$admin_notifications_chat_id" == "__PBM_BACK__" ]] && return 1
 
-    admin_notifications_topic_id="$(ask_value "$(tr_text "ADMIN_NOTIFICATIONS_TOPIC_ID (опционально)" "ADMIN_NOTIFICATIONS_TOPIC_ID (optional)")" "$admin_notifications_topic_id")"
+    admin_notifications_topic_id="$(ask_value "$(tr_text "ADMIN_NOTIFICATIONS_TOPIC_ID (опционально, пример: 2)" "ADMIN_NOTIFICATIONS_TOPIC_ID (optional, example: 2)")" "$admin_notifications_topic_id")"
     [[ "$admin_notifications_topic_id" == "__PBM_BACK__" ]] && return 1
 
-    admin_notifications_ticket_topic_id="$(ask_value "$(tr_text "ADMIN_NOTIFICATIONS_TICKET_TOPIC_ID (опционально)" "ADMIN_NOTIFICATIONS_TICKET_TOPIC_ID (optional)")" "$admin_notifications_ticket_topic_id")"
+    admin_notifications_ticket_topic_id="$(ask_value "$(tr_text "ADMIN_NOTIFICATIONS_TICKET_TOPIC_ID (опционально, пример: 126)" "ADMIN_NOTIFICATIONS_TICKET_TOPIC_ID (optional, example: 126)")" "$admin_notifications_ticket_topic_id")"
     [[ "$admin_notifications_ticket_topic_id" == "__PBM_BACK__" ]] && return 1
 
     admin_reports_enabled="$(ask_value "$(tr_text "ADMIN_REPORTS_ENABLED (true/false)" "ADMIN_REPORTS_ENABLED (true/false)")" "$admin_reports_enabled")"
     [[ "$admin_reports_enabled" == "__PBM_BACK__" ]] && return 1
 
-    admin_reports_chat_id="$(ask_value "$(tr_text "ADMIN_REPORTS_CHAT_ID (опционально)" "ADMIN_REPORTS_CHAT_ID (optional)")" "$admin_reports_chat_id")"
+    admin_reports_chat_id="$(ask_value "$(tr_text "ADMIN_REPORTS_CHAT_ID (опционально, пример: -1001234567890)" "ADMIN_REPORTS_CHAT_ID (optional, example: -1001234567890)")" "$admin_reports_chat_id")"
     [[ "$admin_reports_chat_id" == "__PBM_BACK__" ]] && return 1
 
-    admin_reports_topic_id="$(ask_value "$(tr_text "ADMIN_REPORTS_TOPIC_ID (опционально)" "ADMIN_REPORTS_TOPIC_ID (optional)")" "$admin_reports_topic_id")"
+    admin_reports_topic_id="$(ask_value "$(tr_text "ADMIN_REPORTS_TOPIC_ID (опционально, пример: 339)" "ADMIN_REPORTS_TOPIC_ID (optional, example: 339)")" "$admin_reports_topic_id")"
     [[ "$admin_reports_topic_id" == "__PBM_BACK__" ]] && return 1
 
-    admin_reports_send_time="$(ask_value "$(tr_text "ADMIN_REPORTS_SEND_TIME (HH:MM)" "ADMIN_REPORTS_SEND_TIME (HH:MM)")" "$admin_reports_send_time")"
+    admin_reports_send_time="$(ask_value "$(tr_text "ADMIN_REPORTS_SEND_TIME (HH:MM, пример: 10:00)" "ADMIN_REPORTS_SEND_TIME (HH:MM, example: 10:00)")" "$admin_reports_send_time")"
     [[ "$admin_reports_send_time" == "__PBM_BACK__" ]] && return 1
 
-    channel_sub_id="$(ask_value "$(tr_text "CHANNEL_SUB_ID (опционально)" "CHANNEL_SUB_ID (optional)")" "$channel_sub_id")"
+    channel_sub_id="$(ask_value "$(tr_text "CHANNEL_SUB_ID (опционально, формат: -100...)" "CHANNEL_SUB_ID (optional, format: -100...)")" "$channel_sub_id")"
     [[ "$channel_sub_id" == "__PBM_BACK__" ]] && return 1
 
     channel_is_required_sub="$(ask_value "$(tr_text "CHANNEL_IS_REQUIRED_SUB (true/false)" "CHANNEL_IS_REQUIRED_SUB (true/false)")" "$channel_is_required_sub")"
     [[ "$channel_is_required_sub" == "__PBM_BACK__" ]] && return 1
 
-    channel_link="$(ask_value "$(tr_text "CHANNEL_LINK (опционально)" "CHANNEL_LINK (optional)")" "$channel_link")"
+    channel_link="$(ask_value "$(tr_text "CHANNEL_LINK (опционально, пример: https://t.me/your_channel)" "CHANNEL_LINK (optional, example: https://t.me/your_channel)")" "$channel_link")"
     [[ "$channel_link" == "__PBM_BACK__" ]] && return 1
   fi
 
