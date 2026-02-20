@@ -249,6 +249,9 @@ container_version_label() {
   local version_from_tag=""
   local revision=""
   local env_version=""
+  local compose_workdir=""
+  local package_json=""
+  local package_version=""
 
   image_ref="$(container_image_ref "$name")"
   image_id="$(docker inspect -f '{{.Image}}' "$name" 2>/dev/null || true)"
@@ -303,6 +306,27 @@ container_version_label() {
   if [[ -n "$version" ]]; then
     echo "$version"
     return 0
+  fi
+
+  # Fallback for compose-managed apps (e.g. cabinet_frontend):
+  # read semantic version from package.json in compose working_dir.
+  compose_workdir="$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' "$name" 2>/dev/null || true)"
+  if [[ -n "$compose_workdir" ]]; then
+    package_json="${compose_workdir}/package.json"
+    if [[ -f "$package_json" ]]; then
+      package_version="$(awk -F'"' '/"version"[[:space:]]*:[[:space:]]*"/ { print $4; exit }' "$package_json" 2>/dev/null || true)"
+      if [[ -n "$package_version" ]]; then
+        echo "$package_version"
+        return 0
+      fi
+    fi
+    if [[ -d "${compose_workdir}/.git" ]]; then
+      revision="$(git -C "$compose_workdir" rev-parse --short=12 HEAD 2>/dev/null || true)"
+      if [[ -n "$revision" ]]; then
+        echo "sha-${revision}"
+        return 0
+      fi
+    fi
   fi
 
   if [[ -n "$image_id" ]]; then
