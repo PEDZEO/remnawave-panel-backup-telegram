@@ -486,23 +486,25 @@ menu_section_remnawave_components() {
     draw_header "$(tr_text "Раздел: Компоненты Remnawave" "Section: Remnawave components")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Установка и обновление панели и страницы подписок." "Install and update panel and subscription page.")"
-    menu_option "1" "$(tr_text "Установить панель Remnawave" "Install Remnawave panel")"
-    menu_option "2" "$(tr_text "Обновить панель Remnawave" "Update Remnawave panel")"
+    menu_option "1" "$(tr_text "Полная установка (панель + подписки)" "Full install (panel + subscription)")"
+    menu_option "2" "$(tr_text "Установить панель Remnawave" "Install Remnawave panel")"
     menu_option "3" "$(tr_text "Установить страницу подписок" "Install subscription page")"
-    menu_option "4" "$(tr_text "Обновить страницу подписок" "Update subscription page")"
-    menu_option "5" "$(tr_text "Назад" "Back")"
+    menu_option "4" "$(tr_text "Полное обновление (панель + подписки)" "Full update (panel + subscription)")"
+    menu_option "5" "$(tr_text "Обновить панель Remnawave" "Update Remnawave panel")"
+    menu_option "6" "$(tr_text "Обновить страницу подписок" "Update subscription page")"
+    menu_option "7" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-7]: " "Choice [1-7]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
     case "$choice" in
       1)
-        run_panel_install_flow || true
+        run_remnawave_full_install_flow || true
         wait_for_enter
         ;;
       2)
-        run_panel_update_flow || true
+        run_panel_install_flow || true
         wait_for_enter
         ;;
       3)
@@ -510,10 +512,18 @@ menu_section_remnawave_components() {
         wait_for_enter
         ;;
       4)
+        run_remnawave_full_update_flow || true
+        wait_for_enter
+        ;;
+      5)
+        run_panel_update_flow || true
+        wait_for_enter
+        ;;
+      6)
         run_subscription_update_flow || true
         wait_for_enter
         ;;
-      5) break ;;
+      7) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
@@ -525,44 +535,49 @@ menu_section_remnanode_components() {
     draw_header "$(tr_text "Раздел: Компоненты RemnaNode" "Section: RemnaNode components")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Базовые и сетевые инструменты для RemnaNode." "Basic and network tools for RemnaNode.")"
-    menu_option "1" "$(tr_text "Установить ноду RemnaNode" "Install RemnaNode")"
-    menu_option "2" "$(tr_text "Обновить ноду RemnaNode" "Update RemnaNode")"
-    menu_option "3" "$(tr_text "Настроить Caddy self-steal" "Configure Caddy self-steal")"
-    menu_option "4" "$(tr_text "Включить BBR" "Enable BBR")"
-    menu_option "5" "$(tr_text "Настроить WARP Native (wgcf)" "Configure WARP Native (wgcf)")"
-    menu_option "6" "$(tr_text "Включить/выключить IPv6" "Toggle IPv6")"
-    menu_option "7" "$(tr_text "Назад" "Back")"
+    menu_option "1" "$(tr_text "Полная настройка (нода + Caddy + BBR + WARP)" "Full setup (node + Caddy + BBR + WARP)")"
+    menu_option "2" "$(tr_text "Установить ноду RemnaNode" "Install RemnaNode")"
+    menu_option "3" "$(tr_text "Обновить ноду RemnaNode" "Update RemnaNode")"
+    menu_option "4" "$(tr_text "Настроить Caddy self-steal" "Configure Caddy self-steal")"
+    menu_option "5" "$(tr_text "Включить BBR" "Enable BBR")"
+    menu_option "6" "$(tr_text "Настроить WARP Native (wgcf)" "Configure WARP Native (wgcf)")"
+    menu_option "7" "$(tr_text "Включить/выключить IPv6" "Toggle IPv6")"
+    menu_option "8" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-7]: " "Choice [1-7]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-8]: " "Choice [1-8]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
     case "$choice" in
       1)
-        run_node_install_flow || true
+        run_remnanode_full_setup_flow || true
         wait_for_enter
         ;;
       2)
-        run_node_update_flow || true
+        run_node_install_flow || true
         wait_for_enter
         ;;
       3)
-        run_node_caddy_selfsteal_flow || true
+        run_node_update_flow || true
         wait_for_enter
         ;;
       4)
-        run_node_bbr_flow || true
+        run_node_caddy_selfsteal_flow || true
         wait_for_enter
         ;;
       5)
-        run_node_warp_native_flow || true
+        run_node_bbr_flow || true
         wait_for_enter
         ;;
       6)
+        run_node_warp_native_flow || true
+        wait_for_enter
+        ;;
+      7)
         run_node_ipv6_toggle_flow || true
         wait_for_enter
         ;;
-      7) break ;;
+      8) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done

@@ -571,6 +571,36 @@ run_subscription_update_flow() {
   return 1
 }
 
+run_remnawave_full_install_flow() {
+  draw_header "$(tr_text "Remnawave: полная установка" "Remnawave: full install")"
+  paint "$CLR_MUTED" "$(tr_text "Шаг 1/2: панель, шаг 2/2: страница подписок." "Step 1/2: panel, step 2/2: subscription page.")"
+  if ! run_panel_install_flow; then
+    paint "$CLR_WARN" "$(tr_text "Полная установка остановлена на шаге панели." "Full install stopped at panel step.")"
+    return 1
+  fi
+  if ! run_subscription_install_flow; then
+    paint "$CLR_WARN" "$(tr_text "Панель установлена, но шаг подписок не завершен." "Panel installed, but subscription step did not finish.")"
+    return 1
+  fi
+  paint "$CLR_OK" "$(tr_text "Полная установка Remnawave завершена." "Remnawave full install completed.")"
+  return 0
+}
+
+run_remnawave_full_update_flow() {
+  draw_header "$(tr_text "Remnawave: полное обновление" "Remnawave: full update")"
+  paint "$CLR_MUTED" "$(tr_text "Шаг 1/2: панель, шаг 2/2: страница подписок." "Step 1/2: panel, step 2/2: subscription page.")"
+  if ! run_panel_update_flow; then
+    paint "$CLR_WARN" "$(tr_text "Полное обновление остановлено на шаге панели." "Full update stopped at panel step.")"
+    return 1
+  fi
+  if ! run_subscription_update_flow; then
+    paint "$CLR_WARN" "$(tr_text "Панель обновлена, но шаг подписок не завершен." "Panel updated, but subscription step did not finish.")"
+    return 1
+  fi
+  paint "$CLR_OK" "$(tr_text "Полное обновление Remnawave завершено." "Remnawave full update completed.")"
+  return 0
+}
+
 ensure_remnanode_caddy_installed() {
   if command -v caddy >/dev/null 2>&1; then
     return 0
@@ -823,4 +853,30 @@ run_node_warp_native_flow() {
 
   paint "$CLR_WARN" "$(tr_text "WARP применен частично. Проверьте: systemctl status wg-quick@warp и wg show warp" "WARP was applied partially. Check: systemctl status wg-quick@warp and wg show warp")"
   return 1
+}
+
+run_remnanode_full_setup_flow() {
+  draw_header "$(tr_text "RemnaNode: полная настройка" "RemnaNode: full setup")"
+  paint "$CLR_MUTED" "$(tr_text "Последовательно: нода -> Caddy self-steal -> BBR -> WARP Native." "Sequence: node -> Caddy self-steal -> BBR -> WARP Native.")"
+
+  if ! run_node_install_flow; then
+    paint "$CLR_WARN" "$(tr_text "Полная настройка остановлена на установке ноды." "Full setup stopped at node installation.")"
+    return 1
+  fi
+
+  if ! run_node_caddy_selfsteal_flow; then
+    paint "$CLR_WARN" "$(tr_text "Нода установлена, но Caddy self-steal не настроен." "Node installed, but Caddy self-steal was not configured.")"
+    return 1
+  fi
+
+  if ! run_node_bbr_flow; then
+    paint "$CLR_WARN" "$(tr_text "BBR не был подтвержден." "BBR was not confirmed.")"
+  fi
+
+  if ! run_node_warp_native_flow; then
+    paint "$CLR_WARN" "$(tr_text "WARP Native настроен частично или с ошибкой." "WARP Native finished partially or with errors.")"
+  fi
+
+  paint "$CLR_OK" "$(tr_text "Полная настройка RemnaNode завершена." "RemnaNode full setup completed.")"
+  return 0
 }
