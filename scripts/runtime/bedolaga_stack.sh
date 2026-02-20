@@ -414,6 +414,7 @@ bedolaga_post_deploy_health_check() {
   bedolaga_collect_container_logs_if_needed "remnawave_bot_db" "$cabinet_port" || failed="1"
   bedolaga_collect_container_logs_if_needed "remnawave_bot_redis" "$cabinet_port" || failed="1"
   bedolaga_collect_container_logs_if_needed "cabinet_frontend" "$cabinet_port" || failed="1"
+  bedolaga_collect_container_logs_if_needed "remnawave-caddy" "$cabinet_port" || failed="1"
 
   if [[ "$failed" == "1" ]]; then
     paint "$CLR_DANGER" "$(tr_text "Обнаружены проблемы после запуска Bedolaga. Исправьте ошибки по логам выше." "Issues detected after Bedolaga start. Fix errors using logs above.")"
@@ -430,6 +431,7 @@ bedolaga_attach_stack_to_shared_network() {
   bedolaga_connect_container_to_network "remnawave_bot_db"
   bedolaga_connect_container_to_network "remnawave_bot_redis"
   bedolaga_connect_container_to_network "cabinet_frontend"
+  bedolaga_connect_container_to_network "remnawave-caddy"
 }
 
 run_bedolaga_stack_install_flow() {

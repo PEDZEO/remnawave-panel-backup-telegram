@@ -4,6 +4,93 @@
 CADDY_MODE=""
 CADDY_CONTAINER_NAME=""
 CADDY_FILE_PATH=""
+BEDOLAGA_CADDY_DIR="/root/caddy"
+BEDOLAGA_CADDY_COMPOSE_FILE="${BEDOLAGA_CADDY_DIR}/docker-compose.yml"
+
+bedolaga_write_default_caddyfile() {
+  local target_file="$1"
+  cat > "$target_file" <<'CADDY'
+{
+    servers :443 {
+        protocols h1 h2 h3
+    }
+    servers :80 {
+        protocols h1
+    }
+}
+CADDY
+}
+
+bedolaga_write_caddy_compose_file() {
+  local network_name="${BEDOLAGA_SHARED_NETWORK:-bedolaga-network}"
+  cat > "$BEDOLAGA_CADDY_COMPOSE_FILE" <<EOF
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: remnawave-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./data:/data
+      - ./config:/config
+      - ./logs:/var/log/caddy
+    networks:
+      - ${network_name}
+
+networks:
+  ${network_name}:
+    external: true
+EOF
+}
+
+bedolaga_disable_host_caddy_service() {
+  if ! command -v systemctl >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! $SUDO systemctl list-unit-files 2>/dev/null | grep -q '^caddy\.service'; then
+    return 0
+  fi
+  $SUDO systemctl stop caddy >/dev/null 2>&1 || true
+  $SUDO systemctl disable caddy >/dev/null 2>&1 || true
+}
+
+bedolaga_bootstrap_docker_caddy() {
+  local source_caddy_file="${1:-}"
+  local network_name="${BEDOLAGA_SHARED_NETWORK:-bedolaga-network}"
+  local target_caddy_file="${BEDOLAGA_CADDY_DIR}/Caddyfile"
+
+  $SUDO install -d -m 755 "$BEDOLAGA_CADDY_DIR" "${BEDOLAGA_CADDY_DIR}/data" "${BEDOLAGA_CADDY_DIR}/config" "${BEDOLAGA_CADDY_DIR}/logs" || return 1
+
+  if [[ -n "$source_caddy_file" && -f "$source_caddy_file" ]]; then
+    $SUDO cp "$source_caddy_file" "$target_caddy_file" || return 1
+  elif [[ ! -f "$target_caddy_file" ]]; then
+    bedolaga_write_default_caddyfile "$target_caddy_file" || return 1
+  fi
+
+  bedolaga_write_caddy_compose_file || return 1
+
+  if ! $SUDO docker network inspect "$network_name" >/dev/null 2>&1; then
+    $SUDO docker network create "$network_name" >/dev/null || return 1
+  fi
+
+  if ! (cd "$BEDOLAGA_CADDY_DIR" && $SUDO docker compose up -d); then
+    paint "$CLR_DANGER" "$(tr_text "Не удалось запустить Docker Caddy в /root/caddy." "Failed to start Docker Caddy in /root/caddy.")"
+    return 1
+  fi
+
+  if ! bedolaga_detect_caddy_runtime; then
+    paint "$CLR_DANGER" "$(tr_text "Docker Caddy запущен, но не удалось определить Caddyfile." "Docker Caddy started, but Caddyfile path was not detected.")"
+    return 1
+  fi
+  if [[ "$CADDY_MODE" != "container" ]]; then
+    paint "$CLR_DANGER" "$(tr_text "Ожидался container mode для Caddy, но определен другой режим." "Expected container mode for Caddy, but detected another mode.")"
+    return 1
+  fi
+  return 0
+}
 
 bedolaga_detect_caddy_runtime() {
   local container=""
@@ -56,37 +143,38 @@ bedolaga_detect_caddy_runtime() {
 }
 
 bedolaga_ensure_caddy_runtime() {
+  local detected_mode=""
+  local detected_file=""
+
   if bedolaga_detect_caddy_runtime; then
+    detected_mode="$CADDY_MODE"
+    detected_file="$CADDY_FILE_PATH"
+    if [[ "$detected_mode" == "container" ]]; then
+      return 0
+    fi
+    paint "$CLR_WARN" "$(tr_text "Обнаружен системный Caddy. Для Bedolaga рекомендуется Docker Caddy в /root/caddy." "System Caddy detected. Docker Caddy in /root/caddy is recommended for Bedolaga.")"
+    if ! ask_yes_no "$(tr_text "Перенести Caddy в Docker и отключить системный caddy.service?" "Migrate Caddy to Docker and disable system caddy.service?")" "y"; then
+      paint "$CLR_DANGER" "$(tr_text "Операция отменена: Bedolaga использует только Docker Caddy." "Operation canceled: Bedolaga supports Docker Caddy only.")"
+      return 1
+    fi
+    bedolaga_disable_host_caddy_service
+    if ! bedolaga_bootstrap_docker_caddy "$detected_file"; then
+      return 1
+    fi
+    paint "$CLR_OK" "$(tr_text "Caddy перенесен в Docker (/root/caddy), системный сервис отключен." "Caddy migrated to Docker (/root/caddy), system service disabled.")"
     return 0
   fi
 
-  paint "$CLR_WARN" "$(tr_text "Caddy не найден, требуется установка для публикации webhook и кабинета." "Caddy was not found, installation is required to publish webhook and cabinet.")"
-  if ! ask_yes_no "$(tr_text "Установить Caddy и создать базовый Caddyfile сейчас?" "Install Caddy and create base Caddyfile now?")" "y"; then
+  paint "$CLR_WARN" "$(tr_text "Caddy не найден, для Bedolaga будет установлен Docker Caddy." "Caddy was not found, Docker Caddy will be installed for Bedolaga.")"
+  if ! ask_yes_no "$(tr_text "Установить Docker Caddy в /root/caddy сейчас?" "Install Docker Caddy in /root/caddy now?")" "y"; then
     return 1
   fi
 
-  if ! ensure_remnanode_caddy_installed; then
+  bedolaga_disable_host_caddy_service
+  if ! bedolaga_bootstrap_docker_caddy; then
     return 1
   fi
-
-  CADDY_MODE="host"
-  CADDY_CONTAINER_NAME=""
-  CADDY_FILE_PATH="/etc/caddy/Caddyfile"
-
-  if [[ ! -f "$CADDY_FILE_PATH" ]]; then
-    $SUDO install -d -m 755 /etc/caddy
-    $SUDO bash -c "cat > '$CADDY_FILE_PATH' <<'CADDY'
-{
-    servers :443 {
-        protocols h1 h2 h3
-    }
-    servers :80 {
-        protocols h1
-    }
-}
-CADDY"
-  fi
-
+  paint "$CLR_OK" "$(tr_text "Docker Caddy установлен и запущен." "Docker Caddy installed and started.")"
   return 0
 }
 
@@ -289,7 +377,10 @@ https://${api_domain} {
 ${marker_end}
 CADDY
 
-  $SUDO mv "$tmp_file" "$caddy_file"
+  # Keep file inode stable for bind-mounted /etc/caddy/Caddyfile in Docker.
+  # Using mv may switch inode and container can keep reading stale file until restart.
+  $SUDO cp "$tmp_file" "$caddy_file"
+  rm -f "$tmp_file"
   $SUDO chmod 644 "$caddy_file"
   $SUDO chown root:root "$caddy_file" >/dev/null 2>&1 || true
 
