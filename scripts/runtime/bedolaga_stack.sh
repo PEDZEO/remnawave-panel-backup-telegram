@@ -368,6 +368,15 @@ CADDY"
 
 bedolaga_validate_and_reload_caddy() {
   if [[ "$CADDY_MODE" == "container" ]]; then
+    $SUDO docker exec "$CADDY_CONTAINER_NAME" sh -lc 'mkdir -p /var/log/caddy' >/dev/null 2>&1 || true
+  else
+    $SUDO install -d -m 755 /var/log/caddy >/dev/null 2>&1 || true
+    if id -u caddy >/dev/null 2>&1; then
+      $SUDO chown caddy:caddy /var/log/caddy >/dev/null 2>&1 || true
+    fi
+  fi
+
+  if [[ "$CADDY_MODE" == "container" ]]; then
     if ! $SUDO docker exec "$CADDY_CONTAINER_NAME" caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1; then
       return 1
     fi
