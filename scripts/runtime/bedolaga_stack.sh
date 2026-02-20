@@ -7,7 +7,6 @@ BEDOLAGA_SHARED_NETWORK="bedolaga-network"
 CADDY_MODE=""
 CADDY_CONTAINER_NAME=""
 CADDY_FILE_PATH=""
-BEDOLAGA_CADDY_FRESH_FILE="0"
 
 ensure_git_available() {
   if command -v git >/dev/null 2>&1; then
@@ -292,7 +291,6 @@ bedolaga_detect_caddy_runtime() {
   CADDY_MODE=""
   CADDY_CONTAINER_NAME=""
   CADDY_FILE_PATH=""
-  BEDOLAGA_CADDY_FRESH_FILE="0"
 
   for container in remnawave-caddy remnawave_caddy caddy; do
     if $SUDO docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$container"; then
@@ -346,7 +344,6 @@ bedolaga_ensure_caddy_runtime() {
   CADDY_MODE="host"
   CADDY_CONTAINER_NAME=""
   CADDY_FILE_PATH="/etc/caddy/Caddyfile"
-  BEDOLAGA_CADDY_FRESH_FILE="0"
 
   if [[ ! -f "$CADDY_FILE_PATH" ]]; then
     $SUDO install -d -m 755 /etc/caddy
@@ -360,7 +357,6 @@ bedolaga_ensure_caddy_runtime() {
     }
 }
 CADDY"
-    BEDOLAGA_CADDY_FRESH_FILE="1"
   fi
 
   return 0
