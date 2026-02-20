@@ -85,6 +85,7 @@ bedolaga_configure_bot_env() {
   local env_file="${bot_dir}/.env"
   local webhook_secret=""
   local web_api_token=""
+  local cabinet_jwt_secret=""
 
   if [[ ! -f "$env_file" ]]; then
     if [[ -f "${bot_dir}/.env.example" ]]; then
@@ -97,6 +98,7 @@ bedolaga_configure_bot_env() {
 
   webhook_secret="$(generate_hex 32)"
   web_api_token="$(generate_hex 32)"
+  cabinet_jwt_secret="$(generate_hex 32)"
 
   bedolaga_upsert_env_value "$env_file" "BOT_TOKEN" "$bot_token"
   bedolaga_upsert_env_value "$env_file" "ADMIN_IDS" "$admin_ids"
@@ -109,6 +111,10 @@ bedolaga_configure_bot_env() {
   bedolaga_upsert_env_value "$env_file" "WEB_API_PORT" "8080"
   bedolaga_upsert_env_value "$env_file" "WEB_API_DEFAULT_TOKEN" "$web_api_token"
   bedolaga_upsert_env_value "$env_file" "WEB_API_ALLOWED_ORIGINS" "https://${cabinet_domain}"
+  bedolaga_upsert_env_value "$env_file" "CABINET_ENABLED" "true"
+  bedolaga_upsert_env_value "$env_file" "CABINET_URL" "https://${cabinet_domain}"
+  bedolaga_upsert_env_value "$env_file" "CABINET_JWT_SECRET" "$cabinet_jwt_secret"
+  bedolaga_upsert_env_value "$env_file" "CABINET_ALLOWED_ORIGINS" "https://${cabinet_domain}"
   bedolaga_upsert_env_value "$env_file" "REMNAWAVE_API_URL" "$remnawave_api_url"
   bedolaga_upsert_env_value "$env_file" "REMNAWAVE_API_KEY" "$remnawave_api_key"
   bedolaga_upsert_env_value "$env_file" "POSTGRES_DB" "$postgres_db"
