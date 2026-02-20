@@ -434,6 +434,42 @@ bedolaga_attach_stack_to_shared_network() {
   bedolaga_connect_container_to_network "remnawave-caddy"
 }
 
+bedolaga_verify_caddy_upstream_dns() {
+  local target=""
+  local resolver_cmd=""
+
+  if ! $SUDO docker ps --format '{{.Names}}' | grep -qx "remnawave-caddy"; then
+    return 1
+  fi
+
+  for target in remnawave_bot cabinet_frontend; do
+    resolver_cmd="getent hosts ${target} >/dev/null 2>&1 || nslookup ${target} 127.0.0.11 >/dev/null 2>&1"
+    if ! $SUDO docker exec remnawave-caddy sh -lc "$resolver_cmd" >/dev/null 2>&1; then
+      return 1
+    fi
+  done
+  return 0
+}
+
+bedolaga_repair_shared_network_if_needed() {
+  bedolaga_attach_stack_to_shared_network || return 1
+  if bedolaga_verify_caddy_upstream_dns; then
+    return 0
+  fi
+
+  paint "$CLR_WARN" "$(tr_text "Обнаружена проблема связи Caddy -> Bedolaga, выполняю автопочинку сети..." "Detected Caddy -> Bedolaga connectivity issue, running network auto-repair...")"
+  bedolaga_attach_stack_to_shared_network || return 1
+  $SUDO docker restart remnawave-caddy >/dev/null 2>&1 || true
+  sleep 2
+
+  if ! bedolaga_verify_caddy_upstream_dns; then
+    paint "$CLR_DANGER" "$(tr_text "Не удалось восстановить DNS-маршрутизацию между Caddy и контейнерами Bedolaga." "Failed to restore DNS routing between Caddy and Bedolaga containers.")"
+    return 1
+  fi
+  paint "$CLR_OK" "$(tr_text "Сеть Bedolaga восстановлена: Caddy видит remnawave_bot и cabinet_frontend." "Bedolaga network repaired: Caddy resolves remnawave_bot and cabinet_frontend.")"
+  return 0
+}
+
 run_bedolaga_stack_install_flow() {
   local bot_dir="/root/remnawave-bedolaga-telegram-bot"
   local cabinet_dir="/root/bedolaga-cabinet"
@@ -665,7 +701,7 @@ run_bedolaga_stack_install_flow() {
   fi
 
   ( cd "$cabinet_dir" && $SUDO docker compose up -d --build ) || return 1
-  bedolaga_attach_stack_to_shared_network || return 1
+  bedolaga_repair_shared_network_if_needed || return 1
 
   if ! bedolaga_apply_caddy_block "$hooks_domain" "$cabinet_domain" "$api_domain" "$cabinet_port" "$replace_caddy_config"; then
     return 1
@@ -749,7 +785,7 @@ run_bedolaga_stack_update_flow() {
 
   ( cd "$bot_dir" && $SUDO docker compose up -d --build ) || return 1
   ( cd "$cabinet_dir" && $SUDO docker compose up -d --build ) || return 1
-  bedolaga_attach_stack_to_shared_network || return 1
+  bedolaga_repair_shared_network_if_needed || return 1
 
   if ask_yes_no "$(tr_text "Заменить весь Caddyfile на шаблон Bedolaga? (иначе обновится только автоген-блок)" "Replace full Caddyfile with Bedolaga template? (otherwise only autogen block is updated)")" "n"; then
     replace_caddy_config="1"
