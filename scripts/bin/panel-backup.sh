@@ -928,6 +928,7 @@ if (( WANT_BEDOLAGA_DB == 1 )); then
 fi
 
 mkdir -p "$BACKUP_ROOT"
+mkdir -p "$WORKDIR/payload"
 if (( WANT_ENV == 1 || WANT_COMPOSE == 1 || WANT_CADDY == 1 || WANT_SUBSCRIPTION == 1 )); then
   mkdir -p "$WORKDIR/payload/remnawave"
 fi
