@@ -60,7 +60,7 @@ run_restore_scope_selector() {
         return 1
       fi
       case "$choice" in
-        1) if run_restore_wizard_flow "bedolaga" "1"; then return 0; fi ;;
+        1) if run_restore_wizard_flow "bedolaga-bot,bedolaga-cabinet" "1"; then return 0; fi ;;
         2) if run_restore_wizard_flow "bedolaga-db,bedolaga-redis,bedolaga-bot" "1"; then return 0; fi ;;
         3) if run_restore_wizard_flow "bedolaga-cabinet" "1"; then return 0; fi ;;
         4) if run_restore_wizard_flow "bedolaga" "0"; then return 0; fi ;;
@@ -138,7 +138,7 @@ run_restore_wizard_flow() {
   if [[ "$lock_restore_only" == "1" ]]; then
     case "$preset_restore_only" in
       all) preset_label="$(tr_text "панель (all)" "panel (all)")" ;;
-      bedolaga) preset_label="$(tr_text "бот+кабинет (bedolaga)" "bot+cabinet (bedolaga)")" ;;
+      bedolaga) preset_label="$(tr_text "полный Bedolaga (db + redis + бот + кабинет)" "full Bedolaga (db + redis + bot + cabinet)")" ;;
       all,bedolaga|bedolaga,all) preset_label="$(tr_text "полный (панель + бот + кабинет)" "full (panel + bot + cabinet)")" ;;
       bedolaga-bot,bedolaga-cabinet|bedolaga-cabinet,bedolaga-bot) preset_label="$(tr_text "миграция: бот + кабинет (без DB/Redis)" "migration: bot + cabinet (without DB/Redis)")" ;;
       bedolaga-db,bedolaga-redis,bedolaga-bot|bedolaga-bot,bedolaga-db,bedolaga-redis) preset_label="$(tr_text "только бот Bedolaga (db + redis + bot)" "Bedolaga bot only (db + redis + bot)")" ;;
