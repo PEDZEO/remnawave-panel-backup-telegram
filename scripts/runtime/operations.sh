@@ -73,6 +73,7 @@ normalize_env_file_format() {
 
 run_backup_now() {
   local backup_cmd
+  local include_quoted=""
 
   sync_runtime_scripts
   normalize_env_file_format
@@ -86,7 +87,8 @@ run_backup_now() {
   backup_cmd=(/usr/local/bin/panel-backup.sh)
   if [[ -n "$SUDO" ]]; then
     if [[ -n "${BACKUP_INCLUDE:-}" ]]; then
-      backup_cmd=("$SUDO" "BACKUP_INCLUDE=${BACKUP_INCLUDE}" "${backup_cmd[@]}")
+      include_quoted="$(printf '%q' "${BACKUP_INCLUDE}")"
+      backup_cmd=("$SUDO" bash -lc "BACKUP_INCLUDE=${include_quoted} /usr/local/bin/panel-backup.sh")
     else
       backup_cmd=("$SUDO" "${backup_cmd[@]}")
     fi
