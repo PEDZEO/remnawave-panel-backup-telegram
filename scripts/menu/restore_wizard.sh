@@ -102,10 +102,10 @@ select_restore_components() {
   while true; do
     draw_subheader "$(tr_text "Выбор данных для восстановления" "Restore components selection")"
     paint "$CLR_MUTED" "$(tr_text "Выберите, что именно восстанавливать из архива." "Choose which data to restore from backup.")"
-    menu_option "1" "$(tr_text "Полный (панель + Bedolaga)" "Full (panel + Bedolaga)")"
+    menu_option "1" "$(tr_text "Полный (панель + бот + кабинет)" "Full (panel + bot + cabinet)")"
     menu_option "2" "$(tr_text "Только PostgreSQL (db)" "PostgreSQL only (db)")"
     menu_option "3" "$(tr_text "Только Redis (redis)" "Redis only (redis)")"
-    menu_option "4" "$(tr_text "Только конфиги (панель + Bedolaga)" "Configs only (panel + Bedolaga)")"
+    menu_option "4" "$(tr_text "Только конфиги (панель + бот + кабинет)" "Configs only (panel + bot + cabinet)")"
     menu_option "5" "$(tr_text "Свой список компонентов" "Custom components list")"
     menu_option "6" "$(tr_text "Назад" "Back")"
     print_separator
@@ -188,11 +188,11 @@ show_restore_summary() {
   fi
 
   case "${RESTORE_ONLY:-all}" in
-    all,bedolaga|bedolaga,all) components_label="$(tr_text "полный (панель + Bedolaga)" "full (panel + Bedolaga)")" ;;
+    all,bedolaga|bedolaga,all) components_label="$(tr_text "полный (панель + бот + кабинет)" "full (panel + bot + cabinet)")" ;;
     all) components_label="$(tr_text "всё (панель: база + redis + конфиги)" "everything (panel: db + redis + configs)")" ;;
     db) components_label="$(tr_text "только база PostgreSQL" "PostgreSQL database only")" ;;
     redis) components_label="$(tr_text "только Redis" "Redis only")" ;;
-    configs,bedolaga-configs|bedolaga-configs,configs) components_label="$(tr_text "конфиги (панель + Bedolaga)" "configs (panel + Bedolaga)")" ;;
+    configs,bedolaga-configs|bedolaga-configs,configs) components_label="$(tr_text "конфиги (панель + бот + кабинет)" "configs (panel + bot + cabinet)")" ;;
     configs) components_label="$(tr_text "только конфиги панели (env/compose/caddy/subscription)" "panel configs only (env/compose/caddy/subscription)")" ;;
     *) components_label="$(tr_text "кастом: " "custom: ")${RESTORE_ONLY}" ;;
   esac

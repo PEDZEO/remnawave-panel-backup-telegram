@@ -39,6 +39,33 @@ run_backup_with_scope() {
   wait_for_enter
 }
 
+run_restore_scope_selector() {
+  local choice=""
+  while true; do
+    draw_subheader "$(tr_text "Выбор состава восстановления" "Restore scope selection")"
+    show_back_hint
+    paint "$CLR_MUTED" "$(tr_text "Выберите, что восстанавливать из архива." "Choose what to restore from archive.")"
+    menu_option "1" "$(tr_text "Полностью: панель + бот + кабинет" "Full: panel + bot + cabinet")"
+    menu_option "2" "$(tr_text "Только панель Remnawave" "Remnawave panel only")"
+    menu_option "3" "$(tr_text "Только бот и кабинет Bedolaga" "Bedolaga bot and cabinet only")"
+    menu_option "4" "$(tr_text "Ручной выбор компонентов" "Manual component selection")"
+    menu_option "5" "$(tr_text "Назад" "Back")"
+    print_separator
+    read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
+    if is_back_command "$choice"; then
+      return 1
+    fi
+    case "$choice" in
+      1) run_restore_wizard_flow "all,bedolaga" "1"; return 0 ;;
+      2) run_restore_wizard_flow "all" "1"; return 0 ;;
+      3) run_restore_wizard_flow "bedolaga" "1"; return 0 ;;
+      4) run_restore_wizard_flow "all,bedolaga" "0"; return 0 ;;
+      5) return 1 ;;
+      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+    esac
+  done
+}
+
 run_restore_wizard_flow() {
   local preset_restore_only="${1:-all,bedolaga}"
   local lock_restore_only="${2:-0}"
@@ -59,7 +86,7 @@ run_restore_wizard_flow() {
     case "$preset_restore_only" in
       all) preset_label="$(tr_text "панель (all)" "panel (all)")" ;;
       bedolaga) preset_label="$(tr_text "бот+кабинет (bedolaga)" "bot+cabinet (bedolaga)")" ;;
-      all,bedolaga|bedolaga,all) preset_label="$(tr_text "полный (all,bedolaga)" "full (all,bedolaga)")" ;;
+      all,bedolaga|bedolaga,all) preset_label="$(tr_text "полный (панель + бот + кабинет)" "full (panel + bot + cabinet)")" ;;
       *) preset_label="$preset_restore_only" ;;
     esac
     paint "$CLR_MUTED" "$(tr_text "Состав восстановления зафиксирован:" "Restore scope is locked:") ${preset_label}"
@@ -152,7 +179,7 @@ menu_section_remnawave_components() {
     menu_option "7" "$(tr_text "Установить Caddy для панели" "Install panel Caddy")"
     menu_option "8" "$(tr_text "Обновить Caddy для панели" "Update panel Caddy")"
     menu_option "9" "$(tr_text "Создать резервную копию панели" "Create panel backup")"
-    menu_option "10" "$(tr_text "Восстановить панель из резервной копии" "Restore panel from backup")"
+    menu_option "10" "$(tr_text "Восстановление: выбрать состав" "Restore: choose scope")"
     menu_option "11" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-11]: " "Choice [1-11]: ")" choice
@@ -187,9 +214,7 @@ menu_section_remnawave_components() {
       9)
         run_backup_with_scope "$(tr_text "Резервная копия: только панель" "Backup: panel only")" "all"
         ;;
-      10)
-        run_restore_wizard_flow "all" "1"
-        ;;
+      10) run_restore_scope_selector ;;
       11) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
@@ -205,7 +230,7 @@ menu_section_bedolaga_components() {
     menu_option "1" "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")"
     menu_option "2" "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")"
     menu_option "3" "$(tr_text "Создать резервную копию Bedolaga" "Create Bedolaga backup")"
-    menu_option "4" "$(tr_text "Восстановить Bedolaga из резервной копии" "Restore Bedolaga from backup")"
+    menu_option "4" "$(tr_text "Восстановление: выбрать состав" "Restore: choose scope")"
     menu_option "5" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
@@ -222,9 +247,7 @@ menu_section_bedolaga_components() {
       3)
         run_backup_with_scope "$(tr_text "Резервная копия: только Bedolaga" "Backup: Bedolaga only")" "bedolaga"
         ;;
-      4)
-        run_restore_wizard_flow "bedolaga" "1"
-        ;;
+      4) run_restore_scope_selector ;;
       5) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
