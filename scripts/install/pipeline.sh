@@ -437,8 +437,10 @@ post_install_health_check() {
   local panel_service_loaded="unknown"
   local bedolaga_service_loaded="unknown"
 
-  panel_timer_active="$($SUDO systemctl is-active panel-backup-panel.timer 2>/dev/null || echo "inactive")"
-  bedolaga_timer_active="$($SUDO systemctl is-active panel-backup-bedolaga.timer 2>/dev/null || echo "inactive")"
+  panel_timer_active="$($SUDO systemctl is-active panel-backup-panel.timer 2>/dev/null || true)"
+  bedolaga_timer_active="$($SUDO systemctl is-active panel-backup-bedolaga.timer 2>/dev/null || true)"
+  [[ -n "$panel_timer_active" ]] || panel_timer_active="inactive"
+  [[ -n "$bedolaga_timer_active" ]] || bedolaga_timer_active="inactive"
   if $SUDO systemctl cat panel-backup-panel.service >/dev/null 2>&1; then
     panel_service_loaded="ok"
   else
