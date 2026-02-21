@@ -527,16 +527,22 @@ send_telegram_file() {
   local file_path="$1"
   local caption="$2"
   local profile="${3:-$(backup_scope_profile)}"
+  local caption_html=""
   local fallback_caption=""
   local chat_id=""
   local response
   local thread_id=""
   local thread_args=()
+  local response_desc=""
 
   chat_id="$(resolve_telegram_chat_id)"
   thread_id="$(resolve_telegram_thread_id "$profile")"
   if [[ -n "$thread_id" ]]; then
     thread_args+=(-F "message_thread_id=${thread_id}")
+  fi
+  caption_html="$caption"
+  if (( ${#caption_html} > 900 )); then
+    caption_html="${caption_html:0:897}..."
   fi
 
   response="$(curl -sS --max-time 300 \
@@ -544,15 +550,20 @@ send_telegram_file() {
     -F "chat_id=${chat_id}" \
     "${thread_args[@]}" \
     -F "parse_mode=HTML" \
-    -F "caption=${caption}" \
+    -F "caption=${caption_html}" \
     -F "document=@${file_path}")" || return 1
 
   if echo "$response" | grep -q '"ok":true'; then
     return 0
   fi
 
+  response_desc="$(echo "$response" | sed -n 's/.*"description":"\([^"]*\)".*/\1/p')"
+  [[ -n "$response_desc" ]] && log "$(t "Telegram ошибка (HTML-caption):" "Telegram error (HTML caption):") ${response_desc}"
   log "$(t "Предупреждение: Telegram отклонил HTML-caption, пробую безопасный текстовый caption" "Warning: Telegram rejected HTML caption, trying safe plain-text caption")"
   fallback_caption="$(build_caption_plain "$(basename "$file_path")")"
+  if (( ${#fallback_caption} > 900 )); then
+    fallback_caption="${fallback_caption:0:897}..."
+  fi
   response="$(curl -sS --max-time 300 \
     -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
     -F "chat_id=${chat_id}" \
@@ -560,7 +571,12 @@ send_telegram_file() {
     -F "caption=${fallback_caption}" \
     -F "document=@${file_path}")" || return 1
 
-  echo "$response" | grep -q '"ok":true'
+  if echo "$response" | grep -q '"ok":true'; then
+    return 0
+  fi
+  response_desc="$(echo "$response" | sed -n 's/.*"description":"\([^"]*\)".*/\1/p')"
+  [[ -n "$response_desc" ]] && log "$(t "Telegram ошибка (plain-caption):" "Telegram error (plain caption):") ${response_desc}"
+  return 1
 }
 
 resolve_telegram_thread_id() {
