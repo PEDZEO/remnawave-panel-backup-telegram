@@ -421,8 +421,14 @@ enable_timer() {
   $SUDO systemctl disable --now panel-backup.timer >/dev/null 2>&1 || true
 
   paint "$CLR_OK" "[5/5] $(tr_text "Готово" "Done")"
-  paint "$CLR_MUTED" "panel-backup-panel.timer: $($SUDO systemctl is-active panel-backup-panel.timer 2>/dev/null || echo inactive)"
-  paint "$CLR_MUTED" "panel-backup-bedolaga.timer: $($SUDO systemctl is-active panel-backup-bedolaga.timer 2>/dev/null || echo inactive)"
+  local panel_timer_state=""
+  local bedolaga_timer_state=""
+  panel_timer_state="$($SUDO systemctl is-active panel-backup-panel.timer 2>/dev/null || true)"
+  bedolaga_timer_state="$($SUDO systemctl is-active panel-backup-bedolaga.timer 2>/dev/null || true)"
+  [[ -n "$panel_timer_state" ]] || panel_timer_state="inactive"
+  [[ -n "$bedolaga_timer_state" ]] || bedolaga_timer_state="inactive"
+  paint "$CLR_MUTED" "panel-backup-panel.timer: ${panel_timer_state}"
+  paint "$CLR_MUTED" "panel-backup-bedolaga.timer: ${bedolaga_timer_state}"
 }
 
 post_install_health_check() {
