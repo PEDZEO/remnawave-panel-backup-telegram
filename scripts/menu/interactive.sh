@@ -246,9 +246,10 @@ menu_section_remnawave_backup_restore() {
     menu_option "1" "$(tr_text "Создать резервную копию панели" "Create panel backup")"
     menu_option "2" "$(tr_text "Восстановление: выбрать состав" "Restore: choose scope")"
     menu_option "3" "$(tr_text "Настройки backup панели" "Panel backup settings")"
-    menu_option "4" "$(tr_text "Назад" "Back")"
+    menu_option "4" "$(tr_text "Таймер и периодичность панели" "Panel timer and schedule")"
+    menu_option "5" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
@@ -258,7 +259,8 @@ menu_section_remnawave_backup_restore() {
         ;;
       2) run_restore_scope_selector "panel" || true ;;
       3) menu_section_setup "panel" ;;
-      4) break ;;
+      4) menu_section_timer_scope "panel" ;;
+      5) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
@@ -322,9 +324,10 @@ menu_section_bedolaga_backup_restore() {
     menu_option "1" "$(tr_text "Создать резервную копию Bedolaga" "Create Bedolaga backup")"
     menu_option "2" "$(tr_text "Восстановление: выбрать состав" "Restore: choose scope")"
     menu_option "3" "$(tr_text "Настройки backup Bedolaga" "Bedolaga backup settings")"
-    menu_option "4" "$(tr_text "Назад" "Back")"
+    menu_option "4" "$(tr_text "Таймер и периодичность Bedolaga" "Bedolaga timer and schedule")"
+    menu_option "5" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
@@ -334,7 +337,8 @@ menu_section_bedolaga_backup_restore() {
         ;;
       2) run_restore_scope_selector "bedolaga" || true ;;
       3) menu_section_setup "bedolaga" ;;
-      4) break ;;
+      4) menu_section_timer_scope "bedolaga" ;;
+      5) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
@@ -409,33 +413,42 @@ menu_section_remnanode_components() {
   done
 }
 
-menu_section_timer() {
+menu_section_timer_scope() {
+  local scope="${1:-panel}"
   local choice=""
-  local panel_available=0
-  local bedolaga_available=0
-  local schedule_panel=""
-  local schedule_bedolaga=""
+  local current_schedule=""
+  local timer_unit=""
+  local timer_title=""
+  local timer_label=""
+  local schedule_choice=""
+  local custom=""
+
+  if [[ "$scope" == "bedolaga" ]]; then
+    timer_unit="panel-backup-bedolaga.timer"
+    timer_title="$(tr_text "Bedolaga: таймер и периодичность" "Bedolaga: timer and schedule")"
+    timer_label="$(tr_text "Таймер Bedolaga" "Bedolaga timer")"
+  else
+    timer_unit="panel-backup-panel.timer"
+    timer_title="$(tr_text "Панель: таймер и периодичность" "Panel: timer and schedule")"
+    timer_label="$(tr_text "Таймер панели" "Panel timer")"
+  fi
+
   while true; do
-    draw_subheader "$(tr_text "Раздел: Таймеры и периодичность" "Section: Timers and schedule")"
+    draw_subheader "$timer_title"
     show_back_hint
-    panel_available=0
-    bedolaga_available=0
-    has_panel_project && panel_available=1
-    has_bedolaga_project && bedolaga_available=1
-    if (( panel_available == 1 )); then
-      schedule_panel="$(get_timer_calendar_for_unit "panel-backup-panel.timer" || true)"
-      paint "$CLR_MUTED" "$(tr_text "Расписание панели:" "Panel schedule:") $(format_schedule_label "$schedule_panel")"
+    current_schedule="$(get_timer_calendar_for_unit "$timer_unit" || true)"
+    if [[ -z "$current_schedule" ]]; then
+      if [[ "$scope" == "bedolaga" ]]; then
+        current_schedule="${BACKUP_ON_CALENDAR_BEDOLAGA:-${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}}"
+      else
+        current_schedule="${BACKUP_ON_CALENDAR_PANEL:-${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}}"
+      fi
     fi
-    if (( bedolaga_available == 1 )); then
-      schedule_bedolaga="$(get_timer_calendar_for_unit "panel-backup-bedolaga.timer" || true)"
-      paint "$CLR_MUTED" "$(tr_text "Расписание Bedolaga:" "Bedolaga schedule:") $(format_schedule_label "$schedule_bedolaga")"
-    fi
-    if (( panel_available == 0 && bedolaga_available == 0 )); then
-      paint "$CLR_WARN" "$(tr_text "Проекты для backup не обнаружены. Сначала настройте пути." "No backup projects detected. Configure paths first.")"
-    fi
-    menu_option "1" "$(tr_text "Включить таймеры резервного копирования" "Enable backup timers")"
-    menu_option "2" "$(tr_text "Выключить таймеры резервного копирования" "Disable backup timers")"
-    menu_option "3" "$(tr_text "Настроить периодичность резервного копирования" "Configure backup schedule")"
+    paint "$CLR_MUTED" "${timer_label}: $($SUDO systemctl is-active "$timer_unit" 2>/dev/null || echo inactive)"
+    paint "$CLR_MUTED" "$(tr_text "Текущее расписание:" "Current schedule:") $(format_schedule_label "$current_schedule")"
+    menu_option "1" "$(tr_text "Включить таймер" "Enable timer")"
+    menu_option "2" "$(tr_text "Выключить таймер" "Disable timer")"
+    menu_option "3" "$(tr_text "Настроить периодичность" "Configure schedule")"
     menu_option "4" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
@@ -444,32 +457,66 @@ menu_section_timer() {
     fi
     case "$choice" in
       1)
-        draw_subheader "$(tr_text "Включение таймеров резервного копирования" "Enable backup timers")"
-        enable_timer
+        write_env
+        write_timer_unit
+        $SUDO systemctl daemon-reload
+        if [[ "$scope" == "bedolaga" ]]; then
+          if has_bedolaga_project; then
+            $SUDO systemctl enable --now panel-backup-bedolaga.timer
+          else
+            paint "$CLR_WARN" "$(tr_text "Bedolaga не обнаружен. Таймер не включен." "Bedolaga not detected. Timer was not enabled.")"
+          fi
+        else
+          if has_panel_project; then
+            $SUDO systemctl enable --now panel-backup-panel.timer
+          else
+            paint "$CLR_WARN" "$(tr_text "Панель не обнаружена. Таймер не включен." "Panel not detected. Timer was not enabled.")"
+          fi
+        fi
         wait_for_enter
         ;;
       2)
-        draw_subheader "$(tr_text "Отключение таймеров резервного копирования" "Disable backup timers")"
-        disable_timer
+        $SUDO systemctl disable --now "$timer_unit" >/dev/null 2>&1 || true
+        paint "$CLR_OK" "$(tr_text "Таймер отключен." "Timer disabled.")"
         wait_for_enter
         ;;
       3)
-        if configure_schedule_menu; then
-          write_env
-          write_timer_unit
-          $SUDO systemctl daemon-reload
-          paint "$CLR_OK" "$(tr_text "Периодичность резервного копирования сохранена." "Backup schedule saved.")"
-          if $SUDO systemctl is-enabled --quiet panel-backup-panel.timer 2>/dev/null; then
-            if ! $SUDO systemctl restart panel-backup-panel.timer; then
-              paint "$CLR_WARN" "$(tr_text "Не удалось перезапустить timer панели после смены расписания." "Failed to restart panel timer after schedule update.")"
-            fi
-          fi
-          if $SUDO systemctl is-enabled --quiet panel-backup-bedolaga.timer 2>/dev/null; then
-            if ! $SUDO systemctl restart panel-backup-bedolaga.timer; then
-              paint "$CLR_WARN" "$(tr_text "Не удалось перезапустить timer Bedolaga после смены расписания." "Failed to restart Bedolaga timer after schedule update.")"
-            fi
-          fi
+        draw_subheader "$timer_title"
+        paint "$CLR_MUTED" "$(tr_text "1) Ежедневно 03:40 UTC  2) Каждые 12 часов  3) Каждые 6 часов  4) Каждый час  5) Свой OnCalendar" "1) Daily 03:40 UTC  2) Every 12h  3) Every 6h  4) Hourly  5) Custom OnCalendar")"
+        read -r -p "$(tr_text "Выбор [1-5], b назад: " "Choice [1-5], b back: ")" schedule_choice
+        if is_back_command "$schedule_choice"; then
+          continue
         fi
+        custom=""
+        case "$schedule_choice" in
+          1) custom="*-*-* 03:40:00 UTC" ;;
+          2) custom="*-*-* 00,12:00:00 UTC" ;;
+          3) custom="*-*-* 00,06,12,18:00:00 UTC" ;;
+          4) custom="hourly" ;;
+          5)
+            custom="$(ask_value "$(tr_text "Введите OnCalendar" "Enter OnCalendar")" "$current_schedule")"
+            [[ "$custom" == "__PBM_BACK__" ]] && continue
+            ;;
+          *)
+            paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"
+            wait_for_enter
+            continue
+            ;;
+        esac
+        [[ -n "$custom" ]] || continue
+        if [[ "$scope" == "bedolaga" ]]; then
+          BACKUP_ON_CALENDAR_BEDOLAGA="$custom"
+        else
+          BACKUP_ON_CALENDAR_PANEL="$custom"
+        fi
+        BACKUP_ON_CALENDAR="${BACKUP_ON_CALENDAR_PANEL:-${BACKUP_ON_CALENDAR_BEDOLAGA:-$custom}}"
+        write_env
+        write_timer_unit
+        $SUDO systemctl daemon-reload
+        if $SUDO systemctl is-enabled --quiet "$timer_unit" 2>/dev/null; then
+          $SUDO systemctl restart "$timer_unit" >/dev/null 2>&1 || true
+        fi
+        paint "$CLR_OK" "$(tr_text "Периодичность сохранена." "Schedule saved.")"
         wait_for_enter
         ;;
       4) break ;;
@@ -531,12 +578,11 @@ interactive_menu() {
     paint "$CLR_TITLE" "============================================================"
     paint "$CLR_ACCENT" "  $(tr_text "Сервисные инструменты" "Service tools")"
     paint "$CLR_TITLE" "------------------------------------------------------------"
-    menu_option "4" "$(tr_text "Таймер и периодичность" "Timer and schedule")"
-    menu_option "5" "$(tr_text "Статус и диагностика" "Status and diagnostics")"
+    menu_option "4" "$(tr_text "Статус и диагностика" "Status and diagnostics")"
     paint "$CLR_TITLE" "============================================================"
     menu_option "0" "$(tr_text "Выход" "Exit")" "$CLR_DANGER"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-5/0]: " "Choice [1-5/0]: ")" action
+    read -r -p "$(tr_text "Выбор [1-4/0]: " "Choice [1-4/0]: ")" action
     if is_back_command "$action"; then
       echo "$(tr_text "Выход." "Cancelled.")"
       break
@@ -546,8 +592,7 @@ interactive_menu() {
       1) menu_section_bedolaga_components ;;
       2) menu_section_remnawave_components ;;
       3) menu_section_remnanode_components ;;
-      4) menu_section_timer ;;
-      5) menu_section_status ;;
+      4) menu_section_status ;;
       0)
         echo "$(tr_text "Выход." "Cancelled.")"
         break
