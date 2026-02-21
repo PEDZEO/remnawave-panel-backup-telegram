@@ -92,6 +92,8 @@ run_backup_now() {
     else
       backup_cmd=("$SUDO" "${backup_cmd[@]}")
     fi
+  elif [[ -n "${BACKUP_INCLUDE:-}" ]]; then
+    backup_cmd=(env "BACKUP_INCLUDE_OVERRIDE=${BACKUP_INCLUDE}" /usr/local/bin/panel-backup.sh)
   fi
 
   "${backup_cmd[@]}"
