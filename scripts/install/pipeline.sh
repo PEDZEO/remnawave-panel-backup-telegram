@@ -17,6 +17,7 @@ prompt_install_settings() {
   local detected_path=""
   local detected_bedolaga_bot=""
   local detected_bedolaga_cabinet=""
+  local panel_path_prompt=""
   local encrypt_choice=""
   local confirm_val=""
   local previous_password=""
@@ -37,11 +38,20 @@ prompt_install_settings() {
   if [[ -z "${REMNAWAVE_DIR:-}" && -n "$detected_path" ]]; then
     REMNAWAVE_DIR="$detected_path"
   fi
+  if [[ -z "$detected_path" && -n "$detected_bedolaga_bot" && "${REMNAWAVE_DIR:-}" == "$detected_bedolaga_bot" ]]; then
+    REMNAWAVE_DIR=""
+    paint "$CLR_WARN" "$(tr_text "Сброшен путь панели: ранее был подставлен путь бота." "Panel path was reset: bot path had been filled there before.")"
+  fi
   if [[ -z "$detected_path" && -n "$detected_bedolaga_bot" ]]; then
     if [[ -z "${BACKUP_INCLUDE:-}" || "${BACKUP_INCLUDE}" == "all" ]]; then
       BACKUP_INCLUDE="bedolaga"
       paint "$CLR_MUTED" "$(tr_text "Панель не обнаружена, установлен профиль backup: bedolaga (бот + кабинет)." "Panel was not detected, backup profile set to: bedolaga (bot + cabinet).")"
     fi
+  fi
+  if [[ -z "$detected_path" ]]; then
+    panel_path_prompt="$(tr_text "[4/7] Путь к папке панели Remnawave (опционально, можно оставить пусто)" "[4/7] Path to Remnawave panel directory (optional, you can leave it empty)")"
+  else
+    panel_path_prompt="$(tr_text "[4/7] Путь к папке панели Remnawave (пример: /opt/remnawave)" "[4/7] Path to Remnawave panel directory (example: /opt/remnawave)")"
   fi
   echo
 
@@ -79,7 +89,7 @@ prompt_install_settings() {
   done
 
   while true; do
-    val="$(ask_value "$(tr_text "[4/7] Путь к папке панели Remnawave (пример: /opt/remnawave)" "[4/7] Path to Remnawave panel directory (example: /opt/remnawave)")" "$REMNAWAVE_DIR")"
+    val="$(ask_value "$panel_path_prompt" "$REMNAWAVE_DIR")"
     [[ "$val" == "__PBM_BACK__" ]] && return 1
     REMNAWAVE_DIR="$val"
     break
