@@ -201,9 +201,10 @@ menu_section_remnawave_components() {
     menu_option "8" "$(tr_text "Обновить Caddy для панели" "Update panel Caddy")"
     menu_option "9" "$(tr_text "Создать резервную копию панели" "Create panel backup")"
     menu_option "10" "$(tr_text "Восстановление: выбрать состав" "Restore: choose scope")"
-    menu_option "11" "$(tr_text "Назад" "Back")"
+    menu_option "11" "$(tr_text "Настройки backup панели" "Panel backup settings")"
+    menu_option "12" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-11]: " "Choice [1-11]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-12]: " "Choice [1-12]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
@@ -236,7 +237,8 @@ menu_section_remnawave_components() {
         run_backup_with_scope "$(tr_text "Резервная копия: только панель" "Backup: panel only")" "all"
         ;;
       10) run_restore_scope_selector "panel" ;;
-      11) break ;;
+      11) menu_section_setup "panel" ;;
+      12) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
@@ -252,9 +254,10 @@ menu_section_bedolaga_components() {
     menu_option "2" "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")"
     menu_option "3" "$(tr_text "Создать резервную копию Bedolaga" "Create Bedolaga backup")"
     menu_option "4" "$(tr_text "Восстановление: выбрать состав" "Restore: choose scope")"
-    menu_option "5" "$(tr_text "Назад" "Back")"
+    menu_option "5" "$(tr_text "Настройки backup Bedolaga" "Bedolaga backup settings")"
+    menu_option "6" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
@@ -269,7 +272,8 @@ menu_section_bedolaga_components() {
         run_backup_with_scope "$(tr_text "Резервная копия: только Bedolaga" "Backup: Bedolaga only")" "bedolaga"
         ;;
       4) run_restore_scope_selector "bedolaga" ;;
-      5) break ;;
+      5) menu_section_setup "bedolaga" ;;
+      6) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
@@ -444,13 +448,12 @@ interactive_menu() {
     paint "$CLR_TITLE" "============================================================"
     paint "$CLR_ACCENT" "  $(tr_text "Сервисные инструменты" "Service tools")"
     paint "$CLR_TITLE" "------------------------------------------------------------"
-    menu_option "4" "$(tr_text "Мастер настройки резервного копирования" "Backup setup wizard")"
-    menu_option "5" "$(tr_text "Таймер и периодичность" "Timer and schedule")"
-    menu_option "6" "$(tr_text "Статус и диагностика" "Status and diagnostics")"
+    menu_option "4" "$(tr_text "Таймер и периодичность" "Timer and schedule")"
+    menu_option "5" "$(tr_text "Статус и диагностика" "Status and diagnostics")"
     paint "$CLR_TITLE" "============================================================"
     menu_option "0" "$(tr_text "Выход" "Exit")" "$CLR_DANGER"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-6/0]: " "Choice [1-6/0]: ")" action
+    read -r -p "$(tr_text "Выбор [1-5/0]: " "Choice [1-5/0]: ")" action
     if is_back_command "$action"; then
       echo "$(tr_text "Выход." "Cancelled.")"
       break
@@ -460,9 +463,8 @@ interactive_menu() {
       1) menu_section_bedolaga_components ;;
       2) menu_section_remnawave_components ;;
       3) menu_section_remnanode_components ;;
-      4) menu_section_setup ;;
-      5) menu_section_timer ;;
-      6) menu_section_status ;;
+      4) menu_section_timer ;;
+      5) menu_section_status ;;
       0)
         echo "$(tr_text "Выход." "Cancelled.")"
         break

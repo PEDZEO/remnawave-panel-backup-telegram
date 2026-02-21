@@ -23,11 +23,18 @@ prompt_install_settings() {
   local confirm_val=""
   local previous_password=""
   local include_choice=""
+  local setup_scope="${BACKUP_SETUP_SCOPE:-global}"
   load_existing_env_defaults
 
   draw_header "$(tr_text "Настройка резервного копирования" "Configure backup settings")"
   show_back_hint
-  paint "$CLR_MUTED" "$(tr_text "Сейчас вы настраиваете: Telegram-уведомления и пути для панели, бота и кабинета." "You are configuring: Telegram notifications and paths for panel, bot and cabinet.")"
+  if [[ "$setup_scope" == "panel" ]]; then
+    paint "$CLR_MUTED" "$(tr_text "Сейчас вы настраиваете: Telegram-уведомления и путь панели." "You are configuring: Telegram notifications and panel path.")"
+  elif [[ "$setup_scope" == "bedolaga" ]]; then
+    paint "$CLR_MUTED" "$(tr_text "Сейчас вы настраиваете: Telegram-уведомления и пути Bedolaga (бот + кабинет)." "You are configuring: Telegram notifications and Bedolaga paths (bot + cabinet).")"
+  else
+    paint "$CLR_MUTED" "$(tr_text "Сейчас вы настраиваете: Telegram-уведомления и пути для панели, бота и кабинета." "You are configuring: Telegram notifications and paths for panel, bot and cabinet.")"
+  fi
   paint "$CLR_MUTED" "$(tr_text "Также можно включить шифрование архива резервной копии." "You can also enable backup archive encryption.")"
   paint "$CLR_MUTED" "$(tr_text "Пустое значение оставляет текущее (если есть)." "Empty input keeps current value (if any).")"
   echo
@@ -156,32 +163,70 @@ prompt_install_settings() {
 
   draw_header "$(tr_text "Профиль резервной копии" "Backup profile")"
   show_back_hint
-  paint "$CLR_MUTED" "$(tr_text "Выберите профиль: отдельно панель, отдельно Bedolaga или оба проекта." "Choose profile: panel only, Bedolaga only, or both projects.")"
-  menu_option "1" "$(tr_text "Только панель Remnawave" "Remnawave panel only")"
-  menu_option "2" "$(tr_text "Только Bedolaga (бот + кабинет)" "Bedolaga only (bot + cabinet)")"
-  menu_option "3" "$(tr_text "Панель + Bedolaga (оба проекта)" "Panel + Bedolaga (both projects)")"
-  menu_option "4" "$(tr_text "Свой список компонентов" "Custom component list")"
+  if [[ "$setup_scope" == "panel" ]]; then
+    paint "$CLR_MUTED" "$(tr_text "Режим раздела: настройки backup панели." "Section mode: panel backup settings.")"
+    menu_option "1" "$(tr_text "Только панель Remnawave" "Remnawave panel only")"
+    menu_option "2" "$(tr_text "Свой список компонентов панели" "Custom panel component list")"
+  elif [[ "$setup_scope" == "bedolaga" ]]; then
+    paint "$CLR_MUTED" "$(tr_text "Режим раздела: настройки backup Bedolaga." "Section mode: Bedolaga backup settings.")"
+    menu_option "1" "$(tr_text "Только Bedolaga (бот + кабинет)" "Bedolaga only (bot + cabinet)")"
+    menu_option "2" "$(tr_text "Свой список компонентов Bedolaga" "Custom Bedolaga component list")"
+  else
+    paint "$CLR_MUTED" "$(tr_text "Выберите профиль: отдельно панель, отдельно Bedolaga или оба проекта." "Choose profile: panel only, Bedolaga only, or both projects.")"
+    menu_option "1" "$(tr_text "Только панель Remnawave" "Remnawave panel only")"
+    menu_option "2" "$(tr_text "Только Bedolaga (бот + кабинет)" "Bedolaga only (bot + cabinet)")"
+    menu_option "3" "$(tr_text "Панель + Bedolaga (оба проекта)" "Panel + Bedolaga (both projects)")"
+    menu_option "4" "$(tr_text "Свой список компонентов" "Custom component list")"
+  fi
   print_separator
   while true; do
-    read -r -p "$(tr_text "[8/8] Выбор [1-4]: " "[8/8] Choice [1-4]: ")" include_choice
+    if [[ "$setup_scope" == "global" ]]; then
+      read -r -p "$(tr_text "[8/8] Выбор [1-4]: " "[8/8] Choice [1-4]: ")" include_choice
+    else
+      read -r -p "$(tr_text "[8/8] Выбор [1-2]: " "[8/8] Choice [1-2]: ")" include_choice
+    fi
     if is_back_command "$include_choice"; then
       return 1
     fi
-    case "$include_choice" in
-      1) BACKUP_INCLUDE="all"; break ;;
-      2) BACKUP_INCLUDE="bedolaga"; break ;;
-      3) BACKUP_INCLUDE="all,bedolaga"; break ;;
-      4)
-        val="$(ask_value "$(tr_text "Введите компоненты через запятую (all,db,redis,configs,env,compose,caddy,subscription,bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)" "Enter comma-separated components (all,db,redis,configs,env,compose,caddy,subscription,bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)")" "$BACKUP_INCLUDE")"
-        [[ "$val" == "__PBM_BACK__" ]] && continue
-        [[ -n "$val" ]] || { paint "$CLR_WARN" "$(tr_text "Список не может быть пустым." "List cannot be empty.")"; continue; }
-        BACKUP_INCLUDE="$val"
-        break
-        ;;
-      *)
-        paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"
-        ;;
-    esac
+    if [[ "$setup_scope" == "panel" ]]; then
+      case "$include_choice" in
+        1) BACKUP_INCLUDE="all"; break ;;
+        2)
+          val="$(ask_value "$(tr_text "Введите компоненты панели через запятую (all,db,redis,configs,env,compose,caddy,subscription)" "Enter panel components (all,db,redis,configs,env,compose,caddy,subscription)")" "$BACKUP_INCLUDE")"
+          [[ "$val" == "__PBM_BACK__" ]] && continue
+          [[ -n "$val" ]] || { paint "$CLR_WARN" "$(tr_text "Список не может быть пустым." "List cannot be empty.")"; continue; }
+          BACKUP_INCLUDE="$val"
+          break
+          ;;
+        *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")" ;;
+      esac
+    elif [[ "$setup_scope" == "bedolaga" ]]; then
+      case "$include_choice" in
+        1) BACKUP_INCLUDE="bedolaga"; break ;;
+        2)
+          val="$(ask_value "$(tr_text "Введите компоненты Bedolaga через запятую (bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)" "Enter Bedolaga components (bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)")" "$BACKUP_INCLUDE")"
+          [[ "$val" == "__PBM_BACK__" ]] && continue
+          [[ -n "$val" ]] || { paint "$CLR_WARN" "$(tr_text "Список не может быть пустым." "List cannot be empty.")"; continue; }
+          BACKUP_INCLUDE="$val"
+          break
+          ;;
+        *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")" ;;
+      esac
+    else
+      case "$include_choice" in
+        1) BACKUP_INCLUDE="all"; break ;;
+        2) BACKUP_INCLUDE="bedolaga"; break ;;
+        3) BACKUP_INCLUDE="all,bedolaga"; break ;;
+        4)
+          val="$(ask_value "$(tr_text "Введите компоненты через запятую (all,db,redis,configs,env,compose,caddy,subscription,bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)" "Enter comma-separated components (all,db,redis,configs,env,compose,caddy,subscription,bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)")" "$BACKUP_INCLUDE")"
+          [[ "$val" == "__PBM_BACK__" ]] && continue
+          [[ -n "$val" ]] || { paint "$CLR_WARN" "$(tr_text "Список не может быть пустым." "List cannot be empty.")"; continue; }
+          BACKUP_INCLUDE="$val"
+          break
+          ;;
+        *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")" ;;
+      esac
+    fi
   done
 
   return 0

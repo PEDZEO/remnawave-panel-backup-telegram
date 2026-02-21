@@ -284,8 +284,14 @@ menu_flow_quick_setup() {
             ;;
           *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; continue ;;
         esac
-        BACKUP_ON_CALENDAR_PANEL="$BACKUP_ON_CALENDAR"
-        BACKUP_ON_CALENDAR_BEDOLAGA="$BACKUP_ON_CALENDAR"
+        if [[ "${BACKUP_SETUP_SCOPE:-global}" == "panel" ]]; then
+          BACKUP_ON_CALENDAR_PANEL="$BACKUP_ON_CALENDAR"
+        elif [[ "${BACKUP_SETUP_SCOPE:-global}" == "bedolaga" ]]; then
+          BACKUP_ON_CALENDAR_BEDOLAGA="$BACKUP_ON_CALENDAR"
+        else
+          BACKUP_ON_CALENDAR_PANEL="$BACKUP_ON_CALENDAR"
+          BACKUP_ON_CALENDAR_BEDOLAGA="$BACKUP_ON_CALENDAR"
+        fi
 
         show_quick_setup_summary "$old_bot" "$old_admin" "$old_thread" "$old_dir" "$old_lang" "$old_encrypt" "$old_password" "$old_calendar" "$old_include"
         if ! ask_yes_no "$(tr_text "Сохранить эти изменения?" "Save these changes?")" "y"; then
@@ -445,10 +451,15 @@ format_backup_scope_label() {
 
 menu_section_setup() {
   local choice=""
+  local setup_scope="${1:-global}"
+  local old_setup_scope="${BACKUP_SETUP_SCOPE:-global}"
   local tg_state=""
   local enc_state=""
   local include_state=""
   local include_state_raw=""
+  local section_title=""
+  local section_hint=""
+  BACKUP_SETUP_SCOPE="$setup_scope"
   while true; do
     load_existing_env_defaults
     if [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_ADMIN_ID:-}" ]]; then
@@ -463,9 +474,19 @@ menu_section_setup() {
     fi
     include_state_raw="${BACKUP_INCLUDE:-all}"
     include_state="$(format_backup_scope_label "$include_state_raw")"
-    draw_subheader "$(tr_text "Раздел: Настройка резервного копирования" "Section: Backup setup and configuration")"
+    if [[ "$setup_scope" == "panel" ]]; then
+      section_title="$(tr_text "Раздел: Настройки backup панели" "Section: Panel backup settings")"
+      section_hint="$(tr_text "Только настройки резервного копирования панели Remnawave." "Panel backup settings only.")"
+    elif [[ "$setup_scope" == "bedolaga" ]]; then
+      section_title="$(tr_text "Раздел: Настройки backup Bedolaga" "Section: Bedolaga backup settings")"
+      section_hint="$(tr_text "Только настройки резервного копирования Bedolaga (бот + кабинет)." "Bedolaga backup settings only (bot + cabinet).")"
+    else
+      section_title="$(tr_text "Раздел: Настройка резервного копирования" "Section: Backup setup and configuration")"
+      section_hint="$(tr_text "Здесь только настройка резервного копирования и уведомлений." "This section is only for backup and notification settings.")"
+    fi
+    draw_subheader "$section_title"
     show_back_hint
-    paint "$CLR_MUTED" "$(tr_text "Здесь только настройка резервного копирования и уведомлений." "This section is only for backup and notification settings.")"
+    paint "$CLR_MUTED" "$section_hint"
     paint "$CLR_TITLE" "$(tr_text "Текущее состояние" "Current state")"
     paint "$CLR_MUTED" "  Telegram: ${tg_state}"
     paint "$CLR_MUTED" "  $(tr_text "Шифрование резервной копии:" "Backup encryption:") ${enc_state}"
@@ -487,4 +508,5 @@ menu_section_setup() {
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
+  BACKUP_SETUP_SCOPE="$old_setup_scope"
 }
