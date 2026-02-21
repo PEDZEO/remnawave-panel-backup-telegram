@@ -85,7 +85,11 @@ run_backup_now() {
 
   backup_cmd=(/usr/local/bin/panel-backup.sh)
   if [[ -n "$SUDO" ]]; then
-    backup_cmd=("$SUDO" "${backup_cmd[@]}")
+    if [[ -n "${BACKUP_INCLUDE:-}" ]]; then
+      backup_cmd=("$SUDO" "BACKUP_INCLUDE=${BACKUP_INCLUDE}" "${backup_cmd[@]}")
+    else
+      backup_cmd=("$SUDO" "${backup_cmd[@]}")
+    fi
   fi
 
   "${backup_cmd[@]}"
