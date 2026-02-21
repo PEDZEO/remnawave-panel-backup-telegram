@@ -217,6 +217,8 @@ write_env() {
   local escaped_thread_bedolaga=""
   local escaped_dir=""
   local escaped_calendar=""
+  local escaped_calendar_panel=""
+  local escaped_calendar_bedolaga=""
   local escaped_backup_lang=""
   local escaped_backup_password=""
   local escaped_backup_include=""
@@ -229,6 +231,8 @@ write_env() {
   escaped_thread_bedolaga="$(escape_env_value "${TELEGRAM_THREAD_ID_BEDOLAGA:-}")"
   escaped_dir="$(escape_env_value "${REMNAWAVE_DIR:-}")"
   escaped_calendar="$(escape_env_value "${BACKUP_ON_CALENDAR:-}")"
+  escaped_calendar_panel="$(escape_env_value "${BACKUP_ON_CALENDAR_PANEL:-${BACKUP_ON_CALENDAR:-}}")"
+  escaped_calendar_bedolaga="$(escape_env_value "${BACKUP_ON_CALENDAR_BEDOLAGA:-${BACKUP_ON_CALENDAR:-}}")"
   escaped_backup_lang="$(escape_env_value "${BACKUP_LANG:-}")"
   escaped_backup_password="$(escape_env_value "${BACKUP_PASSWORD:-}")"
   escaped_backup_include="$(escape_env_value "${BACKUP_INCLUDE:-all}")"
@@ -243,6 +247,8 @@ ${TELEGRAM_THREAD_ID_PANEL:+TELEGRAM_THREAD_ID_PANEL=\"${escaped_thread_panel}\"
 ${TELEGRAM_THREAD_ID_BEDOLAGA:+TELEGRAM_THREAD_ID_BEDOLAGA=\"${escaped_thread_bedolaga}\"}
 ${REMNAWAVE_DIR:+REMNAWAVE_DIR=\"${escaped_dir}\"}
 ${BACKUP_ON_CALENDAR:+BACKUP_ON_CALENDAR=\"${escaped_calendar}\"}
+${BACKUP_ON_CALENDAR_PANEL:+BACKUP_ON_CALENDAR_PANEL=\"${escaped_calendar_panel}\"}
+${BACKUP_ON_CALENDAR_BEDOLAGA:+BACKUP_ON_CALENDAR_BEDOLAGA=\"${escaped_calendar_bedolaga}\"}
 ${BACKUP_LANG:+BACKUP_LANG=\"${escaped_backup_lang}\"}
 BACKUP_ENCRYPT=\"${BACKUP_ENCRYPT:-0}\"
 ${BACKUP_PASSWORD:+BACKUP_PASSWORD=\"${escaped_backup_password}\"}
@@ -252,7 +258,8 @@ ENV"
   $SUDO chown root:root /etc/panel-backup.env
 
   paint "$CLR_MUTED" "REMNAWAVE_DIR=${REMNAWAVE_DIR:-not-detected}"
-  paint "$CLR_MUTED" "BACKUP_ON_CALENDAR=${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}"
+  paint "$CLR_MUTED" "BACKUP_ON_CALENDAR_PANEL=${BACKUP_ON_CALENDAR_PANEL:-${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}}"
+  paint "$CLR_MUTED" "BACKUP_ON_CALENDAR_BEDOLAGA=${BACKUP_ON_CALENDAR_BEDOLAGA:-${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}}"
   paint "$CLR_MUTED" "BACKUP_LANG=${BACKUP_LANG:-ru}"
   paint "$CLR_MUTED" "BACKUP_ENCRYPT=${BACKUP_ENCRYPT:-0}"
   paint "$CLR_MUTED" "BACKUP_INCLUDE=${BACKUP_INCLUDE:-all}"
@@ -268,14 +275,16 @@ escape_env_value() {
 }
 
 write_timer_unit() {
-  local calendar="${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}"
+  local calendar_default="${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}"
+  local calendar_panel="${BACKUP_ON_CALENDAR_PANEL:-$calendar_default}"
+  local calendar_bedolaga="${BACKUP_ON_CALENDAR_BEDOLAGA:-$calendar_default}"
 
   $SUDO bash -c "cat > /etc/systemd/system/panel-backup.timer <<TIMER
 [Unit]
 Description=Run panel backup by configured schedule
 
 [Timer]
-OnCalendar=${calendar}
+OnCalendar=${calendar_default}
 Persistent=true
 Unit=panel-backup.service
 
@@ -290,7 +299,7 @@ TIMER"
 Description=Run Remnawave panel backup by configured schedule
 
 [Timer]
-OnCalendar=${calendar}
+OnCalendar=${calendar_panel}
 Persistent=true
 Unit=panel-backup-panel.service
 
@@ -305,7 +314,7 @@ TIMER"
 Description=Run Bedolaga backup by configured schedule
 
 [Timer]
-OnCalendar=${calendar}
+OnCalendar=${calendar_bedolaga}
 Persistent=true
 Unit=panel-backup-bedolaga.service
 
@@ -318,8 +327,54 @@ TIMER"
 
 configure_schedule_menu() {
   local choice=""
+  local target_choice=""
   local custom=""
-  local current="${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}"
+  local current=""
+  local target=""
+  local panel_available=0
+  local bedolaga_available=0
+
+  if is_panel_backup_target_available; then
+    panel_available=1
+  fi
+  if is_bedolaga_backup_target_available; then
+    bedolaga_available=1
+  fi
+
+  if (( panel_available == 1 && bedolaga_available == 0 )); then
+    target="panel"
+  elif (( panel_available == 0 && bedolaga_available == 1 )); then
+    target="bedolaga"
+  else
+    while true; do
+      draw_header "$(tr_text "Периодичность резервного копирования" "Backup schedule")"
+      show_back_hint
+      paint "$CLR_MUTED" "$(tr_text "Выберите проект для настройки расписания." "Choose project scope to configure schedule.")"
+      menu_option "1" "$(tr_text "Панель Remnawave" "Remnawave panel")"
+      menu_option "2" "$(tr_text "Bedolaga (бот + кабинет)" "Bedolaga (bot + cabinet)")"
+      menu_option "3" "$(tr_text "Оба проекта одинаково" "Both projects same schedule")"
+      menu_option "4" "$(tr_text "Назад" "Back")"
+      print_separator
+      read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" target_choice
+      if is_back_command "$target_choice"; then
+        return 1
+      fi
+      case "$target_choice" in
+        1) target="panel"; break ;;
+        2) target="bedolaga"; break ;;
+        3) target="both"; break ;;
+        4) return 1 ;;
+        *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")" ;;
+      esac
+    done
+  fi
+
+  case "$target" in
+    panel) current="${BACKUP_ON_CALENDAR_PANEL:-${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}}" ;;
+    bedolaga) current="${BACKUP_ON_CALENDAR_BEDOLAGA:-${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}}" ;;
+    both) current="${BACKUP_ON_CALENDAR_PANEL:-${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}}" ;;
+    *) current="${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}" ;;
+  esac
 
   while true; do
     draw_header "$(tr_text "Периодичность резервного копирования" "Backup schedule")"
@@ -338,21 +393,32 @@ configure_schedule_menu() {
     fi
 
     case "$choice" in
-      1) BACKUP_ON_CALENDAR="*-*-* 03:40:00 UTC"; return 0 ;;
-      2) BACKUP_ON_CALENDAR="*-*-* 00,12:00:00 UTC"; return 0 ;;
-      3) BACKUP_ON_CALENDAR="*-*-* 00,06,12,18:00:00 UTC"; return 0 ;;
-      4) BACKUP_ON_CALENDAR="hourly"; return 0 ;;
+      1) custom="*-*-* 03:40:00 UTC" ;;
+      2) custom="*-*-* 00,12:00:00 UTC" ;;
+      3) custom="*-*-* 00,06,12,18:00:00 UTC" ;;
+      4) custom="hourly" ;;
       5)
         custom="$(ask_value "$(tr_text "Введите OnCalendar (пример: *-*-* 02:00:00 UTC)" "Enter OnCalendar (example: *-*-* 02:00:00 UTC)")" "$current")"
         [[ "$custom" == "__PBM_BACK__" ]] && continue
-        if [[ -n "$custom" ]]; then
-          BACKUP_ON_CALENDAR="$custom"
-          return 0
-        fi
+        [[ -n "$custom" ]] || continue
         ;;
       6) return 1 ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")" ;;
     esac
+    case "$target" in
+      panel)
+        BACKUP_ON_CALENDAR_PANEL="$custom"
+        ;;
+      bedolaga)
+        BACKUP_ON_CALENDAR_BEDOLAGA="$custom"
+        ;;
+      both)
+        BACKUP_ON_CALENDAR_PANEL="$custom"
+        BACKUP_ON_CALENDAR_BEDOLAGA="$custom"
+        ;;
+    esac
+    BACKUP_ON_CALENDAR="${BACKUP_ON_CALENDAR_PANEL:-$custom}"
+    return 0
   done
 }
 
@@ -427,8 +493,12 @@ enable_timer() {
   bedolaga_timer_state="$($SUDO systemctl is-active panel-backup-bedolaga.timer 2>/dev/null || true)"
   [[ -n "$panel_timer_state" ]] || panel_timer_state="inactive"
   [[ -n "$bedolaga_timer_state" ]] || bedolaga_timer_state="inactive"
-  paint "$CLR_MUTED" "panel-backup-panel.timer: ${panel_timer_state}"
-  paint "$CLR_MUTED" "panel-backup-bedolaga.timer: ${bedolaga_timer_state}"
+  if [[ "$INSTALL_PANEL_TIMER_ENABLED" == "1" ]]; then
+    paint "$CLR_MUTED" "panel-backup-panel.timer: ${panel_timer_state}"
+  fi
+  if [[ "$INSTALL_BEDOLAGA_TIMER_ENABLED" == "1" ]]; then
+    paint "$CLR_MUTED" "panel-backup-bedolaga.timer: ${bedolaga_timer_state}"
+  fi
 }
 
 post_install_health_check() {
@@ -453,10 +523,14 @@ post_install_health_check() {
   fi
 
   paint "$CLR_TITLE" "$(tr_text "Проверка после установки" "Post-install check")"
-  paint "$CLR_MUTED" "panel-backup-panel.timer: ${panel_timer_active}"
-  paint "$CLR_MUTED" "panel-backup-panel.service: ${panel_service_loaded}"
-  paint "$CLR_MUTED" "panel-backup-bedolaga.timer: ${bedolaga_timer_active}"
-  paint "$CLR_MUTED" "panel-backup-bedolaga.service: ${bedolaga_service_loaded}"
+  if [[ "$INSTALL_PANEL_TIMER_ENABLED" == "1" ]]; then
+    paint "$CLR_MUTED" "panel-backup-panel.timer: ${panel_timer_active}"
+    paint "$CLR_MUTED" "panel-backup-panel.service: ${panel_service_loaded}"
+  fi
+  if [[ "$INSTALL_BEDOLAGA_TIMER_ENABLED" == "1" ]]; then
+    paint "$CLR_MUTED" "panel-backup-bedolaga.timer: ${bedolaga_timer_active}"
+    paint "$CLR_MUTED" "panel-backup-bedolaga.service: ${bedolaga_service_loaded}"
+  fi
   if [[ "$INSTALL_PANEL_TIMER_ENABLED" == "1" && "$INSTALL_BEDOLAGA_TIMER_ENABLED" == "1" && "$panel_timer_active" == "active" && "$bedolaga_timer_active" == "active" ]]; then
     paint "$CLR_OK" "$(tr_text "Оба таймера включены и работают." "Both timers are enabled and active.")"
   elif [[ "$INSTALL_PANEL_TIMER_ENABLED" == "1" || "$INSTALL_BEDOLAGA_TIMER_ENABLED" == "1" ]]; then

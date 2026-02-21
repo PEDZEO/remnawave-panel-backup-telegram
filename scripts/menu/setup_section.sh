@@ -284,6 +284,8 @@ menu_flow_quick_setup() {
             ;;
           *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; continue ;;
         esac
+        BACKUP_ON_CALENDAR_PANEL="$BACKUP_ON_CALENDAR"
+        BACKUP_ON_CALENDAR_BEDOLAGA="$BACKUP_ON_CALENDAR"
 
         show_quick_setup_summary "$old_bot" "$old_admin" "$old_thread" "$old_dir" "$old_lang" "$old_encrypt" "$old_password" "$old_calendar" "$old_include"
         if ! ask_yes_no "$(tr_text "Сохранить эти изменения?" "Save these changes?")" "y"; then

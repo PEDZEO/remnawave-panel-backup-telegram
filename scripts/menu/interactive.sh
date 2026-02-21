@@ -324,12 +324,28 @@ menu_section_remnanode_components() {
 
 menu_section_timer() {
   local choice=""
-  local schedule_now=""
+  local panel_available=0
+  local bedolaga_available=0
+  local schedule_panel=""
+  local schedule_bedolaga=""
   while true; do
     draw_subheader "$(tr_text "Раздел: Таймеры и периодичность" "Section: Timers and schedule")"
     show_back_hint
-    schedule_now="$(get_current_timer_calendar || true)"
-    paint "$CLR_MUTED" "$(tr_text "Текущее расписание:" "Current schedule:") $(format_schedule_label "$schedule_now")"
+    panel_available=0
+    bedolaga_available=0
+    has_panel_project && panel_available=1
+    has_bedolaga_project && bedolaga_available=1
+    if (( panel_available == 1 )); then
+      schedule_panel="$(get_timer_calendar_for_unit "panel-backup-panel.timer" || true)"
+      paint "$CLR_MUTED" "$(tr_text "Расписание панели:" "Panel schedule:") $(format_schedule_label "$schedule_panel")"
+    fi
+    if (( bedolaga_available == 1 )); then
+      schedule_bedolaga="$(get_timer_calendar_for_unit "panel-backup-bedolaga.timer" || true)"
+      paint "$CLR_MUTED" "$(tr_text "Расписание Bedolaga:" "Bedolaga schedule:") $(format_schedule_label "$schedule_bedolaga")"
+    fi
+    if (( panel_available == 0 && bedolaga_available == 0 )); then
+      paint "$CLR_WARN" "$(tr_text "Проекты для backup не обнаружены. Сначала настройте пути." "No backup projects detected. Configure paths first.")"
+    fi
     menu_option "1" "$(tr_text "Включить таймеры резервного копирования" "Enable backup timers")"
     menu_option "2" "$(tr_text "Выключить таймеры резервного копирования" "Disable backup timers")"
     menu_option "3" "$(tr_text "Настроить периодичность резервного копирования" "Configure backup schedule")"

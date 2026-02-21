@@ -152,6 +152,8 @@ show_status() {
   local bedolaga_service_started=""
   local bedolaga_service_finished=""
   local schedule_now=""
+  local panel_present=0
+  local bedolaga_present=0
   local backup_installed="$(tr_text "нет" "no")"
   local restore_installed="$(tr_text "нет" "no")"
   local config_present="$(tr_text "нет" "no")"
@@ -171,6 +173,8 @@ show_status() {
   if [[ -f /etc/panel-backup.env ]]; then
     config_present="$(tr_text "да" "yes")"
   fi
+  has_panel_project && panel_present=1
+  has_bedolaga_project && bedolaga_present=1
 
   print_separator
   paint "$CLR_TITLE" "$(tr_text "Установка" "Installation")"
@@ -178,52 +182,58 @@ show_status() {
   paint "$CLR_MUTED" "  $(tr_text "Restore-скрипт:" "Restore script:") ${restore_installed} (/usr/local/bin/panel-restore.sh)"
   paint "$CLR_MUTED" "  $(tr_text "Файл конфигурации:" "Config file:") ${config_present} (/etc/panel-backup.env)"
 
-  panel_timer_show="$($SUDO systemctl show panel-backup-panel.timer \
-    -p LoadState -p UnitFileState -p ActiveState -p SubState \
-    -p NextElapseUSecRealtime -p LastTriggerUSecRealtime 2>/dev/null || true)"
-  if [[ -n "$panel_timer_show" ]]; then
-    panel_timer_load="$(echo "$panel_timer_show" | awk -F= '/^LoadState=/{print $2}')"
-    panel_timer_unit_file="$(echo "$panel_timer_show" | awk -F= '/^UnitFileState=/{print $2}')"
-    panel_timer_active="$(echo "$panel_timer_show" | awk -F= '/^ActiveState=/{print $2}')"
-    panel_timer_sub="$(echo "$panel_timer_show" | awk -F= '/^SubState=/{print $2}')"
-    panel_timer_next="$(echo "$panel_timer_show" | awk -F= '/^NextElapseUSecRealtime=/{print $2}')"
-    panel_timer_last="$(echo "$panel_timer_show" | awk -F= '/^LastTriggerUSecRealtime=/{print $2}')"
-    print_separator
-    paint "$CLR_TITLE" "$(tr_text "Таймер панели" "Panel timer")"
-    paint "$CLR_MUTED" "  $(tr_text "Состояние unit:" "Unit state:") $(humanize_systemd_state "${panel_timer_load:-unknown}")"
-    paint "$CLR_MUTED" "  $(tr_text "Автозапуск:" "Autostart:") $(humanize_systemd_state "${panel_timer_unit_file:-unknown}")"
-    paint "$CLR_MUTED" "  $(tr_text "Статус:" "Status:") $(humanize_systemd_state "${panel_timer_active:-unknown}") / $(humanize_systemd_state "${panel_timer_sub:-unknown}")"
-    paint "$CLR_MUTED" "  $(tr_text "Следующий запуск:" "Next run:") ${panel_timer_next:-n/a}"
-    paint "$CLR_MUTED" "  $(tr_text "Последний запуск:" "Last run:") ${panel_timer_last:-n/a}"
-  else
-    print_separator
-    paint "$CLR_WARN" "$(tr_text "Таймер панели: недоступен" "Panel timer: not available")"
+  if (( panel_present == 1 )); then
+    panel_timer_show="$($SUDO systemctl show panel-backup-panel.timer \
+      -p LoadState -p UnitFileState -p ActiveState -p SubState \
+      -p NextElapseUSecRealtime -p LastTriggerUSecRealtime 2>/dev/null || true)"
+    if [[ -n "$panel_timer_show" ]]; then
+      panel_timer_load="$(echo "$panel_timer_show" | awk -F= '/^LoadState=/{print $2}')"
+      panel_timer_unit_file="$(echo "$panel_timer_show" | awk -F= '/^UnitFileState=/{print $2}')"
+      panel_timer_active="$(echo "$panel_timer_show" | awk -F= '/^ActiveState=/{print $2}')"
+      panel_timer_sub="$(echo "$panel_timer_show" | awk -F= '/^SubState=/{print $2}')"
+      panel_timer_next="$(echo "$panel_timer_show" | awk -F= '/^NextElapseUSecRealtime=/{print $2}')"
+      panel_timer_last="$(echo "$panel_timer_show" | awk -F= '/^LastTriggerUSecRealtime=/{print $2}')"
+      print_separator
+      paint "$CLR_TITLE" "$(tr_text "Таймер панели" "Panel timer")"
+      paint "$CLR_MUTED" "  $(tr_text "Состояние unit:" "Unit state:") $(humanize_systemd_state "${panel_timer_load:-unknown}")"
+      paint "$CLR_MUTED" "  $(tr_text "Автозапуск:" "Autostart:") $(humanize_systemd_state "${panel_timer_unit_file:-unknown}")"
+      paint "$CLR_MUTED" "  $(tr_text "Статус:" "Status:") $(humanize_systemd_state "${panel_timer_active:-unknown}") / $(humanize_systemd_state "${panel_timer_sub:-unknown}")"
+      paint "$CLR_MUTED" "  $(tr_text "Следующий запуск:" "Next run:") ${panel_timer_next:-n/a}"
+      paint "$CLR_MUTED" "  $(tr_text "Последний запуск:" "Last run:") ${panel_timer_last:-n/a}"
+    fi
   fi
 
-  bedolaga_timer_show="$($SUDO systemctl show panel-backup-bedolaga.timer \
-    -p LoadState -p UnitFileState -p ActiveState -p SubState \
-    -p NextElapseUSecRealtime -p LastTriggerUSecRealtime 2>/dev/null || true)"
-  if [[ -n "$bedolaga_timer_show" ]]; then
-    bedolaga_timer_load="$(echo "$bedolaga_timer_show" | awk -F= '/^LoadState=/{print $2}')"
-    bedolaga_timer_unit_file="$(echo "$bedolaga_timer_show" | awk -F= '/^UnitFileState=/{print $2}')"
-    bedolaga_timer_active="$(echo "$bedolaga_timer_show" | awk -F= '/^ActiveState=/{print $2}')"
-    bedolaga_timer_sub="$(echo "$bedolaga_timer_show" | awk -F= '/^SubState=/{print $2}')"
-    bedolaga_timer_next="$(echo "$bedolaga_timer_show" | awk -F= '/^NextElapseUSecRealtime=/{print $2}')"
-    bedolaga_timer_last="$(echo "$bedolaga_timer_show" | awk -F= '/^LastTriggerUSecRealtime=/{print $2}')"
-    print_separator
-    paint "$CLR_TITLE" "$(tr_text "Таймер Bedolaga" "Bedolaga timer")"
-    paint "$CLR_MUTED" "  $(tr_text "Состояние unit:" "Unit state:") $(humanize_systemd_state "${bedolaga_timer_load:-unknown}")"
-    paint "$CLR_MUTED" "  $(tr_text "Автозапуск:" "Autostart:") $(humanize_systemd_state "${bedolaga_timer_unit_file:-unknown}")"
-    paint "$CLR_MUTED" "  $(tr_text "Статус:" "Status:") $(humanize_systemd_state "${bedolaga_timer_active:-unknown}") / $(humanize_systemd_state "${bedolaga_timer_sub:-unknown}")"
-    paint "$CLR_MUTED" "  $(tr_text "Следующий запуск:" "Next run:") ${bedolaga_timer_next:-n/a}"
-    paint "$CLR_MUTED" "  $(tr_text "Последний запуск:" "Last run:") ${bedolaga_timer_last:-n/a}"
-  else
-    print_separator
-    paint "$CLR_WARN" "$(tr_text "Таймер Bedolaga: недоступен" "Bedolaga timer: not available")"
+  if (( bedolaga_present == 1 )); then
+    bedolaga_timer_show="$($SUDO systemctl show panel-backup-bedolaga.timer \
+      -p LoadState -p UnitFileState -p ActiveState -p SubState \
+      -p NextElapseUSecRealtime -p LastTriggerUSecRealtime 2>/dev/null || true)"
+    if [[ -n "$bedolaga_timer_show" ]]; then
+      bedolaga_timer_load="$(echo "$bedolaga_timer_show" | awk -F= '/^LoadState=/{print $2}')"
+      bedolaga_timer_unit_file="$(echo "$bedolaga_timer_show" | awk -F= '/^UnitFileState=/{print $2}')"
+      bedolaga_timer_active="$(echo "$bedolaga_timer_show" | awk -F= '/^ActiveState=/{print $2}')"
+      bedolaga_timer_sub="$(echo "$bedolaga_timer_show" | awk -F= '/^SubState=/{print $2}')"
+      bedolaga_timer_next="$(echo "$bedolaga_timer_show" | awk -F= '/^NextElapseUSecRealtime=/{print $2}')"
+      bedolaga_timer_last="$(echo "$bedolaga_timer_show" | awk -F= '/^LastTriggerUSecRealtime=/{print $2}')"
+      print_separator
+      paint "$CLR_TITLE" "$(tr_text "Таймер Bedolaga" "Bedolaga timer")"
+      paint "$CLR_MUTED" "  $(tr_text "Состояние unit:" "Unit state:") $(humanize_systemd_state "${bedolaga_timer_load:-unknown}")"
+      paint "$CLR_MUTED" "  $(tr_text "Автозапуск:" "Autostart:") $(humanize_systemd_state "${bedolaga_timer_unit_file:-unknown}")"
+      paint "$CLR_MUTED" "  $(tr_text "Статус:" "Status:") $(humanize_systemd_state "${bedolaga_timer_active:-unknown}") / $(humanize_systemd_state "${bedolaga_timer_sub:-unknown}")"
+      paint "$CLR_MUTED" "  $(tr_text "Следующий запуск:" "Next run:") ${bedolaga_timer_next:-n/a}"
+      paint "$CLR_MUTED" "  $(tr_text "Последний запуск:" "Last run:") ${bedolaga_timer_last:-n/a}"
+    fi
   fi
-  schedule_now="$(get_current_timer_calendar || true)"
-  paint "$CLR_MUTED" "  $(tr_text "Периодичность backup:" "Backup schedule:") $(format_schedule_label "$schedule_now")"
+  if (( panel_present == 1 )); then
+    schedule_now="$(get_timer_calendar_for_unit "panel-backup-panel.timer" || true)"
+    print_separator
+    paint "$CLR_MUTED" "  $(tr_text "Периодичность панели:" "Panel schedule:") $(format_schedule_label "$schedule_now")"
+  fi
+  if (( bedolaga_present == 1 )); then
+    schedule_now="$(get_timer_calendar_for_unit "panel-backup-bedolaga.timer" || true)"
+    paint "$CLR_MUTED" "  $(tr_text "Периодичность Bedolaga:" "Bedolaga schedule:") $(format_schedule_label "$schedule_now")"
+  fi
 
+  if (( panel_present == 1 )); then
   panel_service_show="$($SUDO systemctl show panel-backup-panel.service \
     -p ActiveState -p SubState -p Result -p ExecMainStatus \
     -p ExecMainStartTimestamp -p ExecMainExitTimestamp 2>/dev/null || true)"
@@ -250,7 +260,9 @@ show_status() {
     print_separator
     paint "$CLR_WARN" "$(tr_text "Сервис backup панели: недоступен" "Panel backup service: not available")"
   fi
+  fi
 
+  if (( bedolaga_present == 1 )); then
   bedolaga_service_show="$($SUDO systemctl show panel-backup-bedolaga.service \
     -p ActiveState -p SubState -p Result -p ExecMainStatus \
     -p ExecMainStartTimestamp -p ExecMainExitTimestamp 2>/dev/null || true)"
@@ -276,6 +288,7 @@ show_status() {
   else
     print_separator
     paint "$CLR_WARN" "$(tr_text "Сервис backup Bedolaga: недоступен" "Bedolaga backup service: not available")"
+  fi
   fi
 
   latest_backup="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/pb-*.tar.gz.gpg /var/backups/panel/panel-backup-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz.gpg 2>/dev/null | head -n1 || true)"
@@ -309,7 +322,9 @@ show_status() {
     paint "$CLR_MUTED" "  $(tr_text "Шифрование backup:" "Backup encryption:") $(tr_text "выключено" "disabled")"
   fi
   paint "$CLR_MUTED" "  $(tr_text "Состав backup:" "Backup scope:") ${BACKUP_INCLUDE:-all}"
-  paint "$CLR_MUTED" "  $(tr_text "Путь Remnawave:" "Remnawave path:") ${REMNAWAVE_DIR:-not-detected}"
+  if (( panel_present == 1 )); then
+    paint "$CLR_MUTED" "  $(tr_text "Путь Remnawave:" "Remnawave path:") ${REMNAWAVE_DIR:-not-detected}"
+  fi
   print_separator
 }
 

@@ -65,7 +65,8 @@ show_settings_preview() {
   paint "$CLR_MUTED" "  TELEGRAM_THREAD_ID_PANEL: ${TELEGRAM_THREAD_ID_PANEL:-$(tr_text "не задан" "not set")}"
   paint "$CLR_MUTED" "  TELEGRAM_THREAD_ID_BEDOLAGA: ${TELEGRAM_THREAD_ID_BEDOLAGA:-$(tr_text "не задан" "not set")}"
   paint "$CLR_MUTED" "  REMNAWAVE_DIR: ${REMNAWAVE_DIR:-$(tr_text "не задан" "not set")}"
-  paint "$CLR_MUTED" "  BACKUP_ON_CALENDAR: ${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}"
+  paint "$CLR_MUTED" "  BACKUP_ON_CALENDAR_PANEL: ${BACKUP_ON_CALENDAR_PANEL:-${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}}"
+  paint "$CLR_MUTED" "  BACKUP_ON_CALENDAR_BEDOLAGA: ${BACKUP_ON_CALENDAR_BEDOLAGA:-${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}}"
   paint "$CLR_MUTED" "  BACKUP_LANG: ${BACKUP_LANG:-$(tr_text "не задан" "not set")}"
   include_view="${BACKUP_INCLUDE:-all}"
   paint "$CLR_MUTED" "  BACKUP_INCLUDE: ${include_view}"
@@ -341,6 +342,36 @@ get_current_timer_calendar() {
   return 1
 }
 
+get_timer_calendar_for_unit() {
+  local unit_name="$1"
+  local path=""
+  local value=""
+  for path in \
+    "/etc/systemd/system/${unit_name}" \
+    "/usr/lib/systemd/system/${unit_name}" \
+    "/lib/systemd/system/${unit_name}"; do
+    [[ -f "$path" ]] || continue
+    value="$(grep -E '^OnCalendar=' "$path" | head -n1 | cut -d= -f2- || true)"
+    if [[ -n "$value" ]]; then
+      echo "$value"
+      return 0
+    fi
+  done
+  return 1
+}
+
+has_panel_project() {
+  [[ -n "$(detect_remnawave_dir || true)" ]]
+}
+
+has_bedolaga_project() {
+  local bot_dir=""
+  local cabinet_dir=""
+  bot_dir="$(detect_bedolaga_bot_dir || true)"
+  cabinet_dir="$(detect_bedolaga_cabinet_dir || true)"
+  [[ -n "$bot_dir" && -n "$cabinet_dir" ]]
+}
+
 show_remnawave_autodetect() {
   local candidate="$1"
   local env_file=""
@@ -409,6 +440,8 @@ load_existing_env_defaults() {
   local old_thread_bedolaga=""
   local old_dir=""
   local old_calendar=""
+  local old_calendar_panel=""
+  local old_calendar_bedolaga=""
   local old_backup_lang=""
   local old_backup_encrypt=""
   local old_backup_password=""
@@ -423,7 +456,11 @@ load_existing_env_defaults() {
     old_thread_bedolaga="$(grep -E '^TELEGRAM_THREAD_ID_BEDOLAGA=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
     old_dir="$(grep -E '^REMNAWAVE_DIR=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
     old_calendar="$(grep -E '^BACKUP_ON_CALENDAR=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
+    old_calendar_panel="$(grep -E '^BACKUP_ON_CALENDAR_PANEL=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
+    old_calendar_bedolaga="$(grep -E '^BACKUP_ON_CALENDAR_BEDOLAGA=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
     old_calendar="$(normalize_calendar_raw "$old_calendar")"
+    old_calendar_panel="$(normalize_calendar_raw "$old_calendar_panel")"
+    old_calendar_bedolaga="$(normalize_calendar_raw "$old_calendar_bedolaga")"
     old_backup_lang="$(grep -E '^BACKUP_LANG=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
     old_backup_encrypt="$(grep -E '^BACKUP_ENCRYPT=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
     old_backup_password="$(grep -E '^BACKUP_PASSWORD=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
@@ -447,6 +484,8 @@ load_existing_env_defaults() {
   TELEGRAM_THREAD_ID_BEDOLAGA="${TELEGRAM_THREAD_ID_BEDOLAGA:-$old_thread_bedolaga}"
   REMNAWAVE_DIR="${REMNAWAVE_DIR:-$old_dir}"
   BACKUP_ON_CALENDAR="${BACKUP_ON_CALENDAR:-$old_calendar}"
+  BACKUP_ON_CALENDAR_PANEL="${BACKUP_ON_CALENDAR_PANEL:-$old_calendar_panel}"
+  BACKUP_ON_CALENDAR_BEDOLAGA="${BACKUP_ON_CALENDAR_BEDOLAGA:-$old_calendar_bedolaga}"
   BACKUP_LANG="${BACKUP_LANG:-$old_backup_lang}"
   BACKUP_ENCRYPT="${BACKUP_ENCRYPT:-$old_backup_encrypt}"
   BACKUP_PASSWORD="${BACKUP_PASSWORD:-$old_backup_password}"
@@ -454,9 +493,15 @@ load_existing_env_defaults() {
 
   detected="$(detect_remnawave_dir || true)"
   REMNAWAVE_DIR="${REMNAWAVE_DIR:-$detected}"
+  BACKUP_ON_CALENDAR_PANEL="${BACKUP_ON_CALENDAR_PANEL:-$(get_timer_calendar_for_unit "panel-backup-panel.timer" || true)}"
+  BACKUP_ON_CALENDAR_BEDOLAGA="${BACKUP_ON_CALENDAR_BEDOLAGA:-$(get_timer_calendar_for_unit "panel-backup-bedolaga.timer" || true)}"
   BACKUP_ON_CALENDAR="${BACKUP_ON_CALENDAR:-$(get_current_timer_calendar || true)}"
   BACKUP_ON_CALENDAR="$(normalize_calendar_raw "$BACKUP_ON_CALENDAR")"
   BACKUP_ON_CALENDAR="${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}"
+  BACKUP_ON_CALENDAR_PANEL="$(normalize_calendar_raw "${BACKUP_ON_CALENDAR_PANEL:-}")"
+  BACKUP_ON_CALENDAR_BEDOLAGA="$(normalize_calendar_raw "${BACKUP_ON_CALENDAR_BEDOLAGA:-}")"
+  BACKUP_ON_CALENDAR_PANEL="${BACKUP_ON_CALENDAR_PANEL:-$BACKUP_ON_CALENDAR}"
+  BACKUP_ON_CALENDAR_BEDOLAGA="${BACKUP_ON_CALENDAR_BEDOLAGA:-$BACKUP_ON_CALENDAR}"
   BACKUP_LANG="${BACKUP_LANG:-$UI_LANG}"
   if [[ "$BACKUP_LANG" == "auto" || -z "$BACKUP_LANG" ]]; then
     BACKUP_LANG="ru"
