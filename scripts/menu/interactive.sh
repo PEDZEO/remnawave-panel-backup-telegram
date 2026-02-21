@@ -96,9 +96,10 @@ run_bedolaga_migration_wizard() {
     paint "$CLR_MUTED" "$(tr_text "Полный перенос требует archive со всеми компонентами и контейнеры remnawave_bot_db/remnawave_bot_redis." "Full migration requires an archive with all components and remnawave_bot_db/remnawave_bot_redis containers.")"
     menu_option "1" "$(tr_text "Перенести только бот + кабинет (рекомендуется для старта)" "Migrate bot + cabinet only (recommended to start)")"
     menu_option "2" "$(tr_text "Полный перенос Bedolaga (DB + Redis + бот + кабинет)" "Full Bedolaga migration (DB + Redis + bot + cabinet)")"
-    menu_option "3" "$(tr_text "Назад" "Back")"
+    menu_option "3" "$(tr_text "Перенести на новый VPS по SSH (автоматически)" "Migrate to a new VPS over SSH (automatic)")"
+    menu_option "4" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
     if is_back_command "$choice"; then
       return 1
     fi
@@ -113,10 +114,255 @@ run_bedolaga_migration_wizard() {
           return 0
         fi
         ;;
-      3) return 1 ;;
+      3)
+        if run_bedolaga_remote_migration_flow; then
+          return 0
+        fi
+        ;;
+      4) return 1 ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
+}
+
+run_bedolaga_remote_migration_flow() {
+  local archive_path=""
+  local latest_archive=""
+  local ssh_host=""
+  local ssh_user="root"
+  local ssh_port="22"
+  local ssh_password=""
+  local remote_backup_dir="/var/backups/panel"
+  local remote_archive=""
+  local restore_scope_choice=""
+  local restore_only="bedolaga-bot,bedolaga-cabinet"
+  local restore_dry_run=1
+  local restore_no_restart=1
+  local restore_password="${BACKUP_PASSWORD:-}"
+  local is_encrypted_archive=0
+  local confirm_rc=0
+  local ssh_cmd=()
+  local scp_cmd=()
+  local remote_cmd=""
+  local postcheck_cmd=""
+  local only_args=""
+  local item=""
+
+  latest_archive="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/pb-*.tar.gz.gpg /var/backups/panel/panel-backup-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz.gpg 2>/dev/null | head -n1 || true)"
+  archive_path="${BACKUP_FILE:-$latest_archive}"
+
+  draw_subheader "$(tr_text "Миграция Bedolaga на новый VPS (SSH)" "Bedolaga migration to a new VPS (SSH)")"
+  paint "$CLR_MUTED" "$(tr_text "Сценарий: копирование архива на удалённый сервер и запуск panel-restore.sh." "Flow: copy archive to remote server and run panel-restore.sh.")"
+  paint "$CLR_MUTED" "$(tr_text "Требование: на новом VPS уже должен быть установлен panel-backup manager (panel-restore.sh)." "Requirement: panel-backup manager (panel-restore.sh) must already be installed on the new VPS.")"
+
+  archive_path="$(ask_value "$(tr_text "Путь к локальному архиву для переноса" "Local backup archive path for migration")" "$archive_path")"
+  [[ "$archive_path" == "__PBM_BACK__" ]] && return 1
+  [[ -n "$archive_path" && -f "$archive_path" ]] || {
+    paint "$CLR_DANGER" "$(tr_text "Локальный архив не найден." "Local archive not found.")"
+    wait_for_enter
+    return 1
+  }
+
+  draw_subheader "$(tr_text "Выбор состава восстановления на новом VPS" "Select restore scope on the new VPS")"
+  menu_option "1" "$(tr_text "Бот + кабинет (без DB/Redis, рекомендовано для старта)" "Bot + cabinet (without DB/Redis, recommended to start)")"
+  menu_option "2" "$(tr_text "Полный Bedolaga (DB + Redis + бот + кабинет)" "Full Bedolaga (DB + Redis + bot + cabinet)")"
+  print_separator
+  read -r -p "$(tr_text "Выбор [1-2]: " "Choice [1-2]: ")" restore_scope_choice
+  if is_back_command "$restore_scope_choice"; then
+    return 1
+  fi
+  case "$restore_scope_choice" in
+    1) restore_only="bedolaga-bot,bedolaga-cabinet" ;;
+    2) restore_only="bedolaga" ;;
+    *)
+      paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"
+      wait_for_enter
+      return 1
+      ;;
+  esac
+
+  confirm_rc=0
+  ask_yes_no "$(tr_text "Запустить удалённое восстановление в тестовом режиме (--dry-run)?" "Run remote restore in test mode (--dry-run)?")" "y" || confirm_rc=$?
+  case "$confirm_rc" in
+    0) restore_dry_run=1 ;;
+    1) restore_dry_run=0 ;;
+    2) return 1 ;;
+  esac
+
+  if (( restore_dry_run == 1 )); then
+    restore_no_restart=1
+  else
+    confirm_rc=0
+    ask_yes_no "$(tr_text "Отключить автоперезапуск сервисов на новом VPS (--no-restart)?" "Disable service auto-restart on the new VPS (--no-restart)?")" "n" || confirm_rc=$?
+    case "$confirm_rc" in
+      0) restore_no_restart=1 ;;
+      1) restore_no_restart=0 ;;
+      2) return 1 ;;
+    esac
+  fi
+
+  ssh_host="$(ask_value "$(tr_text "IP/домен нового VPS" "New VPS IP/domain")" "$ssh_host")"
+  [[ "$ssh_host" == "__PBM_BACK__" ]] && return 1
+  [[ -n "$ssh_host" ]] || {
+    paint "$CLR_DANGER" "$(tr_text "Хост не задан." "Host is not set.")"
+    wait_for_enter
+    return 1
+  }
+
+  ssh_user="$(ask_value "$(tr_text "SSH пользователь" "SSH user")" "$ssh_user")"
+  [[ "$ssh_user" == "__PBM_BACK__" ]] && return 1
+  [[ -n "$ssh_user" ]] || ssh_user="root"
+
+  ssh_port="$(ask_value "$(tr_text "SSH порт" "SSH port")" "$ssh_port")"
+  [[ "$ssh_port" == "__PBM_BACK__" ]] && return 1
+  [[ "$ssh_port" =~ ^[0-9]+$ ]] || {
+    paint "$CLR_DANGER" "$(tr_text "SSH порт должен быть числом." "SSH port must be numeric.")"
+    wait_for_enter
+    return 1
+  }
+
+  ssh_password="$(ask_secret_value "$(tr_text "SSH пароль (опционально, Enter = использовать ключи)" "SSH password (optional, Enter = use SSH keys)")" "")"
+  [[ "$ssh_password" == "__PBM_BACK__" ]] && return 1
+
+  remote_backup_dir="$(ask_value "$(tr_text "Папка архива на новом VPS" "Remote archive directory on new VPS")" "$remote_backup_dir")"
+  [[ "$remote_backup_dir" == "__PBM_BACK__" ]] && return 1
+  [[ -n "$remote_backup_dir" ]] || remote_backup_dir="/var/backups/panel"
+  remote_archive="${remote_backup_dir}/$(basename "$archive_path")"
+
+  if [[ "$archive_path" == *.gpg ]]; then
+    is_encrypted_archive=1
+    restore_password="$(ask_secret_value "$(tr_text "Пароль шифрования архива (BACKUP_PASSWORD) для нового VPS" "Archive encryption password (BACKUP_PASSWORD) for new VPS")" "$restore_password")"
+    [[ "$restore_password" == "__PBM_BACK__" ]] && return 1
+    [[ -n "$restore_password" ]] || {
+      paint "$CLR_DANGER" "$(tr_text "Для .gpg архива нужен пароль шифрования." "Encryption password is required for .gpg archive.")"
+      wait_for_enter
+      return 1
+    }
+  fi
+
+  command -v ssh >/dev/null 2>&1 || {
+    paint "$CLR_DANGER" "$(tr_text "Не найдена команда ssh." "ssh command not found.")"
+    wait_for_enter
+    return 1
+  }
+  command -v scp >/dev/null 2>&1 || {
+    paint "$CLR_DANGER" "$(tr_text "Не найдена команда scp." "scp command not found.")"
+    wait_for_enter
+    return 1
+  }
+  if [[ -n "$ssh_password" ]] && ! command -v sshpass >/dev/null 2>&1; then
+    paint "$CLR_DANGER" "$(tr_text "Для входа по паролю нужен sshpass." "sshpass is required for password-based login.")"
+    wait_for_enter
+    return 1
+  fi
+
+  if [[ -n "$ssh_password" ]]; then
+    ssh_cmd=(sshpass -p "$ssh_password" ssh -o StrictHostKeyChecking=accept-new -p "$ssh_port" "${ssh_user}@${ssh_host}")
+    scp_cmd=(sshpass -p "$ssh_password" scp -o StrictHostKeyChecking=accept-new -P "$ssh_port")
+  else
+    ssh_cmd=(ssh -o StrictHostKeyChecking=accept-new -p "$ssh_port" "${ssh_user}@${ssh_host}")
+    scp_cmd=(scp -o StrictHostKeyChecking=accept-new -P "$ssh_port")
+  fi
+
+  paint "$CLR_TITLE" "$(tr_text "Итог удалённой миграции" "Remote migration summary")"
+  paint "$CLR_MUTED" "  $(tr_text "Локальный архив:" "Local archive:") ${archive_path}"
+  paint "$CLR_MUTED" "  $(tr_text "Новый VPS:" "New VPS:") ${ssh_user}@${ssh_host}:${ssh_port}"
+  paint "$CLR_MUTED" "  $(tr_text "Файл на новом VPS:" "Archive on new VPS:") ${remote_archive}"
+  paint "$CLR_MUTED" "  $(tr_text "Состав восстановления:" "Restore scope:") ${restore_only}"
+  paint "$CLR_MUTED" "  $(tr_text "Режим:" "Mode:") $([[ "$restore_dry_run" == "1" ]] && tr_text "тестовый (--dry-run)" "test (--dry-run)" || tr_text "боевой" "real")"
+  paint "$CLR_MUTED" "  $(tr_text "Перезапуски:" "Restarts:") $([[ "$restore_no_restart" == "1" ]] && tr_text "отключены (--no-restart)" "disabled (--no-restart)" || tr_text "включены" "enabled")"
+  if [[ -n "$ssh_password" ]]; then
+    paint "$CLR_MUTED" "  $(tr_text "SSH аутентификация:" "SSH authentication:") $(tr_text "пароль" "password")"
+  else
+    paint "$CLR_MUTED" "  $(tr_text "SSH аутентификация:" "SSH authentication:") $(tr_text "ключи" "keys")"
+  fi
+
+  confirm_rc=0
+  ask_yes_no "$(tr_text "Выполнить копирование и удалённое восстановление?" "Run copy and remote restore?")" "n" || confirm_rc=$?
+  case "$confirm_rc" in
+    0) ;;
+    1|2) return 1 ;;
+  esac
+
+  if ! "${ssh_cmd[@]}" "mkdir -p $(printf '%q' "$remote_backup_dir")"; then
+    paint "$CLR_DANGER" "$(tr_text "Не удалось создать папку на новом VPS." "Failed to create directory on the new VPS.")"
+    wait_for_enter
+    return 1
+  fi
+
+  paint "$CLR_ACCENT" "$(tr_text "Копирую архив на новый VPS..." "Copying archive to the new VPS...")"
+  if ! "${scp_cmd[@]}" "$archive_path" "${ssh_user}@${ssh_host}:$(printf '%q' "$remote_archive")"; then
+    paint "$CLR_DANGER" "$(tr_text "Не удалось скопировать архив на новый VPS." "Failed to copy archive to the new VPS.")"
+    wait_for_enter
+    return 1
+  fi
+
+  if ! "${ssh_cmd[@]}" "test -x /usr/local/bin/panel-restore.sh"; then
+    paint "$CLR_DANGER" "$(tr_text "На новом VPS не найден /usr/local/bin/panel-restore.sh." "Could not find /usr/local/bin/panel-restore.sh on the new VPS.")"
+    wait_for_enter
+    return 1
+  fi
+
+  IFS=',' read -r -a __restore_items <<< "$restore_only"
+  only_args=""
+  for item in "${__restore_items[@]}"; do
+    [[ -n "$item" ]] || continue
+    only_args="${only_args} --only $(printf '%q' "$item")"
+  done
+
+  remote_cmd="/usr/local/bin/panel-restore.sh --from $(printf '%q' "$remote_archive")${only_args}"
+  if (( restore_dry_run == 1 )); then
+    remote_cmd="${remote_cmd} --dry-run"
+  fi
+  if (( restore_no_restart == 1 )); then
+    remote_cmd="${remote_cmd} --no-restart"
+  fi
+  if (( is_encrypted_archive == 1 )); then
+    remote_cmd="BACKUP_PASSWORD=$(printf '%q' "$restore_password") ${remote_cmd}"
+  fi
+
+  paint "$CLR_ACCENT" "$(tr_text "Запускаю удалённое восстановление..." "Running remote restore...")"
+  if ! "${ssh_cmd[@]}" "$remote_cmd"; then
+    paint "$CLR_DANGER" "$(tr_text "Удалённое восстановление завершилось ошибкой." "Remote restore failed.")"
+    wait_for_enter
+    return 1
+  fi
+
+  if (( restore_dry_run == 0 )); then
+    paint "$CLR_ACCENT" "$(tr_text "Проверяю состояние сервисов и последние логи на новом VPS..." "Checking service state and recent logs on the new VPS...")"
+    postcheck_cmd='
+set +e
+echo "============================================================"
+echo "  Post-check: Bedolaga stack"
+echo "============================================================"
+for c in remnawave_bot_db remnawave_bot_redis remnawave_bot cabinet_frontend; do
+  st="$(docker inspect -f "{{.State.Status}}" "$c" 2>/dev/null || echo "not-found")"
+  printf "  %-20s %s\n" "$c:" "$st"
+done
+echo "------------------------------------------------------------"
+echo "docker ps (filtered)"
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" | grep -E "NAMES|remnawave_bot|cabinet_frontend" || true
+echo "------------------------------------------------------------"
+echo "logs: remnawave_bot (tail 40)"
+docker logs --tail 40 remnawave_bot 2>&1 || true
+echo "------------------------------------------------------------"
+echo "logs: cabinet_frontend (tail 40)"
+docker logs --tail 40 cabinet_frontend 2>&1 || true
+echo "------------------------------------------------------------"
+echo "logs: remnawave_bot_db (tail 30)"
+docker logs --tail 30 remnawave_bot_db 2>&1 || true
+echo "------------------------------------------------------------"
+echo "logs: remnawave_bot_redis (tail 30)"
+docker logs --tail 30 remnawave_bot_redis 2>&1 || true
+'
+    if ! "${ssh_cmd[@]}" "$postcheck_cmd"; then
+      paint "$CLR_WARN" "$(tr_text "Постпроверка вернула ошибку. Проверьте SSH/логи вручную." "Post-check returned an error. Verify SSH/logs manually.")"
+    fi
+  fi
+
+  paint "$CLR_OK" "$(tr_text "Удалённая миграция завершена." "Remote migration completed.")"
+  wait_for_enter
+  return 0
 }
 
 run_restore_wizard_flow() {
