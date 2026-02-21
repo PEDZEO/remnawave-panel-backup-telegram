@@ -60,7 +60,7 @@ detect_remnawave_dir() {
       return 1
     fi
 
-    if grep -Eq 'container_name:[[:space:]]*remnawave(-db|-redis|-caddy|-subscription-page)?([[:space:]]|$)' "$compose_file"; then
+    if grep -Eq 'container_name:[[:space:]]*remnawave-(db|redis|caddy|subscription-page)([[:space:]]|$)' "$compose_file"; then
       return 0
     fi
 
