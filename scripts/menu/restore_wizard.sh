@@ -102,10 +102,10 @@ select_restore_components() {
   while true; do
     draw_subheader "$(tr_text "Выбор данных для восстановления" "Restore components selection")"
     paint "$CLR_MUTED" "$(tr_text "Выберите, что именно восстанавливать из архива." "Choose which data to restore from backup.")"
-    menu_option "1" "$(tr_text "Все (db + redis + configs)" "All (db + redis + configs)")"
+    menu_option "1" "$(tr_text "Полный (панель + Bedolaga)" "Full (panel + Bedolaga)")"
     menu_option "2" "$(tr_text "Только PostgreSQL (db)" "PostgreSQL only (db)")"
     menu_option "3" "$(tr_text "Только Redis (redis)" "Redis only (redis)")"
-    menu_option "4" "$(tr_text "Только конфиги (configs)" "Configs only (configs)")"
+    menu_option "4" "$(tr_text "Только конфиги (панель + Bedolaga)" "Configs only (panel + Bedolaga)")"
     menu_option "5" "$(tr_text "Свой список компонентов" "Custom components list")"
     menu_option "6" "$(tr_text "Назад" "Back")"
     print_separator
@@ -114,12 +114,12 @@ select_restore_components() {
       return 1
     fi
     case "$choice" in
-      1) RESTORE_ONLY="all"; return 0 ;;
+      1) RESTORE_ONLY="all,bedolaga"; return 0 ;;
       2) RESTORE_ONLY="db"; return 0 ;;
       3) RESTORE_ONLY="redis"; return 0 ;;
-      4) RESTORE_ONLY="configs"; return 0 ;;
+      4) RESTORE_ONLY="configs,bedolaga-configs"; return 0 ;;
       5)
-        custom="$(ask_value "$(tr_text "Компоненты через запятую (all,db,redis,configs,env,compose,caddy,subscription)" "Comma-separated components (all,db,redis,configs,env,compose,caddy,subscription)")" "$RESTORE_ONLY")"
+        custom="$(ask_value "$(tr_text "Компоненты через запятую (all,db,redis,configs,env,compose,caddy,subscription,bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)" "Comma-separated components (all,db,redis,configs,env,compose,caddy,subscription,bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)")" "$RESTORE_ONLY")"
         [[ "$custom" == "__PBM_BACK__" ]] && continue
         if [[ -n "$custom" ]]; then
           RESTORE_ONLY="$custom"
@@ -188,10 +188,12 @@ show_restore_summary() {
   fi
 
   case "${RESTORE_ONLY:-all}" in
-    all) components_label="$(tr_text "всё (база + redis + конфиги)" "everything (db + redis + configs)")" ;;
+    all,bedolaga|bedolaga,all) components_label="$(tr_text "полный (панель + Bedolaga)" "full (panel + Bedolaga)")" ;;
+    all) components_label="$(tr_text "всё (панель: база + redis + конфиги)" "everything (panel: db + redis + configs)")" ;;
     db) components_label="$(tr_text "только база PostgreSQL" "PostgreSQL database only")" ;;
     redis) components_label="$(tr_text "только Redis" "Redis only")" ;;
-    configs) components_label="$(tr_text "только конфиги (env/compose/caddy/subscription)" "configs only (env/compose/caddy/subscription)")" ;;
+    configs,bedolaga-configs|bedolaga-configs,configs) components_label="$(tr_text "конфиги (панель + Bedolaga)" "configs (panel + Bedolaga)")" ;;
+    configs) components_label="$(tr_text "только конфиги панели (env/compose/caddy/subscription)" "panel configs only (env/compose/caddy/subscription)")" ;;
     *) components_label="$(tr_text "кастом: " "custom: ")${RESTORE_ONLY}" ;;
   esac
 

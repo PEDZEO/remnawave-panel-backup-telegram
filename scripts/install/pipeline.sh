@@ -135,10 +135,10 @@ prompt_install_settings() {
   draw_header "$(tr_text "Состав резервной копии" "Backup scope")"
   show_back_hint
   paint "$CLR_MUTED" "$(tr_text "Выберите, какие данные включать в резервную копию." "Choose what to include in backup.")"
-  menu_option "1" "$(tr_text "Все (db + redis + configs)" "All (db + redis + configs)")"
+  menu_option "1" "$(tr_text "Полный (панель + Bedolaga)" "Full (panel + Bedolaga)")"
   menu_option "2" "$(tr_text "Только PostgreSQL (db)" "PostgreSQL only (db)")"
   menu_option "3" "$(tr_text "Только Redis (redis)" "Redis only (redis)")"
-  menu_option "4" "$(tr_text "Только конфиги (configs)" "Configs only (configs)")"
+  menu_option "4" "$(tr_text "Только конфиги (панель + Bedolaga)" "Configs only (panel + Bedolaga)")"
   menu_option "5" "$(tr_text "Свой список (пример: db,env,compose)" "Custom list (example: db,env,compose)")"
   print_separator
   while true; do
@@ -147,12 +147,12 @@ prompt_install_settings() {
       return 1
     fi
     case "$include_choice" in
-      1) BACKUP_INCLUDE="all"; break ;;
+      1) BACKUP_INCLUDE="all,bedolaga"; break ;;
       2) BACKUP_INCLUDE="db"; break ;;
       3) BACKUP_INCLUDE="redis"; break ;;
-      4) BACKUP_INCLUDE="configs"; break ;;
+      4) BACKUP_INCLUDE="configs,bedolaga-configs"; break ;;
       5)
-        val="$(ask_value "$(tr_text "Введите компоненты через запятую (all,db,redis,configs,env,compose,caddy,subscription)" "Enter comma-separated components (all,db,redis,configs,env,compose,caddy,subscription)")" "$BACKUP_INCLUDE")"
+        val="$(ask_value "$(tr_text "Введите компоненты через запятую (all,db,redis,configs,env,compose,caddy,subscription,bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)" "Enter comma-separated components (all,db,redis,configs,env,compose,caddy,subscription,bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)")" "$BACKUP_INCLUDE")"
         [[ "$val" == "__PBM_BACK__" ]] && continue
         [[ -n "$val" ]] || { paint "$CLR_WARN" "$(tr_text "Список не может быть пустым." "List cannot be empty.")"; continue; }
         BACKUP_INCLUDE="$val"

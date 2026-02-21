@@ -7,11 +7,16 @@ KEEP_DAYS="${KEEP_DAYS:-14}"
 MAX_TG_PART_SIZE="${MAX_TG_PART_SIZE:-45M}"
 TG_SINGLE_LIMIT_BYTES="${TG_SINGLE_LIMIT_BYTES:-50331648}"
 REMNAWAVE_DIR="${REMNAWAVE_DIR:-}"
+BEDOLAGA_BOT_DIR="${BEDOLAGA_BOT_DIR:-}"
+BEDOLAGA_CABINET_DIR="${BEDOLAGA_CABINET_DIR:-}"
 BACKUP_ENV_PATH="${BACKUP_ENV_PATH:-/etc/panel-backup.env}"
 BACKUP_LANG="${BACKUP_LANG:-ru}"
 BACKUP_ENCRYPT="${BACKUP_ENCRYPT:-0}"
 BACKUP_PASSWORD="${BACKUP_PASSWORD:-}"
 BACKUP_INCLUDE="${BACKUP_INCLUDE:-all}"
+BEDOLAGA_LOGS_STRATEGY="${BEDOLAGA_LOGS_STRATEGY:-recent}"
+BEDOLAGA_LOGS_MAX_FILES="${BEDOLAGA_LOGS_MAX_FILES:-20}"
+BEDOLAGA_LOGS_MAX_FILE_BYTES="${BEDOLAGA_LOGS_MAX_FILE_BYTES:-1048576}"
 
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 TIMESTAMP_SHORT="$(date -u +%m%d-%H%M%S)"
@@ -30,6 +35,10 @@ WANT_ENV=0
 WANT_COMPOSE=0
 WANT_CADDY=0
 WANT_SUBSCRIPTION=0
+WANT_BEDOLAGA_DB=0
+WANT_BEDOLAGA_REDIS=0
+WANT_BEDOLAGA_BOT=0
+WANT_BEDOLAGA_CABINET=0
 
 cleanup() {
   rm -rf "$WORKDIR"
@@ -71,6 +80,10 @@ normalize_backup_include() {
   WANT_COMPOSE=0
   WANT_CADDY=0
   WANT_SUBSCRIPTION=0
+  WANT_BEDOLAGA_DB=0
+  WANT_BEDOLAGA_REDIS=0
+  WANT_BEDOLAGA_BOT=0
+  WANT_BEDOLAGA_CABINET=0
 
   IFS=',' read -r -a __items <<< "$raw"
   for item in "${__items[@]}"; do
@@ -95,6 +108,20 @@ normalize_backup_include() {
       compose) WANT_COMPOSE=1 ;;
       caddy) WANT_CADDY=1 ;;
       subscription) WANT_SUBSCRIPTION=1 ;;
+      bedolaga)
+        WANT_BEDOLAGA_DB=1
+        WANT_BEDOLAGA_REDIS=1
+        WANT_BEDOLAGA_BOT=1
+        WANT_BEDOLAGA_CABINET=1
+        ;;
+      bedolaga-configs)
+        WANT_BEDOLAGA_BOT=1
+        WANT_BEDOLAGA_CABINET=1
+        ;;
+      bedolaga-db) WANT_BEDOLAGA_DB=1 ;;
+      bedolaga-redis) WANT_BEDOLAGA_REDIS=1 ;;
+      bedolaga-bot) WANT_BEDOLAGA_BOT=1 ;;
+      bedolaga-cabinet) WANT_BEDOLAGA_CABINET=1 ;;
       "") ;;
       *)
         if [[ -n "$unknown_items" ]]; then
@@ -116,6 +143,10 @@ normalize_backup_include() {
   (( WANT_COMPOSE == 1 )) && has_any=1
   (( WANT_CADDY == 1 )) && has_any=1
   (( WANT_SUBSCRIPTION == 1 )) && has_any=1
+  (( WANT_BEDOLAGA_DB == 1 )) && has_any=1
+  (( WANT_BEDOLAGA_REDIS == 1 )) && has_any=1
+  (( WANT_BEDOLAGA_BOT == 1 )) && has_any=1
+  (( WANT_BEDOLAGA_CABINET == 1 )) && has_any=1
 
   if (( has_any == 0 )); then
     fail "$(t "не выбран ни один компонент backup (BACKUP_INCLUDE)" "no backup components selected (BACKUP_INCLUDE)")"
@@ -132,6 +163,10 @@ backup_scope_text() {
   (( WANT_COMPOSE == 1 )) && out="${out}compose,"
   (( WANT_CADDY == 1 )) && out="${out}caddy,"
   (( WANT_SUBSCRIPTION == 1 )) && out="${out}subscription,"
+  (( WANT_BEDOLAGA_DB == 1 )) && out="${out}bedolaga-db,"
+  (( WANT_BEDOLAGA_REDIS == 1 )) && out="${out}bedolaga-redis,"
+  (( WANT_BEDOLAGA_BOT == 1 )) && out="${out}bedolaga-bot,"
+  (( WANT_BEDOLAGA_CABINET == 1 )) && out="${out}bedolaga-cabinet,"
   out="${out%,}"
   printf '%s' "$out"
 }
@@ -148,7 +183,45 @@ t() {
 
 detect_remnawave_dir() {
   local guessed
+
+  is_remnawave_panel_dir() {
+    local d="$1"
+    local compose_file="$d/docker-compose.yml"
+    [[ -f "$d/.env" && -f "$compose_file" ]] || return 1
+
+    if grep -Eq 'container_name:[[:space:]]*remnawave_bot(_db|_redis)?([[:space:]]|$)' "$compose_file"; then
+      return 1
+    fi
+
+    if grep -Eq 'container_name:[[:space:]]*remnawave(-db|-redis|-caddy|-subscription-page)?([[:space:]]|$)' "$compose_file"; then
+      return 0
+    fi
+
+    [[ -d "$d/caddy" || -d "$d/subscription" ]] || return 1
+    return 0
+  }
+
   for guessed in "${REMNAWAVE_DIR}" "/opt/remnawave" "/srv/remnawave" "/root/remnawave" "/home/remnawave"; do
+    [[ -n "$guessed" ]] || continue
+    if is_remnawave_panel_dir "$guessed"; then
+      echo "$guessed"
+      return 0
+    fi
+  done
+
+  guessed="$(docker inspect remnawave --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' 2>/dev/null || true)"
+  if [[ -n "$guessed" ]] && is_remnawave_panel_dir "$guessed"; then
+    echo "$guessed"
+    return 0
+  fi
+
+  guessed="$(find /opt /srv /root /home -maxdepth 4 -type f -name '.env' 2>/dev/null | while read -r f; do d="$(dirname "$f")"; is_remnawave_panel_dir "$d" || continue; echo "$d"; break; done)"
+  [[ -n "$guessed" ]] && echo "$guessed"
+}
+
+detect_bedolaga_bot_dir() {
+  local guessed=""
+  for guessed in "${BEDOLAGA_BOT_DIR}" "/root/remnawave-bedolaga-telegram-bot" "/opt/remnawave-bedolaga-telegram-bot"; do
     [[ -n "$guessed" ]] || continue
     if [[ -f "$guessed/.env" && -f "$guessed/docker-compose.yml" ]]; then
       echo "$guessed"
@@ -156,13 +229,33 @@ detect_remnawave_dir() {
     fi
   done
 
-  guessed="$(docker inspect remnawave --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' 2>/dev/null || true)"
+  guessed="$(docker inspect remnawave_bot --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' 2>/dev/null || true)"
   if [[ -n "$guessed" && -f "$guessed/.env" && -f "$guessed/docker-compose.yml" ]]; then
     echo "$guessed"
     return 0
   fi
 
-  guessed="$(find /opt /srv /root /home -maxdepth 3 -type f -name '.env' 2>/dev/null | while read -r f; do d="$(dirname "$f")"; [[ -f "$d/docker-compose.yml" ]] || continue; grep -q '^POSTGRES_USER=' "$f" 2>/dev/null || continue; grep -q '^POSTGRES_DB=' "$f" 2>/dev/null || continue; echo "$d"; break; done)"
+  guessed="$(find /home -maxdepth 5 -type d -name 'remnawave-bedolaga-telegram-bot' 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
+  [[ -n "$guessed" ]] && echo "$guessed"
+}
+
+detect_bedolaga_cabinet_dir() {
+  local guessed=""
+  for guessed in "${BEDOLAGA_CABINET_DIR}" "/root/bedolaga-cabinet" "/root/cabinet-frontend" "/opt/bedolaga-cabinet"; do
+    [[ -n "$guessed" ]] || continue
+    if [[ -f "$guessed/.env" && -f "$guessed/docker-compose.yml" ]]; then
+      echo "$guessed"
+      return 0
+    fi
+  done
+
+  guessed="$(docker inspect cabinet_frontend --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' 2>/dev/null || true)"
+  if [[ -n "$guessed" && -f "$guessed/.env" && -f "$guessed/docker-compose.yml" ]]; then
+    echo "$guessed"
+    return 0
+  fi
+
+  guessed="$(find /home -maxdepth 5 -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' \) 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
   [[ -n "$guessed" ]] && echo "$guessed"
 }
 
@@ -180,6 +273,9 @@ container_version_label() {
   local version_from_tag=""
   local revision=""
   local env_version=""
+  local compose_workdir=""
+  local package_json=""
+  local package_version=""
 
   image_ref="$(container_image_ref "$name")"
   image_id="$(docker inspect -f '{{.Image}}' "$name" 2>/dev/null || true)"
@@ -234,6 +330,25 @@ container_version_label() {
     return 0
   fi
 
+  compose_workdir="$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' "$name" 2>/dev/null || true)"
+  if [[ -n "$compose_workdir" ]]; then
+    package_json="${compose_workdir}/package.json"
+    if [[ -f "$package_json" ]]; then
+      package_version="$(awk -F'"' '/"version"[[:space:]]*:[[:space:]]*"/ { print $4; exit }' "$package_json" 2>/dev/null || true)"
+      if [[ -n "$package_version" ]]; then
+        printf '%s' "$package_version"
+        return 0
+      fi
+    fi
+    if [[ -d "${compose_workdir}/.git" ]]; then
+      revision="$(git -C "$compose_workdir" rev-parse --short=12 HEAD 2>/dev/null || true)"
+      if [[ -n "$revision" ]]; then
+        printf '%s' "sha-${revision}"
+        return 0
+      fi
+    fi
+  fi
+
   if [[ -n "$image_id" ]]; then
     image_id="${image_id#sha256:}"
     printf '%s' "sha-${image_id:0:12}"
@@ -255,6 +370,36 @@ container_version_label() {
     return 0
   fi
   printf '%s' "$tail"
+}
+
+has_panel_scope() {
+  if (( WANT_DB == 1 || WANT_REDIS == 1 || WANT_ENV == 1 || WANT_COMPOSE == 1 || WANT_CADDY == 1 || WANT_SUBSCRIPTION == 1 )); then
+    return 0
+  fi
+  return 1
+}
+
+has_bedolaga_scope() {
+  if (( WANT_BEDOLAGA_DB == 1 || WANT_BEDOLAGA_REDIS == 1 || WANT_BEDOLAGA_BOT == 1 || WANT_BEDOLAGA_CABINET == 1 )); then
+    return 0
+  fi
+  return 1
+}
+
+backup_scope_profile() {
+  local panel=0
+  local bedolaga=0
+  has_panel_scope && panel=1
+  has_bedolaga_scope && bedolaga=1
+  if (( panel == 1 && bedolaga == 1 )); then
+    printf '%s' "mixed"
+    return 0
+  fi
+  if (( bedolaga == 1 )); then
+    printf '%s' "bedolaga"
+    return 0
+  fi
+  printf '%s' "panel"
 }
 
 send_telegram_text() {
@@ -283,6 +428,63 @@ copy_backup_entry() {
   if ! cp -a "$source_path" "$target_path" 2>/dev/null; then
     fail "$(t "не удалось добавить в backup" "failed to include in backup"): ${label}"
   fi
+}
+
+backup_bedolaga_logs() {
+  local source_dir="$1"
+  local target_dir="$2"
+  local strategy="${BEDOLAGA_LOGS_STRATEGY,,}"
+  local max_files="${BEDOLAGA_LOGS_MAX_FILES}"
+  local max_file_bytes="${BEDOLAGA_LOGS_MAX_FILE_BYTES}"
+  local selected_files=()
+  local entry=""
+  local src=""
+  local rel=""
+  local dst=""
+
+  [[ -d "$source_dir" ]] || return 0
+  mkdir -p "$target_dir"
+
+  if [[ "$strategy" == "none" ]]; then
+    BACKUP_ITEMS+=("- Bedolaga bot logs: skipped (strategy=none)")
+    return 0
+  fi
+
+  if [[ "$strategy" == "full" ]]; then
+    copy_backup_entry "$source_dir" "$target_dir" "bedolaga bot logs"
+    BACKUP_ITEMS+=("- Bedolaga bot logs: full copy ($(du -sh "$target_dir/logs" | awk '{print $1}'))")
+    return 0
+  fi
+
+  [[ "$max_files" =~ ^[0-9]+$ ]] || max_files=20
+  [[ "$max_file_bytes" =~ ^[0-9]+$ ]] || max_file_bytes=1048576
+  (( max_files > 0 )) || max_files=20
+  (( max_file_bytes > 0 )) || max_file_bytes=1048576
+
+  while IFS= read -r entry; do
+    src="${entry#* }"
+    selected_files+=("$src")
+  done < <(find "$source_dir" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -n "$max_files")
+
+  for src in "${selected_files[@]}"; do
+    rel="${src#"$source_dir"/}"
+    dst="${target_dir}/logs/${rel}"
+    mkdir -p "$(dirname "$dst")"
+    if [[ ! -f "$src" ]]; then
+      continue
+    fi
+    if [[ ! -s "$src" ]]; then
+      : > "$dst"
+      continue
+    fi
+    if [[ $(stat -c '%s' "$src" 2>/dev/null || echo 0) -le "$max_file_bytes" ]]; then
+      cp -a "$src" "$dst"
+    else
+      tail -c "$max_file_bytes" "$src" > "$dst"
+    fi
+  done
+
+  BACKUP_ITEMS+=("- Bedolaga bot logs: recent (${#selected_files[@]} files, <=${max_file_bytes} bytes each)")
 }
 
 send_telegram_file() {
@@ -340,8 +542,14 @@ add_backup_item() {
 
 fail() {
   local msg="$1"
+  local error_label=""
   log "ERROR: ${msg}"
-  send_telegram_text "ERROR: $(t "Ошибка backup панели" "Panel backup error"): ${HOSTNAME_FQDN}
+  case "$(backup_scope_profile)" in
+    bedolaga) error_label="$(t "Ошибка backup бота/кабинета" "Bot/cabinet backup error")" ;;
+    mixed) error_label="$(t "Ошибка backup панели + бота/кабинета" "Panel + bot/cabinet backup error")" ;;
+    *) error_label="$(t "Ошибка backup панели" "Panel backup error")" ;;
+  esac
+  send_telegram_text "ERROR: ${error_label}: ${HOSTNAME_FQDN}
 ${msg}
 $(t "Время (локальное):" "Time (local):") ${TIMESTAMP_LOCAL}
 $(t "Время (UTC):" "Time (UTC):") ${TIMESTAMP_UTC_HUMAN}"
@@ -350,7 +558,7 @@ $(t "Время (UTC):" "Time (UTC):") ${TIMESTAMP_UTC_HUMAN}"
 
 ensure_dependencies() {
   local cmd=""
-  for cmd in docker tar curl split du stat find awk grep sed flock; do
+  for cmd in docker tar curl split du stat find awk grep sed flock tail; do
     command -v "$cmd" >/dev/null 2>&1 || fail "$(t "не найдена команда" "missing command"): $cmd"
   done
   if [[ "${BACKUP_ENCRYPT:-0}" == "1" ]]; then
@@ -365,14 +573,28 @@ check_container_present() {
 
 estimate_required_bytes() {
   local rem_size=0
+  local bot_size=0
+  local cabinet_size=0
   local safety_bytes=$((200 * 1024 * 1024))
   if (( WANT_ENV == 1 || WANT_COMPOSE == 1 || WANT_CADDY == 1 || WANT_SUBSCRIPTION == 1 )); then
     rem_size="$(du -sb "$REMNAWAVE_DIR" 2>/dev/null | awk '{print $1}' || echo 0)"
   fi
+  if (( WANT_BEDOLAGA_BOT == 1 )); then
+    bot_size="$(du -sb "$BEDOLAGA_BOT_DIR" 2>/dev/null | awk '{print $1}' || echo 0)"
+  fi
+  if (( WANT_BEDOLAGA_CABINET == 1 )); then
+    cabinet_size="$(du -sb "$BEDOLAGA_CABINET_DIR" 2>/dev/null | awk '{print $1}' || echo 0)"
+  fi
   if [[ ! "$rem_size" =~ ^[0-9]+$ ]]; then
     rem_size=0
   fi
-  echo $((rem_size + safety_bytes))
+  if [[ ! "$bot_size" =~ ^[0-9]+$ ]]; then
+    bot_size=0
+  fi
+  if [[ ! "$cabinet_size" =~ ^[0-9]+$ ]]; then
+    cabinet_size=0
+  fi
+  echo $((rem_size + bot_size + cabinet_size + safety_bytes))
 }
 
 available_backup_root_bytes() {
@@ -386,6 +608,8 @@ preflight_checks() {
   ensure_dependencies
   (( WANT_DB == 1 )) && check_container_present remnawave-db
   (( WANT_REDIS == 1 )) && check_container_present remnawave-redis
+  (( WANT_BEDOLAGA_DB == 1 )) && check_container_present remnawave_bot_db
+  (( WANT_BEDOLAGA_REDIS == 1 )) && check_container_present remnawave_bot_redis
 
   mkdir -p "$BACKUP_ROOT"
   need_bytes="$(estimate_required_bytes)"
@@ -410,19 +634,27 @@ normalize_env_file_format() {
 
 build_caption() {
   local file_label="$1"
+  local profile=""
+  local title=""
+  local scope_label=""
   local file_label_e=""
   local host_e=""
   local time_e=""
   local size_e=""
   local panel_e=""
   local sub_e=""
+  local bot_e=""
+  local cabinet_e=""
   local enc_label=""
+  local versions_block=""
   file_label_e="$(escape_html "$file_label")"
   host_e="$(escape_html "$HOSTNAME_FQDN")"
   time_e="$(escape_html "$TIMESTAMP_LOCAL")"
   size_e="$(escape_html "$ARCHIVE_SIZE_HUMAN")"
   panel_e="$(escape_html "$PANEL_VERSION")"
   sub_e="$(escape_html "$SUBSCRIPTION_VERSION")"
+  bot_e="$(escape_html "$BEDOLAGA_BOT_VERSION")"
+  cabinet_e="$(escape_html "$BEDOLAGA_CABINET_VERSION")"
 
   if [[ "$BACKUP_ENCRYPT" == "1" ]]; then
     enc_label="$(t "включено (GPG)" "enabled (GPG)")"
@@ -430,20 +662,48 @@ build_caption() {
     enc_label="$(t "выключено" "disabled")"
   fi
 
-  printf '%s' "📦 <b>Backup Remnawave</b>
+  profile="$(backup_scope_profile)"
+  case "$profile" in
+    bedolaga)
+      title="$(t "Backup Bedolaga (бот + кабинет)" "Backup Bedolaga (bot + cabinet)")"
+      scope_label="bedolaga-only"
+      versions_block="🤖 <b>$(t "Версия Bedolaga бота" "Bedolaga bot version"):</b> <code>${bot_e}</code>
+🗂 <b>$(t "Версия Bedolaga кабинета" "Bedolaga cabinet version"):</b> <code>${cabinet_e}</code>"
+      ;;
+    mixed)
+      title="$(t "Backup Remnawave + Bedolaga" "Backup Remnawave + Bedolaga")"
+      scope_label="mixed"
+      versions_block="🧩 <b>$(t "Версия панели" "Panel version"):</b> <code>${panel_e}</code>
+🧷 <b>$(t "Версия подписки" "Subscription version"):</b> <code>${sub_e}</code>
+🤖 <b>$(t "Версия Bedolaga бота" "Bedolaga bot version"):</b> <code>${bot_e}</code>
+🗂 <b>$(t "Версия Bedolaga кабинета" "Bedolaga cabinet version"):</b> <code>${cabinet_e}</code>"
+      ;;
+    *)
+      title="Backup Remnawave"
+      scope_label="panel-only"
+      versions_block="🧩 <b>$(t "Версия панели" "Panel version"):</b> <code>${panel_e}</code>
+🧷 <b>$(t "Версия подписки" "Subscription version"):</b> <code>${sub_e}</code>"
+      ;;
+  esac
+
+  printf '%s' "📦 <b>${title}</b>
 📁 <b>$(t "Файл" "File"):</b> <code>${file_label_e}</code>
 🖥 <b>$(t "Хост" "Host"):</b> <code>${host_e}</code>
 🕒 <b>$(t "Время" "Time"):</b> <code>${time_e}</code>
 📏 <b>$(t "Размер" "Size"):</b> <code>${size_e}</code>
-🧩 <b>$(t "Версия панели" "Panel version"):</b> <code>${panel_e}</code>
-🧷 <b>$(t "Версия подписки" "Subscription version"):</b> <code>${sub_e}</code>
+🎯 <b>Scope:</b> <code>${scope_label}</code>
+${versions_block}
 🔐 <b>$(t "Шифрование" "Encryption"):</b> <code>${enc_label}</code>
 📋 <b>$(t "Состав" "Contents"):</b> <code>$(backup_scope_text)</code>"
 }
 
 build_caption_plain() {
   local file_label="$1"
+  local profile=""
+  local title=""
+  local scope_label=""
   local enc_label=""
+  local versions_block=""
 
   if [[ "$BACKUP_ENCRYPT" == "1" ]]; then
     enc_label="$(t "включено (GPG)" "enabled (GPG)")"
@@ -451,13 +711,37 @@ build_caption_plain() {
     enc_label="$(t "выключено" "disabled")"
   fi
 
-  printf '%s' "Backup Remnawave
+  profile="$(backup_scope_profile)"
+  case "$profile" in
+    bedolaga)
+      title="$(t "Backup Bedolaga (бот + кабинет)" "Backup Bedolaga (bot + cabinet)")"
+      scope_label="bedolaga-only"
+      versions_block="$(t "Версия Bedolaga бота" "Bedolaga bot version"): ${BEDOLAGA_BOT_VERSION}
+$(t "Версия Bedolaga кабинета" "Bedolaga cabinet version"): ${BEDOLAGA_CABINET_VERSION}"
+      ;;
+    mixed)
+      title="$(t "Backup Remnawave + Bedolaga" "Backup Remnawave + Bedolaga")"
+      scope_label="mixed"
+      versions_block="$(t "Версия панели" "Panel version"): ${PANEL_VERSION}
+$(t "Версия подписки" "Subscription version"): ${SUBSCRIPTION_VERSION}
+$(t "Версия Bedolaga бота" "Bedolaga bot version"): ${BEDOLAGA_BOT_VERSION}
+$(t "Версия Bedolaga кабинета" "Bedolaga cabinet version"): ${BEDOLAGA_CABINET_VERSION}"
+      ;;
+    *)
+      title="Backup Remnawave"
+      scope_label="panel-only"
+      versions_block="$(t "Версия панели" "Panel version"): ${PANEL_VERSION}
+$(t "Версия подписки" "Subscription version"): ${SUBSCRIPTION_VERSION}"
+      ;;
+  esac
+
+  printf '%s' "${title}
 $(t "Файл" "File"): ${file_label}
 $(t "Хост" "Host"): ${HOSTNAME_FQDN}
 $(t "Время" "Time"): ${TIMESTAMP_LOCAL}
 $(t "Размер" "Size"): ${ARCHIVE_SIZE_HUMAN}
-$(t "Версия панели" "Panel version"): ${PANEL_VERSION}
-$(t "Версия подписки" "Subscription version"): ${SUBSCRIPTION_VERSION}
+Scope: ${scope_label}
+${versions_block}
 $(t "Шифрование" "Encryption"): ${enc_label}
 $(t "Состав" "Contents"): $(backup_scope_text)"
 }
@@ -477,10 +761,16 @@ if ! flock -n 9; then
 fi
 
 REMNAWAVE_DIR="${REMNAWAVE_DIR:-$(detect_remnawave_dir || true)}"
+BEDOLAGA_BOT_DIR="${BEDOLAGA_BOT_DIR:-$(detect_bedolaga_bot_dir || true)}"
+BEDOLAGA_CABINET_DIR="${BEDOLAGA_CABINET_DIR:-$(detect_bedolaga_cabinet_dir || true)}"
 PANEL_VERSION="$(container_version_label remnawave)"
 SUBSCRIPTION_VERSION="$(container_version_label remnawave-subscription-page)"
+BEDOLAGA_BOT_VERSION="$(container_version_label remnawave_bot)"
+BEDOLAGA_CABINET_VERSION="$(container_version_label cabinet_frontend)"
 POSTGRES_USER=""
 POSTGRES_DB=""
+BEDOLAGA_POSTGRES_USER=""
+BEDOLAGA_POSTGRES_DB=""
 
 [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]] || fail "не найден TELEGRAM_BOT_TOKEN в ${BACKUP_ENV_PATH}"
 [[ -n "${TELEGRAM_ADMIN_ID:-}" ]] || fail "не найден TELEGRAM_ADMIN_ID в ${BACKUP_ENV_PATH}"
@@ -491,6 +781,14 @@ fi
 if (( WANT_DB == 1 || WANT_ENV == 1 )); then
   [[ -f "${REMNAWAVE_DIR}/.env" ]] || fail "не найден ${REMNAWAVE_DIR}/.env"
 fi
+if (( WANT_BEDOLAGA_BOT == 1 || WANT_BEDOLAGA_DB == 1 )); then
+  [[ -d "$BEDOLAGA_BOT_DIR" ]] || fail "не найдена директория ${BEDOLAGA_BOT_DIR}"
+  [[ -f "${BEDOLAGA_BOT_DIR}/.env" ]] || fail "не найден ${BEDOLAGA_BOT_DIR}/.env"
+fi
+if (( WANT_BEDOLAGA_CABINET == 1 )); then
+  [[ -d "$BEDOLAGA_CABINET_DIR" ]] || fail "не найдена директория ${BEDOLAGA_CABINET_DIR}"
+  [[ -f "${BEDOLAGA_CABINET_DIR}/.env" ]] || fail "не найден ${BEDOLAGA_CABINET_DIR}/.env"
+fi
 preflight_checks
 
 if (( WANT_DB == 1 )); then
@@ -498,10 +796,21 @@ if (( WANT_DB == 1 )); then
   POSTGRES_DB="$(grep -E '^POSTGRES_DB=' "${REMNAWAVE_DIR}/.env" | head -n1 | cut -d= -f2-)"
   [[ -n "$POSTGRES_USER" && -n "$POSTGRES_DB" ]] || fail "не удалось прочитать POSTGRES_USER/POSTGRES_DB"
 fi
+if (( WANT_BEDOLAGA_DB == 1 )); then
+  BEDOLAGA_POSTGRES_USER="$(grep -E '^POSTGRES_USER=' "${BEDOLAGA_BOT_DIR}/.env" | head -n1 | cut -d= -f2-)"
+  BEDOLAGA_POSTGRES_DB="$(grep -E '^POSTGRES_DB=' "${BEDOLAGA_BOT_DIR}/.env" | head -n1 | cut -d= -f2-)"
+  [[ -n "$BEDOLAGA_POSTGRES_USER" && -n "$BEDOLAGA_POSTGRES_DB" ]] || fail "не удалось прочитать POSTGRES_USER/POSTGRES_DB для bedolaga"
+fi
 
 mkdir -p "$BACKUP_ROOT"
 if (( WANT_ENV == 1 || WANT_COMPOSE == 1 || WANT_CADDY == 1 || WANT_SUBSCRIPTION == 1 )); then
   mkdir -p "$WORKDIR/payload/remnawave"
+fi
+if (( WANT_BEDOLAGA_BOT == 1 )); then
+  mkdir -p "$WORKDIR/payload/bedolaga/bot"
+fi
+if (( WANT_BEDOLAGA_CABINET == 1 )); then
+  mkdir -p "$WORKDIR/payload/bedolaga/cabinet"
 fi
 
 if (( WANT_DB == 1 )); then
@@ -535,15 +844,73 @@ if (( WANT_COMPOSE == 1 || WANT_ENV == 1 || WANT_CADDY == 1 || WANT_SUBSCRIPTION
   (( WANT_SUBSCRIPTION == 1 )) && add_backup_item "Subscription page (remnawave/subscription)" "$WORKDIR/payload/remnawave/subscription"
 fi
 
+if (( WANT_BEDOLAGA_DB == 1 )); then
+  log "Создаю дамп PostgreSQL Bedolaga (${BEDOLAGA_POSTGRES_DB})"
+  docker exec remnawave_bot_db pg_dump -U "$BEDOLAGA_POSTGRES_USER" -d "$BEDOLAGA_POSTGRES_DB" -Fc -Z9 > "$WORKDIR/payload/bedolaga-bot-db.dump" \
+    || fail "ошибка pg_dump remnawave_bot_db"
+  BACKUP_ITEMS+=("- Bedolaga PostgreSQL dump: включено ($(du -h "$WORKDIR/payload/bedolaga-bot-db.dump" | awk '{print $1}'))")
+fi
+
+if (( WANT_BEDOLAGA_REDIS == 1 )); then
+  log "Сохраняю Redis dump Bedolaga"
+  if ! docker exec remnawave_bot_redis sh -lc 'redis-cli save >/dev/null 2>&1'; then
+    log "$(t "Предупреждение: команда сохранения Redis Bedolaga вернула ошибку, пробую забрать существующий dump.rdb" "Warning: Bedolaga Redis save command failed, trying to copy existing dump.rdb")"
+  fi
+  docker cp remnawave_bot_redis:/data/dump.rdb "$WORKDIR/payload/bedolaga-bot-redis.rdb" 2>/dev/null \
+    || fail "$(t "не удалось получить Redis dump Bedolaga" "failed to get Bedolaga Redis dump")"
+  [[ -f "$WORKDIR/payload/bedolaga-bot-redis.rdb" ]] \
+    || fail "$(t "Redis dump Bedolaga не найден после копирования" "Bedolaga Redis dump not found after copy")"
+  BACKUP_ITEMS+=("- Bedolaga Redis dump: включено ($(du -h "$WORKDIR/payload/bedolaga-bot-redis.rdb" | awk '{print $1}'))")
+fi
+
+if (( WANT_BEDOLAGA_BOT == 1 )); then
+  log "Копирую данные Bedolaga бота"
+  copy_backup_entry "${BEDOLAGA_BOT_DIR}/docker-compose.yml" "$WORKDIR/payload/bedolaga/bot/" "bedolaga bot docker-compose.yml"
+  copy_backup_entry "${BEDOLAGA_BOT_DIR}/.env" "$WORKDIR/payload/bedolaga/bot/" "bedolaga bot .env"
+  [[ -f "${BEDOLAGA_BOT_DIR}/docker-compose.override.yml" ]] && copy_backup_entry "${BEDOLAGA_BOT_DIR}/docker-compose.override.yml" "$WORKDIR/payload/bedolaga/bot/" "bedolaga bot docker-compose.override.yml"
+  if [[ -d "${BEDOLAGA_BOT_DIR}/data" ]]; then
+    copy_backup_entry "${BEDOLAGA_BOT_DIR}/data" "$WORKDIR/payload/bedolaga/bot/" "bedolaga bot data"
+    rm -rf "$WORKDIR/payload/bedolaga/bot/data/backups"
+  fi
+  backup_bedolaga_logs "${BEDOLAGA_BOT_DIR}/logs" "$WORKDIR/payload/bedolaga/bot"
+  [[ -d "${BEDOLAGA_BOT_DIR}/locales" ]] && copy_backup_entry "${BEDOLAGA_BOT_DIR}/locales" "$WORKDIR/payload/bedolaga/bot/" "bedolaga bot locales"
+  [[ -f "${BEDOLAGA_BOT_DIR}/vpn_logo.png" ]] && copy_backup_entry "${BEDOLAGA_BOT_DIR}/vpn_logo.png" "$WORKDIR/payload/bedolaga/bot/" "bedolaga bot vpn_logo.png"
+  add_backup_item "Bedolaga bot ENV (.env)" "$WORKDIR/payload/bedolaga/bot/.env"
+  add_backup_item "Bedolaga bot compose (docker-compose.yml)" "$WORKDIR/payload/bedolaga/bot/docker-compose.yml"
+  add_backup_item "Bedolaga bot data (data, without backups)" "$WORKDIR/payload/bedolaga/bot/data"
+  add_backup_item "Bedolaga bot logs (logs subset)" "$WORKDIR/payload/bedolaga/bot/logs"
+fi
+
+if (( WANT_BEDOLAGA_CABINET == 1 )); then
+  log "Копирую данные Bedolaga кабинета"
+  copy_backup_entry "${BEDOLAGA_CABINET_DIR}/docker-compose.yml" "$WORKDIR/payload/bedolaga/cabinet/" "bedolaga cabinet docker-compose.yml"
+  copy_backup_entry "${BEDOLAGA_CABINET_DIR}/.env" "$WORKDIR/payload/bedolaga/cabinet/" "bedolaga cabinet .env"
+  [[ -f "${BEDOLAGA_CABINET_DIR}/docker-compose.override.yml" ]] && copy_backup_entry "${BEDOLAGA_CABINET_DIR}/docker-compose.override.yml" "$WORKDIR/payload/bedolaga/cabinet/" "bedolaga cabinet docker-compose.override.yml"
+  add_backup_item "Bedolaga cabinet ENV (.env)" "$WORKDIR/payload/bedolaga/cabinet/.env"
+  add_backup_item "Bedolaga cabinet compose (docker-compose.yml)" "$WORKDIR/payload/bedolaga/cabinet/docker-compose.yml"
+fi
+
 cat > "$WORKDIR/payload/backup-info.txt" <<INFO
 timestamp_utc=${TIMESTAMP}
 host=${HOSTNAME_FQDN}
 postgres_db=${POSTGRES_DB}
 postgres_user=${POSTGRES_USER}
+bedolaga_postgres_db=${BEDOLAGA_POSTGRES_DB}
+bedolaga_postgres_user=${BEDOLAGA_POSTGRES_USER}
+remnawave_dir=${REMNAWAVE_DIR}
+bedolaga_bot_dir=${BEDOLAGA_BOT_DIR}
+bedolaga_cabinet_dir=${BEDOLAGA_CABINET_DIR}
 remnawave_image=$(docker inspect remnawave --format '{{.Config.Image}}' 2>/dev/null || echo unknown)
 remnawave_caddy_image=$(docker inspect remnawave-caddy --format '{{.Config.Image}}' 2>/dev/null || echo unknown)
+bedolaga_bot_image=$(docker inspect remnawave_bot --format '{{.Config.Image}}' 2>/dev/null || echo unknown)
+bedolaga_cabinet_image=$(docker inspect cabinet_frontend --format '{{.Config.Image}}' 2>/dev/null || echo unknown)
 panel_version=${PANEL_VERSION}
 subscription_version=${SUBSCRIPTION_VERSION}
+bedolaga_bot_version=${BEDOLAGA_BOT_VERSION}
+bedolaga_cabinet_version=${BEDOLAGA_CABINET_VERSION}
+bedolaga_logs_strategy=${BEDOLAGA_LOGS_STRATEGY}
+bedolaga_logs_max_files=${BEDOLAGA_LOGS_MAX_FILES}
+bedolaga_logs_max_file_bytes=${BEDOLAGA_LOGS_MAX_FILE_BYTES}
 backup_include=${BACKUP_INCLUDE}
 INFO
 

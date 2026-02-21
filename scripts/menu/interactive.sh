@@ -16,6 +16,127 @@ run_component_flow_action() {
   return 1
 }
 
+run_backup_with_scope() {
+  local action_title="$1"
+  local include_scope="$2"
+  local old_include="${BACKUP_INCLUDE-__PBM_UNSET__}"
+
+  export BACKUP_INCLUDE="$include_scope"
+  draw_subheader "${action_title}"
+  if run_backup_now; then
+    paint "$CLR_OK" "$(tr_text "Резервная копия создана успешно." "Backup completed successfully.")"
+    show_operation_result_summary "${action_title}" "1"
+  else
+    paint "$CLR_DANGER" "$(tr_text "Ошибка создания резервной копии. Проверьте лог выше." "Backup failed. Check the log above.")"
+    show_operation_result_summary "${action_title}" "0"
+  fi
+
+  if [[ "$old_include" == "__PBM_UNSET__" ]]; then
+    unset BACKUP_INCLUDE
+  else
+    export BACKUP_INCLUDE="$old_include"
+  fi
+  wait_for_enter
+}
+
+run_restore_wizard_flow() {
+  local preset_restore_only="${1:-all,bedolaga}"
+  local lock_restore_only="${2:-0}"
+  local choice=""
+  local preset_label=""
+
+  draw_restore_step "1" "4" "$(tr_text "Выбор источника архива" "Select backup source")"
+  MODE="restore"
+  RESTORE_DRY_RUN=0
+  RESTORE_NO_RESTART=0
+  RESTORE_ONLY="$preset_restore_only"
+  if ! select_restore_source; then
+    return 1
+  fi
+
+  draw_restore_step "2" "4" "$(tr_text "Выбор компонентов" "Select components")"
+  if [[ "$lock_restore_only" == "1" ]]; then
+    case "$preset_restore_only" in
+      all) preset_label="$(tr_text "панель (all)" "panel (all)")" ;;
+      bedolaga) preset_label="$(tr_text "бот+кабинет (bedolaga)" "bot+cabinet (bedolaga)")" ;;
+      all,bedolaga|bedolaga,all) preset_label="$(tr_text "полный (all,bedolaga)" "full (all,bedolaga)")" ;;
+      *) preset_label="$preset_restore_only" ;;
+    esac
+    paint "$CLR_MUTED" "$(tr_text "Состав восстановления зафиксирован:" "Restore scope is locked:") ${preset_label}"
+  else
+    if ! select_restore_components; then
+      return 1
+    fi
+  fi
+
+  if ! ensure_restore_password_if_needed; then
+    return 1
+  fi
+
+  draw_restore_step "3" "4" "$(tr_text "Параметры запуска" "Execution options")"
+  paint "$CLR_MUTED" "$(tr_text "Подсказка: тестовый режим только проверяет шаги, боевой режим реально применяет изменения." "Tip: test mode only validates steps, real mode actually applies changes.")"
+  paint "$CLR_MUTED" "$(tr_text "Если отключить перезапуски, сервисы не будут автоматически перезапущены после восстановления." "If restarts are disabled, services will not be restarted automatically after restore.")"
+  while true; do
+    menu_option "1" "$(tr_text "Тестовый режим (без изменений, безопасно)" "Test mode (no changes, safe)")"
+    menu_option "2" "$(tr_text "Боевой режим (вносит изменения, риск)" "Real mode (applies changes, risk)")"
+    print_separator
+    read -r -p "$(tr_text "Выбор режима [1-2]: " "Select mode [1-2]: ")" choice
+    if is_back_command "$choice"; then
+      return 1
+    fi
+    case "$choice" in
+      1) RESTORE_DRY_RUN=1; break ;;
+      2) RESTORE_DRY_RUN=0; break ;;
+      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")" ;;
+    esac
+  done
+
+  while true; do
+    menu_option "1" "$(tr_text "Автоперезапуск после restore (быстрее)" "Auto-restart after restore (faster)")"
+    menu_option "2" "$(tr_text "Без автоперезапуска (осторожно)" "No auto-restart (safer)")"
+    print_separator
+    read -r -p "$(tr_text "Перезапуски [1-2]: " "Restarts [1-2]: ")" choice
+    if is_back_command "$choice"; then
+      return 1
+    fi
+    case "$choice" in
+      1) RESTORE_NO_RESTART=0; break ;;
+      2) RESTORE_NO_RESTART=1; break ;;
+      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")" ;;
+    esac
+  done
+
+  draw_restore_step "4" "4" "$(tr_text "Подтверждение и запуск" "Confirm and run")"
+  show_restore_summary
+  show_restore_safety_checklist
+  print_separator
+  if ! ask_yes_no "$(tr_text "Запустить восстановление с этими параметрами?" "Run restore with these parameters?")" "y"; then
+    paint "$CLR_WARN" "$(tr_text "Восстановление отменено." "Restore cancelled.")"
+    wait_for_enter
+    return 1
+  fi
+  if [[ "$RESTORE_DRY_RUN" != "1" ]]; then
+    if ! confirm_restore_phrase; then
+      paint "$CLR_WARN" "$(tr_text "Подтверждение не пройдено. Восстановление отменено." "Confirmation failed. Restore cancelled.")"
+      wait_for_enter
+      return 1
+    fi
+  fi
+  if [[ ! -x /usr/local/bin/panel-restore.sh ]]; then
+    install_files
+    write_env
+    $SUDO systemctl daemon-reload
+  fi
+  if run_restore; then
+    paint "$CLR_OK" "$(tr_text "Восстановление завершено." "Restore completed.")"
+    show_operation_result_summary "$(tr_text "Восстановление" "Backup restore")" "1"
+  else
+    paint "$CLR_DANGER" "$(tr_text "Ошибка восстановления. Проверьте лог выше." "Restore failed. Check the log above.")"
+    show_operation_result_summary "$(tr_text "Восстановление" "Backup restore")" "0"
+  fi
+  wait_for_enter
+}
+
 menu_section_remnawave_components() {
   local choice=""
   while true; do
@@ -30,9 +151,11 @@ menu_section_remnawave_components() {
     menu_option "6" "$(tr_text "Обновить страницу подписок" "Update subscription page")"
     menu_option "7" "$(tr_text "Установить Caddy для панели" "Install panel Caddy")"
     menu_option "8" "$(tr_text "Обновить Caddy для панели" "Update panel Caddy")"
-    menu_option "9" "$(tr_text "Назад" "Back")"
+    menu_option "9" "$(tr_text "Создать backup только панели" "Create panel-only backup")"
+    menu_option "10" "$(tr_text "Restore только панели" "Panel-only restore")"
+    menu_option "11" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-9]: " "Choice [1-9]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-11]: " "Choice [1-11]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
@@ -61,7 +184,13 @@ menu_section_remnawave_components() {
       8)
         run_component_flow_action "$(tr_text "Обновить Caddy для панели" "Update panel Caddy")" run_panel_caddy_update_flow
         ;;
-      9) break ;;
+      9)
+        run_backup_with_scope "$(tr_text "Backup только панели" "Panel-only backup")" "all"
+        ;;
+      10)
+        run_restore_wizard_flow "all" "1"
+        ;;
+      11) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
@@ -117,108 +246,48 @@ menu_section_remnanode_components() {
 menu_section_operations() {
   local choice=""
   while true; do
-    draw_subheader "$(tr_text "Раздел: Ручное управление" "Section: Manual backup control")"
+    draw_subheader "$(tr_text "Раздел: Центр backup/restore" "Section: Backup/restore center")"
     show_back_hint
-    paint "$CLR_MUTED" "$(tr_text "Здесь можно вручную: 1) создать резервную копию, 2) запустить восстановление." "Manually: 1) create backup, 2) restore backup.")"
-    menu_option "1" "$(tr_text "Создать резервную копию сейчас" "Create backup now")"
-    menu_option "2" "$(tr_text "Запустить восстановление" "Restore backup")"
-    menu_option "3" "$(tr_text "Назад" "Back")"
+    paint "$CLR_MUTED" "$(tr_text "Быстрые сценарии: отдельный backup для панели/Bedolaga, полный backup и отдельные restore-пресеты." "Quick scenarios: dedicated panel/Bedolaga backup, full backup and dedicated restore presets.")"
+    menu_option "1" "$(tr_text "Backup: полный (панель + Bedolaga)" "Backup: full (panel + Bedolaga)")"
+    menu_option "2" "$(tr_text "Backup: только панель" "Backup: panel only")"
+    menu_option "3" "$(tr_text "Backup: только Bedolaga" "Backup: Bedolaga only")"
+    menu_option "4" "$(tr_text "Backup: кастомный (из BACKUP_INCLUDE)" "Backup: custom (from BACKUP_INCLUDE)")"
+    menu_option "5" "$(tr_text "Restore: мастер (ручной выбор)" "Restore: wizard (manual select)")"
+    menu_option "6" "$(tr_text "Restore: только панель" "Restore: panel only")"
+    menu_option "7" "$(tr_text "Restore: только Bedolaga" "Restore: Bedolaga only")"
+    menu_option "8" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-8]: " "Choice [1-8]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
     case "$choice" in
       1)
-        draw_subheader "$(tr_text "Создание резервной копии" "Create backup")"
-        if run_backup_now; then
-          paint "$CLR_OK" "$(tr_text "Резервная копия создана успешно." "Backup completed successfully.")"
-          show_operation_result_summary "$(tr_text "Создание резервной копии" "Create backup")" "1"
-        else
-          paint "$CLR_DANGER" "$(tr_text "Ошибка создания резервной копии. Проверьте лог выше." "Backup failed. Check the log above.")"
-          show_operation_result_summary "$(tr_text "Создание резервной копии" "Create backup")" "0"
-        fi
-        wait_for_enter
+        run_backup_with_scope "$(tr_text "Backup: полный (панель + Bedolaga)" "Backup: full (panel + Bedolaga)")" "all,bedolaga"
         ;;
       2)
-        draw_restore_step "1" "4" "$(tr_text "Выбор источника архива" "Select backup source")"
-        MODE="restore"
-        RESTORE_DRY_RUN=0
-        RESTORE_NO_RESTART=0
-        RESTORE_ONLY="all"
-        if ! select_restore_source; then
-          continue
-        fi
-        draw_restore_step "2" "4" "$(tr_text "Выбор компонентов" "Select components")"
-        if ! select_restore_components; then
-          continue
-        fi
-        if ! ensure_restore_password_if_needed; then
-          continue
-        fi
-        draw_restore_step "3" "4" "$(tr_text "Параметры запуска" "Execution options")"
-        paint "$CLR_MUTED" "$(tr_text "Подсказка: тестовый режим только проверяет шаги, боевой режим реально применяет изменения." "Tip: test mode only validates steps, real mode actually applies changes.")"
-        paint "$CLR_MUTED" "$(tr_text "Если отключить перезапуски, сервисы не будут автоматически перезапущены после восстановления." "If restarts are disabled, services will not be restarted automatically after restore.")"
-        while true; do
-          menu_option "1" "$(tr_text "Тестовый режим (без изменений, безопасно)" "Test mode (no changes, safe)")"
-          menu_option "2" "$(tr_text "Боевой режим (вносит изменения, риск)" "Real mode (applies changes, risk)")"
-          print_separator
-          read -r -p "$(tr_text "Выбор режима [1-2]: " "Select mode [1-2]: ")" choice
-          if is_back_command "$choice"; then
-            continue 2
-          fi
-          case "$choice" in
-            1) RESTORE_DRY_RUN=1; break ;;
-            2) RESTORE_DRY_RUN=0; break ;;
-            *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")" ;;
-          esac
-        done
-        while true; do
-          menu_option "1" "$(tr_text "Автоперезапуск после restore (быстрее)" "Auto-restart after restore (faster)")"
-          menu_option "2" "$(tr_text "Без автоперезапуска (осторожно)" "No auto-restart (safer)")"
-          print_separator
-          read -r -p "$(tr_text "Перезапуски [1-2]: " "Restarts [1-2]: ")" choice
-          if is_back_command "$choice"; then
-            continue 2
-          fi
-          case "$choice" in
-            1) RESTORE_NO_RESTART=0; break ;;
-            2) RESTORE_NO_RESTART=1; break ;;
-            *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")" ;;
-          esac
-        done
-        draw_restore_step "4" "4" "$(tr_text "Подтверждение и запуск" "Confirm and run")"
-        show_restore_summary
-        show_restore_safety_checklist
-        print_separator
-        if ! ask_yes_no "$(tr_text "Запустить восстановление с этими параметрами?" "Run restore with these parameters?")" "y"; then
-          [[ "$?" == "2" ]] && continue
-          paint "$CLR_WARN" "$(tr_text "Восстановление отменено." "Restore cancelled.")"
-          wait_for_enter
-          continue
-        fi
-        if [[ "$RESTORE_DRY_RUN" != "1" ]]; then
-          if ! confirm_restore_phrase; then
-            paint "$CLR_WARN" "$(tr_text "Подтверждение не пройдено. Восстановление отменено." "Confirmation failed. Restore cancelled.")"
-            wait_for_enter
-            continue
-          fi
-        fi
-        if [[ ! -x /usr/local/bin/panel-restore.sh ]]; then
-          install_files
-          write_env
-          $SUDO systemctl daemon-reload
-        fi
-        if run_restore; then
-          paint "$CLR_OK" "$(tr_text "Восстановление завершено." "Restore completed.")"
-          show_operation_result_summary "$(tr_text "Восстановление" "Backup restore")" "1"
+        run_backup_with_scope "$(tr_text "Backup: только панель" "Backup: panel only")" "all"
+        ;;
+      3)
+        run_backup_with_scope "$(tr_text "Backup: только Bedolaga" "Backup: Bedolaga only")" "bedolaga"
+        ;;
+      4)
+        draw_subheader "$(tr_text "Backup: кастомный профиль" "Backup: custom profile")"
+        paint "$CLR_MUTED" "$(tr_text "Используется текущее значение BACKUP_INCLUDE из конфигурации." "Uses current BACKUP_INCLUDE from configuration.")"
+        if run_backup_now; then
+          paint "$CLR_OK" "$(tr_text "Резервная копия создана успешно." "Backup completed successfully.")"
+          show_operation_result_summary "$(tr_text "Backup: кастомный профиль" "Backup: custom profile")" "1"
         else
-          paint "$CLR_DANGER" "$(tr_text "Ошибка восстановления. Проверьте лог выше." "Restore failed. Check the log above.")"
-          show_operation_result_summary "$(tr_text "Восстановление" "Backup restore")" "0"
+          paint "$CLR_DANGER" "$(tr_text "Ошибка создания резервной копии. Проверьте лог выше." "Backup failed. Check the log above.")"
+          show_operation_result_summary "$(tr_text "Backup: кастомный профиль" "Backup: custom profile")" "0"
         fi
         wait_for_enter
         ;;
-      3) break ;;
+      5) run_restore_wizard_flow "all,bedolaga" "0" ;;
+      6) run_restore_wizard_flow "all" "1" ;;
+      7) run_restore_wizard_flow "bedolaga" "1" ;;
+      8) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
@@ -318,22 +387,24 @@ interactive_menu() {
     paint "$CLR_TITLE" "------------------------------------------------------------"
     menu_option "1" "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")"
     menu_option "2" "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")"
+    menu_option "3" "$(tr_text "Backup только Bedolaga" "Backup Bedolaga only")"
+    menu_option "4" "$(tr_text "Restore только Bedolaga" "Restore Bedolaga only")"
     paint "$CLR_TITLE" "============================================================"
     paint "$CLR_ACCENT" "  $(tr_text "Раздел 2. Панель и ноды" "Section 2. Panel and nodes")"
     paint "$CLR_TITLE" "------------------------------------------------------------"
-    menu_option "3" "$(tr_text "Панель Remnawave и подписки" "Remnawave panel and subscriptions")"
-    menu_option "4" "$(tr_text "Нода RemnaNode и сеть" "RemnaNode and network")"
+    menu_option "5" "$(tr_text "Панель Remnawave и подписки" "Remnawave panel and subscriptions")"
+    menu_option "6" "$(tr_text "Нода RemnaNode и сеть" "RemnaNode and network")"
     paint "$CLR_TITLE" "============================================================"
     paint "$CLR_ACCENT" "  $(tr_text "Раздел 3. Бэкапы" "Section 3. Backups")"
     paint "$CLR_TITLE" "------------------------------------------------------------"
-    menu_option "5" "$(tr_text "Ручной backup/restore" "Manual backup/restore")"
-    menu_option "6" "$(tr_text "Мастер настройки backup" "Backup setup wizard")"
-    menu_option "7" "$(tr_text "Таймер и периодичность" "Timer and schedule")"
-    menu_option "8" "$(tr_text "Статус и диагностика" "Status and diagnostics")"
+    menu_option "7" "$(tr_text "Центр backup/restore" "Backup/restore center")"
+    menu_option "8" "$(tr_text "Мастер настройки backup" "Backup setup wizard")"
+    menu_option "9" "$(tr_text "Таймер и периодичность" "Timer and schedule")"
+    menu_option "10" "$(tr_text "Статус и диагностика" "Status and diagnostics")"
     paint "$CLR_TITLE" "============================================================"
     menu_option "0" "$(tr_text "Выход" "Exit")" "$CLR_DANGER"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-8/0]: " "Choice [1-8/0]: ")" action
+    read -r -p "$(tr_text "Выбор [1-10/0]: " "Choice [1-10/0]: ")" action
     if is_back_command "$action"; then
       echo "$(tr_text "Выход." "Cancelled.")"
       break
@@ -346,12 +417,16 @@ interactive_menu() {
       2)
         run_component_flow_action "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")" run_bedolaga_stack_update_flow
         ;;
-      3) menu_section_remnawave_components ;;
-      4) menu_section_remnanode_components ;;
-      5) menu_section_operations ;;
-      6) menu_section_setup ;;
-      7) menu_section_timer ;;
-      8) menu_section_status ;;
+      3)
+        run_backup_with_scope "$(tr_text "Backup: только Bedolaga" "Backup: Bedolaga only")" "bedolaga"
+        ;;
+      4) run_restore_wizard_flow "bedolaga" "1" ;;
+      5) menu_section_remnawave_components ;;
+      6) menu_section_remnanode_components ;;
+      7) menu_section_operations ;;
+      8) menu_section_setup ;;
+      9) menu_section_timer ;;
+      10) menu_section_status ;;
       0)
         echo "$(tr_text "Выход." "Cancelled.")"
         break

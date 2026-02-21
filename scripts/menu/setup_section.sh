@@ -424,10 +424,13 @@ menu_flow_encryption_settings() {
 format_backup_scope_label() {
   local raw="${1:-all}"
   case "${raw,,}" in
-    all) echo "$(tr_text "всё (db + redis + конфиги)" "all (db + redis + configs)")" ;;
+    all,bedolaga|bedolaga,all) echo "$(tr_text "полный (панель + Bedolaga)" "full (panel + Bedolaga)")" ;;
+    all) echo "$(tr_text "всё (панель: db + redis + конфиги)" "all (panel: db + redis + configs)")" ;;
     db) echo "$(tr_text "только PostgreSQL (db)" "PostgreSQL only (db)")" ;;
     redis) echo "$(tr_text "только Redis (redis)" "Redis only (redis)")" ;;
-    configs) echo "$(tr_text "только конфиги (configs)" "configs only (configs)")" ;;
+    configs,bedolaga-configs|bedolaga-configs,configs) echo "$(tr_text "конфиги (панель + Bedolaga)" "configs (panel + Bedolaga)")" ;;
+    configs) echo "$(tr_text "только конфиги панели (configs)" "panel configs only (configs)")" ;;
+    bedolaga) echo "$(tr_text "только Bedolaga (db + redis + bot + cabinet)" "Bedolaga only (db + redis + bot + cabinet)")" ;;
     *) echo "${raw}" ;;
   esac
 }
@@ -477,4 +480,3 @@ menu_section_setup() {
     esac
   done
 }
-

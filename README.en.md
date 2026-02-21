@@ -15,6 +15,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backu
 - Clear interactive menu in Russian and English.
 - One-step manual backup.
 - Scheduled automatic backups via systemd timer.
+- Full Bedolaga stack backup/restore (bot + cabinet): PostgreSQL, Redis, `.env`, compose files, and runtime data.
 - Restore from local archive file or direct URL.
 - `dry-run` restore mode to validate flow before real changes.
 - Encrypted backup archives (GPG symmetric) for safer storage and transfer.
