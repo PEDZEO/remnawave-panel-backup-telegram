@@ -68,19 +68,17 @@ run_restore_scope_selector() {
       esac
     else
       menu_option "1" "$(tr_text "Только панель Remnawave" "Remnawave panel only")"
-      menu_option "2" "$(tr_text "Полностью: панель + бот + кабинет" "Full: panel + bot + cabinet")"
-      menu_option "3" "$(tr_text "Ручной выбор компонентов" "Manual component selection")"
-      menu_option "4" "$(tr_text "Назад" "Back")"
+      menu_option "2" "$(tr_text "Ручной выбор компонентов панели" "Manual panel component selection")"
+      menu_option "3" "$(tr_text "Назад" "Back")"
       print_separator
-      read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
+      read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
       if is_back_command "$choice"; then
         return 1
       fi
       case "$choice" in
         1) run_restore_wizard_flow "all" "1"; return 0 ;;
-        2) run_restore_wizard_flow "all,bedolaga" "1"; return 0 ;;
-        3) run_restore_wizard_flow "all,bedolaga" "0"; return 0 ;;
-        4) return 1 ;;
+        2) run_restore_wizard_flow "all" "0"; return 0 ;;
+        3) return 1 ;;
         *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
       esac
     fi
