@@ -92,7 +92,7 @@ run_restore_wizard_flow() {
   done
 
   while true; do
-    menu_option "1" "$(tr_text "Автоперезапуск после restore (быстрее)" "Auto-restart after restore (faster)")"
+    menu_option "1" "$(tr_text "Автоперезапуск после восстановления (быстрее)" "Auto-restart after restore (faster)")"
     menu_option "2" "$(tr_text "Без автоперезапуска (осторожно)" "No auto-restart (safer)")"
     print_separator
     read -r -p "$(tr_text "Перезапуски [1-2]: " "Restarts [1-2]: ")" choice
@@ -129,10 +129,10 @@ run_restore_wizard_flow() {
   fi
   if run_restore; then
     paint "$CLR_OK" "$(tr_text "Восстановление завершено." "Restore completed.")"
-    show_operation_result_summary "$(tr_text "Восстановление" "Backup restore")" "1"
+    show_operation_result_summary "$(tr_text "Восстановление" "Restore")" "1"
   else
     paint "$CLR_DANGER" "$(tr_text "Ошибка восстановления. Проверьте лог выше." "Restore failed. Check the log above.")"
-    show_operation_result_summary "$(tr_text "Восстановление" "Backup restore")" "0"
+    show_operation_result_summary "$(tr_text "Восстановление" "Restore")" "0"
   fi
   wait_for_enter
 }
@@ -142,7 +142,7 @@ menu_section_remnawave_components() {
   while true; do
     draw_subheader "$(tr_text "Раздел: Компоненты Remnawave" "Section: Remnawave components")"
     show_back_hint
-    paint "$CLR_MUTED" "$(tr_text "Установка и обновление панели, подписок и Caddy для панели." "Install and update panel, subscription and panel Caddy.")"
+    paint "$CLR_MUTED" "$(tr_text "Установка и обновление панели, подписок, Caddy и операции резервного копирования панели." "Install/update panel, subscription, panel Caddy and panel backup operations.")"
     menu_option "1" "$(tr_text "Полная установка (панель + подписки + Caddy)" "Full install (panel + subscription + Caddy)")"
     menu_option "2" "$(tr_text "Установить панель Remnawave" "Install Remnawave panel")"
     menu_option "3" "$(tr_text "Установить страницу подписок" "Install subscription page")"
@@ -151,8 +151,8 @@ menu_section_remnawave_components() {
     menu_option "6" "$(tr_text "Обновить страницу подписок" "Update subscription page")"
     menu_option "7" "$(tr_text "Установить Caddy для панели" "Install panel Caddy")"
     menu_option "8" "$(tr_text "Обновить Caddy для панели" "Update panel Caddy")"
-    menu_option "9" "$(tr_text "Создать backup только панели" "Create panel-only backup")"
-    menu_option "10" "$(tr_text "Restore только панели" "Panel-only restore")"
+    menu_option "9" "$(tr_text "Создать резервную копию панели" "Create panel backup")"
+    menu_option "10" "$(tr_text "Восстановить панель из резервной копии" "Restore panel from backup")"
     menu_option "11" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-11]: " "Choice [1-11]: ")" choice
@@ -185,12 +185,47 @@ menu_section_remnawave_components() {
         run_component_flow_action "$(tr_text "Обновить Caddy для панели" "Update panel Caddy")" run_panel_caddy_update_flow
         ;;
       9)
-        run_backup_with_scope "$(tr_text "Backup только панели" "Panel-only backup")" "all"
+        run_backup_with_scope "$(tr_text "Резервная копия: только панель" "Backup: panel only")" "all"
         ;;
       10)
         run_restore_wizard_flow "all" "1"
         ;;
       11) break ;;
+      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+    esac
+  done
+}
+
+menu_section_bedolaga_components() {
+  local choice=""
+  while true; do
+    draw_subheader "$(tr_text "Раздел: Бот и кабинет Bedolaga" "Section: Bedolaga bot and cabinet")"
+    show_back_hint
+    paint "$CLR_MUTED" "$(tr_text "Установка и обновление Bedolaga, плюс отдельные резервные копии и восстановление для бота и кабинета." "Install/update Bedolaga plus dedicated backup and restore for bot and cabinet.")"
+    menu_option "1" "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")"
+    menu_option "2" "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")"
+    menu_option "3" "$(tr_text "Создать резервную копию Bedolaga" "Create Bedolaga backup")"
+    menu_option "4" "$(tr_text "Восстановить Bedolaga из резервной копии" "Restore Bedolaga from backup")"
+    menu_option "5" "$(tr_text "Назад" "Back")"
+    print_separator
+    read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
+    if is_back_command "$choice"; then
+      break
+    fi
+    case "$choice" in
+      1)
+        run_component_flow_action "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")" run_bedolaga_stack_install_flow
+        ;;
+      2)
+        run_component_flow_action "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")" run_bedolaga_stack_update_flow
+        ;;
+      3)
+        run_backup_with_scope "$(tr_text "Резервная копия: только Bedolaga" "Backup: Bedolaga only")" "bedolaga"
+        ;;
+      4)
+        run_restore_wizard_flow "bedolaga" "1"
+        ;;
+      5) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
@@ -237,56 +272,6 @@ menu_section_remnanode_components() {
       7)
         run_component_flow_action "$(tr_text "Включить/выключить IPv6" "Toggle IPv6")" run_node_ipv6_toggle_flow
         ;;
-      8) break ;;
-      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
-    esac
-  done
-}
-
-menu_section_operations() {
-  local choice=""
-  while true; do
-    draw_subheader "$(tr_text "Раздел: Центр backup/restore" "Section: Backup/restore center")"
-    show_back_hint
-    paint "$CLR_MUTED" "$(tr_text "Быстрые сценарии: отдельный backup для панели/Bedolaga, полный backup и отдельные restore-пресеты." "Quick scenarios: dedicated panel/Bedolaga backup, full backup and dedicated restore presets.")"
-    menu_option "1" "$(tr_text "Backup: полный (панель + Bedolaga)" "Backup: full (panel + Bedolaga)")"
-    menu_option "2" "$(tr_text "Backup: только панель" "Backup: panel only")"
-    menu_option "3" "$(tr_text "Backup: только Bedolaga" "Backup: Bedolaga only")"
-    menu_option "4" "$(tr_text "Backup: кастомный (из BACKUP_INCLUDE)" "Backup: custom (from BACKUP_INCLUDE)")"
-    menu_option "5" "$(tr_text "Restore: мастер (ручной выбор)" "Restore: wizard (manual select)")"
-    menu_option "6" "$(tr_text "Restore: только панель" "Restore: panel only")"
-    menu_option "7" "$(tr_text "Restore: только Bedolaga" "Restore: Bedolaga only")"
-    menu_option "8" "$(tr_text "Назад" "Back")"
-    print_separator
-    read -r -p "$(tr_text "Выбор [1-8]: " "Choice [1-8]: ")" choice
-    if is_back_command "$choice"; then
-      break
-    fi
-    case "$choice" in
-      1)
-        run_backup_with_scope "$(tr_text "Backup: полный (панель + Bedolaga)" "Backup: full (panel + Bedolaga)")" "all,bedolaga"
-        ;;
-      2)
-        run_backup_with_scope "$(tr_text "Backup: только панель" "Backup: panel only")" "all"
-        ;;
-      3)
-        run_backup_with_scope "$(tr_text "Backup: только Bedolaga" "Backup: Bedolaga only")" "bedolaga"
-        ;;
-      4)
-        draw_subheader "$(tr_text "Backup: кастомный профиль" "Backup: custom profile")"
-        paint "$CLR_MUTED" "$(tr_text "Используется текущее значение BACKUP_INCLUDE из конфигурации." "Uses current BACKUP_INCLUDE from configuration.")"
-        if run_backup_now; then
-          paint "$CLR_OK" "$(tr_text "Резервная копия создана успешно." "Backup completed successfully.")"
-          show_operation_result_summary "$(tr_text "Backup: кастомный профиль" "Backup: custom profile")" "1"
-        else
-          paint "$CLR_DANGER" "$(tr_text "Ошибка создания резервной копии. Проверьте лог выше." "Backup failed. Check the log above.")"
-          show_operation_result_summary "$(tr_text "Backup: кастомный профиль" "Backup: custom profile")" "0"
-        fi
-        wait_for_enter
-        ;;
-      5) run_restore_wizard_flow "all,bedolaga" "0" ;;
-      6) run_restore_wizard_flow "all" "1" ;;
-      7) run_restore_wizard_flow "bedolaga" "1" ;;
       8) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
@@ -385,48 +370,34 @@ interactive_menu() {
     paint "$CLR_TITLE" "============================================================"
     paint "$CLR_ACCENT" "  $(tr_text "Раздел 1. Бот и кабинет" "Section 1. Bot and cabinet")"
     paint "$CLR_TITLE" "------------------------------------------------------------"
-    menu_option "1" "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")"
-    menu_option "2" "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")"
-    menu_option "3" "$(tr_text "Backup только Bedolaga" "Backup Bedolaga only")"
-    menu_option "4" "$(tr_text "Restore только Bedolaga" "Restore Bedolaga only")"
+    menu_option "1" "$(tr_text "Меню Bedolaga: бот + кабинет" "Bedolaga menu: bot + cabinet")"
     paint "$CLR_TITLE" "============================================================"
-    paint "$CLR_ACCENT" "  $(tr_text "Раздел 2. Панель и ноды" "Section 2. Panel and nodes")"
+    paint "$CLR_ACCENT" "  $(tr_text "Раздел 2. Панель и нода" "Section 2. Panel and node")"
     paint "$CLR_TITLE" "------------------------------------------------------------"
-    menu_option "5" "$(tr_text "Панель Remnawave и подписки" "Remnawave panel and subscriptions")"
-    menu_option "6" "$(tr_text "Нода RemnaNode и сеть" "RemnaNode and network")"
+    menu_option "2" "$(tr_text "Панель Remnawave и подписки" "Remnawave panel and subscriptions")"
+    menu_option "3" "$(tr_text "Нода RemnaNode и сеть" "RemnaNode and network")"
     paint "$CLR_TITLE" "============================================================"
-    paint "$CLR_ACCENT" "  $(tr_text "Раздел 3. Бэкапы" "Section 3. Backups")"
+    paint "$CLR_ACCENT" "  $(tr_text "Сервисные инструменты" "Service tools")"
     paint "$CLR_TITLE" "------------------------------------------------------------"
-    menu_option "7" "$(tr_text "Центр backup/restore" "Backup/restore center")"
-    menu_option "8" "$(tr_text "Мастер настройки backup" "Backup setup wizard")"
-    menu_option "9" "$(tr_text "Таймер и периодичность" "Timer and schedule")"
-    menu_option "10" "$(tr_text "Статус и диагностика" "Status and diagnostics")"
+    menu_option "4" "$(tr_text "Мастер настройки резервного копирования" "Backup setup wizard")"
+    menu_option "5" "$(tr_text "Таймер и периодичность" "Timer and schedule")"
+    menu_option "6" "$(tr_text "Статус и диагностика" "Status and diagnostics")"
     paint "$CLR_TITLE" "============================================================"
     menu_option "0" "$(tr_text "Выход" "Exit")" "$CLR_DANGER"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-10/0]: " "Choice [1-10/0]: ")" action
+    read -r -p "$(tr_text "Выбор [1-6/0]: " "Choice [1-6/0]: ")" action
     if is_back_command "$action"; then
       echo "$(tr_text "Выход." "Cancelled.")"
       break
     fi
 
     case "$action" in
-      1)
-        run_component_flow_action "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")" run_bedolaga_stack_install_flow
-        ;;
-      2)
-        run_component_flow_action "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")" run_bedolaga_stack_update_flow
-        ;;
-      3)
-        run_backup_with_scope "$(tr_text "Backup: только Bedolaga" "Backup: Bedolaga only")" "bedolaga"
-        ;;
-      4) run_restore_wizard_flow "bedolaga" "1" ;;
-      5) menu_section_remnawave_components ;;
-      6) menu_section_remnanode_components ;;
-      7) menu_section_operations ;;
-      8) menu_section_setup ;;
-      9) menu_section_timer ;;
-      10) menu_section_status ;;
+      1) menu_section_bedolaga_components ;;
+      2) menu_section_remnawave_components ;;
+      3) menu_section_remnanode_components ;;
+      4) menu_section_setup ;;
+      5) menu_section_timer ;;
+      6) menu_section_status ;;
       0)
         echo "$(tr_text "Выход." "Cancelled.")"
         break
