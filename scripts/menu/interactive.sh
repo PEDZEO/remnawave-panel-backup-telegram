@@ -140,10 +140,13 @@ run_bedolaga_remote_migration_flow() {
   local restore_no_restart=1
   local restore_password="${BACKUP_PASSWORD:-}"
   local is_encrypted_archive=0
+  local auto_prepare_remote=1
   local confirm_rc=0
   local ssh_cmd=()
   local scp_cmd=()
+  local bootstrap_cmd=""
   local remote_cmd=""
+  local preseed_cmd=""
   local postcheck_cmd=""
   local only_args=""
   local item=""
@@ -153,7 +156,7 @@ run_bedolaga_remote_migration_flow() {
 
   draw_subheader "$(tr_text "Миграция Bedolaga на новый VPS (SSH)" "Bedolaga migration to a new VPS (SSH)")"
   paint "$CLR_MUTED" "$(tr_text "Сценарий: копирование архива на удалённый сервер и запуск panel-restore.sh." "Flow: copy archive to remote server and run panel-restore.sh.")"
-  paint "$CLR_MUTED" "$(tr_text "Требование: на новом VPS уже должен быть установлен panel-backup manager (panel-restore.sh)." "Requirement: panel-backup manager (panel-restore.sh) must already be installed on the new VPS.")"
+  paint "$CLR_MUTED" "$(tr_text "Можно включить автоподготовку пустого VPS: Docker + panel-restore.sh + подготовка контейнеров." "You can enable auto-prepare for an empty VPS: Docker + panel-restore.sh + container bootstrap.")"
 
   archive_path="$(ask_value "$(tr_text "Путь к локальному архиву для переноса" "Local backup archive path for migration")" "$archive_path")"
   [[ "$archive_path" == "__PBM_BACK__" ]] && return 1
@@ -179,6 +182,14 @@ run_bedolaga_remote_migration_flow() {
       wait_for_enter
       return 1
       ;;
+  esac
+
+  confirm_rc=0
+  ask_yes_no "$(tr_text "Включить автоподготовку нового VPS (рекомендуется)?" "Enable auto-prepare for the new VPS (recommended)?")" "y" || confirm_rc=$?
+  case "$confirm_rc" in
+    0) auto_prepare_remote=1 ;;
+    1) auto_prepare_remote=0 ;;
+    2) return 1 ;;
   esac
 
   confirm_rc=0
@@ -269,6 +280,7 @@ run_bedolaga_remote_migration_flow() {
   paint "$CLR_MUTED" "  $(tr_text "Новый VPS:" "New VPS:") ${ssh_user}@${ssh_host}:${ssh_port}"
   paint "$CLR_MUTED" "  $(tr_text "Файл на новом VPS:" "Archive on new VPS:") ${remote_archive}"
   paint "$CLR_MUTED" "  $(tr_text "Состав восстановления:" "Restore scope:") ${restore_only}"
+  paint "$CLR_MUTED" "  $(tr_text "Автоподготовка VPS:" "VPS auto-prepare:") $([[ "$auto_prepare_remote" == "1" ]] && tr_text "включена" "enabled" || tr_text "выключена" "disabled")"
   paint "$CLR_MUTED" "  $(tr_text "Режим:" "Mode:") $([[ "$restore_dry_run" == "1" ]] && tr_text "тестовый (--dry-run)" "test (--dry-run)" || tr_text "боевой" "real")"
   paint "$CLR_MUTED" "  $(tr_text "Перезапуски:" "Restarts:") $([[ "$restore_no_restart" == "1" ]] && tr_text "отключены (--no-restart)" "disabled (--no-restart)" || tr_text "включены" "enabled")"
   if [[ -n "$ssh_password" ]]; then
@@ -297,6 +309,49 @@ run_bedolaga_remote_migration_flow() {
     return 1
   fi
 
+  if (( auto_prepare_remote == 1 )); then
+    paint "$CLR_ACCENT" "$(tr_text "Подготавливаю новый VPS (Docker/Compose)..." "Preparing new VPS (Docker/Compose)...")"
+    bootstrap_cmd='set -e
+if ! command -v curl >/dev/null 2>&1; then
+  if command -v apt-get >/dev/null 2>&1; then apt-get update -y >/dev/null 2>&1 && apt-get install -y curl >/dev/null 2>&1; fi
+  if command -v dnf >/dev/null 2>&1; then dnf install -y curl >/dev/null 2>&1; fi
+  if command -v yum >/dev/null 2>&1; then yum install -y curl >/dev/null 2>&1; fi
+  if command -v apk >/dev/null 2>&1; then apk add --no-cache curl >/dev/null 2>&1; fi
+fi
+if ! command -v docker >/dev/null 2>&1; then
+  curl -fsSL https://get.docker.com | sh
+fi
+systemctl enable --now docker >/dev/null 2>&1 || true
+if ! docker compose version >/dev/null 2>&1; then
+  if command -v apt-get >/dev/null 2>&1; then apt-get update -y >/dev/null 2>&1 && apt-get install -y docker-compose-plugin >/dev/null 2>&1 || true; fi
+  if command -v dnf >/dev/null 2>&1; then dnf install -y docker-compose-plugin >/dev/null 2>&1 || true; fi
+  if command -v yum >/dev/null 2>&1; then yum install -y docker-compose-plugin >/dev/null 2>&1 || true; fi
+fi'
+    if ! "${ssh_cmd[@]}" "$bootstrap_cmd"; then
+      paint "$CLR_DANGER" "$(tr_text "Автоподготовка VPS завершилась ошибкой." "VPS auto-prepare failed.")"
+      wait_for_enter
+      return 1
+    fi
+
+    if [[ ! -x /usr/local/bin/panel-restore.sh ]]; then
+      paint "$CLR_DANGER" "$(tr_text "Локально не найден /usr/local/bin/panel-restore.sh для копирования на новый VPS." "Local /usr/local/bin/panel-restore.sh not found for upload to new VPS.")"
+      wait_for_enter
+      return 1
+    fi
+    paint "$CLR_ACCENT" "$(tr_text "Копирую runtime restore-скрипты на новый VPS..." "Uploading runtime restore scripts to the new VPS...")"
+    if ! "${scp_cmd[@]}" /usr/local/bin/panel-restore.sh "${ssh_user}@${ssh_host}:/usr/local/bin/panel-restore.sh"; then
+      paint "$CLR_DANGER" "$(tr_text "Не удалось скопировать panel-restore.sh на новый VPS." "Failed to copy panel-restore.sh to new VPS.")"
+      wait_for_enter
+      return 1
+    fi
+    if [[ -x /usr/local/bin/panel-backup.sh ]]; then
+      "${scp_cmd[@]}" /usr/local/bin/panel-backup.sh "${ssh_user}@${ssh_host}:/usr/local/bin/panel-backup.sh" >/dev/null 2>&1 || true
+    fi
+    if ! "${ssh_cmd[@]}" "chmod 755 /usr/local/bin/panel-restore.sh /usr/local/bin/panel-backup.sh >/dev/null 2>&1 || true"; then
+      paint "$CLR_WARN" "$(tr_text "Не удалось применить chmod для runtime-скриптов на новом VPS." "Failed to chmod runtime scripts on new VPS.")"
+    fi
+  fi
+
   if ! "${ssh_cmd[@]}" "test -x /usr/local/bin/panel-restore.sh"; then
     paint "$CLR_DANGER" "$(tr_text "На новом VPS не найден /usr/local/bin/panel-restore.sh." "Could not find /usr/local/bin/panel-restore.sh on the new VPS.")"
     wait_for_enter
@@ -319,6 +374,24 @@ run_bedolaga_remote_migration_flow() {
   fi
   if (( is_encrypted_archive == 1 )); then
     remote_cmd="BACKUP_PASSWORD=$(printf '%q' "$restore_password") ${remote_cmd}"
+  fi
+
+  if (( restore_dry_run == 0 && auto_prepare_remote == 1 )) && [[ "$restore_only" == "bedolaga" ]]; then
+    paint "$CLR_ACCENT" "$(tr_text "Пустой VPS: предварительно разворачиваю bot+cabinet и поднимаю контейнеры перед полным restore..." "Empty VPS: pre-seeding bot+cabinet and starting containers before full restore...")"
+    preseed_cmd="/usr/local/bin/panel-restore.sh --from $(printf '%q' "$remote_archive") --only bedolaga-bot --only bedolaga-cabinet --no-restart"
+    if (( is_encrypted_archive == 1 )); then
+      preseed_cmd="BACKUP_PASSWORD=$(printf '%q' "$restore_password") ${preseed_cmd}"
+    fi
+    if ! "${ssh_cmd[@]}" "$preseed_cmd"; then
+      paint "$CLR_DANGER" "$(tr_text "Не удалось выполнить предварительное восстановление bot+cabinet на новом VPS." "Failed to run bot+cabinet pre-restore on the new VPS.")"
+      wait_for_enter
+      return 1
+    fi
+    if ! "${ssh_cmd[@]}" "set -e; cd /root/remnawave-bedolaga-telegram-bot && docker compose up -d; if [ -d /root/cabinet-frontend ]; then cd /root/cabinet-frontend && docker compose up -d; fi"; then
+      paint "$CLR_DANGER" "$(tr_text "Не удалось поднять контейнеры Bedolaga на новом VPS." "Failed to start Bedolaga containers on the new VPS.")"
+      wait_for_enter
+      return 1
+    fi
   fi
 
   paint "$CLR_ACCENT" "$(tr_text "Запускаю удалённое восстановление..." "Running remote restore...")"
