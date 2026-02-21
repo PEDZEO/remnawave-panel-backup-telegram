@@ -86,6 +86,39 @@ run_restore_scope_selector() {
   done
 }
 
+run_bedolaga_migration_wizard() {
+  local choice=""
+  while true; do
+    draw_subheader "$(tr_text "Миграция Bedolaga на новый VPS" "Bedolaga migration to a new VPS")"
+    show_back_hint
+    paint "$CLR_MUTED" "$(tr_text "Готовые сценарии переноса из архива резервной копии." "Ready-made migration scenarios from a backup archive.")"
+    paint "$CLR_MUTED" "$(tr_text "Файловый перенос не требует контейнеров БД/Redis на новом сервере." "File-only migration does not require DB/Redis containers on the new server.")"
+    paint "$CLR_MUTED" "$(tr_text "Полный перенос требует archive со всеми компонентами и контейнеры remnawave_bot_db/remnawave_bot_redis." "Full migration requires an archive with all components and remnawave_bot_db/remnawave_bot_redis containers.")"
+    menu_option "1" "$(tr_text "Перенести только бот + кабинет (рекомендуется для старта)" "Migrate bot + cabinet only (recommended to start)")"
+    menu_option "2" "$(tr_text "Полный перенос Bedolaga (DB + Redis + бот + кабинет)" "Full Bedolaga migration (DB + Redis + bot + cabinet)")"
+    menu_option "3" "$(tr_text "Назад" "Back")"
+    print_separator
+    read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
+    if is_back_command "$choice"; then
+      return 1
+    fi
+    case "$choice" in
+      1)
+        if run_restore_wizard_flow "bedolaga-bot,bedolaga-cabinet" "1"; then
+          return 0
+        fi
+        ;;
+      2)
+        if run_restore_wizard_flow "bedolaga" "1"; then
+          return 0
+        fi
+        ;;
+      3) return 1 ;;
+      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+    esac
+  done
+}
+
 run_restore_wizard_flow() {
   local preset_restore_only="${1:-all,bedolaga}"
   local lock_restore_only="${2:-0}"
@@ -107,6 +140,7 @@ run_restore_wizard_flow() {
       all) preset_label="$(tr_text "панель (all)" "panel (all)")" ;;
       bedolaga) preset_label="$(tr_text "бот+кабинет (bedolaga)" "bot+cabinet (bedolaga)")" ;;
       all,bedolaga|bedolaga,all) preset_label="$(tr_text "полный (панель + бот + кабинет)" "full (panel + bot + cabinet)")" ;;
+      bedolaga-bot,bedolaga-cabinet|bedolaga-cabinet,bedolaga-bot) preset_label="$(tr_text "миграция: бот + кабинет (без DB/Redis)" "migration: bot + cabinet (without DB/Redis)")" ;;
       bedolaga-db,bedolaga-redis,bedolaga-bot|bedolaga-bot,bedolaga-db,bedolaga-redis) preset_label="$(tr_text "только бот Bedolaga (db + redis + bot)" "Bedolaga bot only (db + redis + bot)")" ;;
       bedolaga-cabinet) preset_label="$(tr_text "только кабинет Bedolaga" "Bedolaga cabinet only")" ;;
       *) preset_label="$preset_restore_only" ;;
@@ -323,11 +357,12 @@ menu_section_bedolaga_backup_restore() {
     paint "$CLR_MUTED" "$(tr_text "Операции резервной копии, восстановления и настроек backup Bedolaga." "Bedolaga backup, restore and backup settings.")"
     menu_option "1" "$(tr_text "Создать резервную копию Bedolaga" "Create Bedolaga backup")"
     menu_option "2" "$(tr_text "Восстановление: выбрать состав" "Restore: choose scope")"
-    menu_option "3" "$(tr_text "Настройки backup Bedolaga" "Bedolaga backup settings")"
-    menu_option "4" "$(tr_text "Таймер и периодичность Bedolaga" "Bedolaga timer and schedule")"
-    menu_option "5" "$(tr_text "Назад" "Back")"
+    menu_option "3" "$(tr_text "Миграция на новый VPS" "Migration to a new VPS")"
+    menu_option "4" "$(tr_text "Настройки backup Bedolaga" "Bedolaga backup settings")"
+    menu_option "5" "$(tr_text "Таймер и периодичность Bedolaga" "Bedolaga timer and schedule")"
+    menu_option "6" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
@@ -336,9 +371,10 @@ menu_section_bedolaga_backup_restore() {
         run_backup_with_scope "$(tr_text "Резервная копия: только Bedolaga" "Backup: Bedolaga only")" "bedolaga"
         ;;
       2) run_restore_scope_selector "bedolaga" || true ;;
-      3) menu_section_setup "bedolaga" ;;
-      4) menu_section_timer_scope "bedolaga" ;;
-      5) break ;;
+      3) run_bedolaga_migration_wizard || true ;;
+      4) menu_section_setup "bedolaga" ;;
+      5) menu_section_timer_scope "bedolaga" ;;
+      6) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
