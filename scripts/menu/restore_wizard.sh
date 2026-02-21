@@ -39,6 +39,7 @@ select_restore_source() {
     draw_subheader "$(tr_text "Источник архива для восстановления" "Restore source selection")"
     mapfile -t files < <(list_local_backups)
     render_backup_list "${files[@]}"
+    paint "$CLR_MUTED" "$(tr_text "Пункт \"Назад\" возвращает к выбору состава восстановления и не закрывает скрипт." "\"Back\" returns to restore scope selection and does not exit the script.")"
     print_separator
     menu_option "1" "$(tr_text "Выбрать файл из списка (по номеру)" "Select file from list (by number)")"
     menu_option "2" "$(tr_text "Ввести путь к архиву вручную" "Enter archive path manually")"
@@ -102,6 +103,7 @@ select_restore_components() {
   while true; do
     draw_subheader "$(tr_text "Выбор данных для восстановления" "Restore components selection")"
     paint "$CLR_MUTED" "$(tr_text "Выберите, что именно восстанавливать из архива." "Choose which data to restore from backup.")"
+    paint "$CLR_MUTED" "$(tr_text "Можно восстановить частично даже из полного архива." "Partial restore works even from a full backup archive.")"
     menu_option "1" "$(tr_text "Полный (панель + бот + кабинет)" "Full (panel + bot + cabinet)")"
     menu_option "2" "$(tr_text "Только PostgreSQL (db)" "PostgreSQL only (db)")"
     menu_option "3" "$(tr_text "Только Redis (redis)" "Redis only (redis)")"

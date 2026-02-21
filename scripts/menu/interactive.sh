@@ -46,6 +46,7 @@ run_restore_scope_selector() {
     draw_subheader "$(tr_text "Выбор состава восстановления" "Restore scope selection")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Выберите, что восстанавливать из архива." "Choose what to restore from archive.")"
+    paint "$CLR_MUTED" "$(tr_text "Даже из общего архива можно восстановить только нужную часть." "Even from a full backup archive you can restore only the required part.")"
 
     if [[ "$profile" == "bedolaga" ]]; then
       menu_option "1" "$(tr_text "Бот + кабинет Bedolaga" "Bedolaga bot + cabinet")"
