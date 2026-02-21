@@ -59,10 +59,10 @@ run_restore_scope_selector() {
         return 1
       fi
       case "$choice" in
-        1) run_restore_wizard_flow "bedolaga" "1"; return 0 ;;
-        2) run_restore_wizard_flow "bedolaga-db,bedolaga-redis,bedolaga-bot" "1"; return 0 ;;
-        3) run_restore_wizard_flow "bedolaga-cabinet" "1"; return 0 ;;
-        4) run_restore_wizard_flow "bedolaga" "0"; return 0 ;;
+        1) if run_restore_wizard_flow "bedolaga" "1"; then return 0; fi ;;
+        2) if run_restore_wizard_flow "bedolaga-db,bedolaga-redis,bedolaga-bot" "1"; then return 0; fi ;;
+        3) if run_restore_wizard_flow "bedolaga-cabinet" "1"; then return 0; fi ;;
+        4) if run_restore_wizard_flow "bedolaga" "0"; then return 0; fi ;;
         5) return 1 ;;
         *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
       esac
@@ -76,8 +76,8 @@ run_restore_scope_selector() {
         return 1
       fi
       case "$choice" in
-        1) run_restore_wizard_flow "all" "1"; return 0 ;;
-        2) run_restore_wizard_flow "all" "0"; return 0 ;;
+        1) if run_restore_wizard_flow "all" "1"; then return 0; fi ;;
+        2) if run_restore_wizard_flow "all" "0"; then return 0; fi ;;
         3) return 1 ;;
         *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
       esac
@@ -255,7 +255,7 @@ menu_section_remnawave_backup_restore() {
       1)
         run_backup_with_scope "$(tr_text "Резервная копия: только панель" "Backup: panel only")" "all"
         ;;
-      2) run_restore_scope_selector "panel" ;;
+      2) run_restore_scope_selector "panel" || true ;;
       3) menu_section_setup "panel" ;;
       4) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
@@ -331,7 +331,7 @@ menu_section_bedolaga_backup_restore() {
       1)
         run_backup_with_scope "$(tr_text "Резервная копия: только Bedolaga" "Backup: Bedolaga only")" "bedolaga"
         ;;
-      2) run_restore_scope_selector "bedolaga" ;;
+      2) run_restore_scope_selector "bedolaga" || true ;;
       3) menu_section_setup "bedolaga" ;;
       4) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
