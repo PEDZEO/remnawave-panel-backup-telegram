@@ -825,17 +825,26 @@ BEDOLAGA_POSTGRES_DB=""
 [[ -n "${TELEGRAM_ADMIN_ID:-}" ]] || fail "не найден TELEGRAM_ADMIN_ID в ${BACKUP_ENV_PATH}"
 
 if (( WANT_DB == 1 || WANT_ENV == 1 || WANT_COMPOSE == 1 || WANT_CADDY == 1 || WANT_SUBSCRIPTION == 1 )); then
-  [[ -d "$REMNAWAVE_DIR" ]] || fail "не найдена директория ${REMNAWAVE_DIR}"
+  if [[ -z "${REMNAWAVE_DIR:-}" ]]; then
+    fail "$(t "не найден путь панели Remnawave (REMNAWAVE_DIR)" "Remnawave panel path not found (REMNAWAVE_DIR)")"
+  fi
+  [[ -d "$REMNAWAVE_DIR" ]] || fail "$(t "не найдена директория панели" "panel directory not found"): ${REMNAWAVE_DIR}"
 fi
 if (( WANT_DB == 1 || WANT_ENV == 1 )); then
   [[ -f "${REMNAWAVE_DIR}/.env" ]] || fail "не найден ${REMNAWAVE_DIR}/.env"
 fi
 if (( WANT_BEDOLAGA_BOT == 1 || WANT_BEDOLAGA_DB == 1 )); then
-  [[ -d "$BEDOLAGA_BOT_DIR" ]] || fail "не найдена директория ${BEDOLAGA_BOT_DIR}"
+  if [[ -z "${BEDOLAGA_BOT_DIR:-}" ]]; then
+    fail "$(t "не найден путь бота Bedolaga (BEDOLAGA_BOT_DIR)" "Bedolaga bot path not found (BEDOLAGA_BOT_DIR)")"
+  fi
+  [[ -d "$BEDOLAGA_BOT_DIR" ]] || fail "$(t "не найдена директория бота Bedolaga" "Bedolaga bot directory not found"): ${BEDOLAGA_BOT_DIR}"
   [[ -f "${BEDOLAGA_BOT_DIR}/.env" ]] || fail "не найден ${BEDOLAGA_BOT_DIR}/.env"
 fi
 if (( WANT_BEDOLAGA_CABINET == 1 )); then
-  [[ -d "$BEDOLAGA_CABINET_DIR" ]] || fail "не найдена директория ${BEDOLAGA_CABINET_DIR}"
+  if [[ -z "${BEDOLAGA_CABINET_DIR:-}" ]]; then
+    fail "$(t "не найден путь кабинета Bedolaga (BEDOLAGA_CABINET_DIR)" "Bedolaga cabinet path not found (BEDOLAGA_CABINET_DIR)")"
+  fi
+  [[ -d "$BEDOLAGA_CABINET_DIR" ]] || fail "$(t "не найдена директория кабинета Bedolaga" "Bedolaga cabinet directory not found"): ${BEDOLAGA_CABINET_DIR}"
   [[ -f "${BEDOLAGA_CABINET_DIR}/.env" ]] || fail "не найден ${BEDOLAGA_CABINET_DIR}/.env"
 fi
 preflight_checks
