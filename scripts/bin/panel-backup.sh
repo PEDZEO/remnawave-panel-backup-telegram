@@ -426,7 +426,7 @@ resolve_telegram_chat_id() {
     TELEGRAM_ADMIN_ID_RESOLVED="$raw"
   elif [[ "$raw" =~ ^[0-9]+$ ]] && (( has_any_thread == 1 )); then
     TELEGRAM_ADMIN_ID_RESOLVED="-100${raw}"
-    log "$(t "Подсказка: TELEGRAM_ADMIN_ID автоматически преобразован в формат супергруппы: " "Hint: TELEGRAM_ADMIN_ID was auto-converted to supergroup format: ")${TELEGRAM_ADMIN_ID_RESOLVED}"
+    echo "$(t "Подсказка: TELEGRAM_ADMIN_ID автоматически преобразован в формат супергруппы: " "Hint: TELEGRAM_ADMIN_ID was auto-converted to supergroup format: ")${TELEGRAM_ADMIN_ID_RESOLVED}" >&2
   else
     TELEGRAM_ADMIN_ID_RESOLVED="$raw"
   fi
