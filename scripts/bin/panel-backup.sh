@@ -31,6 +31,7 @@ ARCHIVE_BASE="pb-${TIMESTAMP_SHORT}"
 ARCHIVE_PATH="${BACKUP_ROOT}/${ARCHIVE_BASE}.tar.gz"
 LOG_TAG="panel-backup"
 LOCK_FILE="${LOCK_FILE:-/var/lock/panel-backup.lock}"
+TELEGRAM_ADMIN_ID_RESOLVED=""
 declare -a BACKUP_ITEMS=()
 WANT_DB=0
 WANT_REDIS=0
@@ -405,22 +406,50 @@ backup_scope_profile() {
   printf '%s' "panel"
 }
 
+resolve_telegram_chat_id() {
+  local raw="${TELEGRAM_ADMIN_ID:-}"
+  local has_any_thread=0
+
+  if [[ -n "${TELEGRAM_ADMIN_ID_RESOLVED:-}" ]]; then
+    printf '%s' "$TELEGRAM_ADMIN_ID_RESOLVED"
+    return 0
+  fi
+
+  [[ -n "$raw" ]] || return 0
+  if [[ -n "${TELEGRAM_THREAD_ID:-}" || -n "${TELEGRAM_THREAD_ID_PANEL:-}" || -n "${TELEGRAM_THREAD_ID_BEDOLAGA:-}" ]]; then
+    has_any_thread=1
+  fi
+
+  if [[ "$raw" =~ ^-100[0-9]+$ ]]; then
+    TELEGRAM_ADMIN_ID_RESOLVED="$raw"
+  elif [[ "$raw" =~ ^[0-9]+$ ]] && (( has_any_thread == 1 )); then
+    TELEGRAM_ADMIN_ID_RESOLVED="-100${raw}"
+    log "$(t "Подсказка: TELEGRAM_ADMIN_ID автоматически преобразован в формат супергруппы: " "Hint: TELEGRAM_ADMIN_ID was auto-converted to supergroup format: ")${TELEGRAM_ADMIN_ID_RESOLVED}"
+  else
+    TELEGRAM_ADMIN_ID_RESOLVED="$raw"
+  fi
+
+  printf '%s' "$TELEGRAM_ADMIN_ID_RESOLVED"
+}
+
 send_telegram_text() {
   local text="$1"
   local profile="${2:-$(backup_scope_profile)}"
+  local chat_id=""
   local thread_id=""
   local thread_args=()
   if [[ -z "${TELEGRAM_BOT_TOKEN:-}" || -z "${TELEGRAM_ADMIN_ID:-}" ]]; then
     return 0
   fi
 
+  chat_id="$(resolve_telegram_chat_id)"
   thread_id="$(resolve_telegram_thread_id "$profile")"
   if [[ -n "$thread_id" ]]; then
     thread_args+=(-d "message_thread_id=${thread_id}")
   fi
   if ! curl -sS --max-time 20 \
     -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-    -d "chat_id=${TELEGRAM_ADMIN_ID}" \
+    -d "chat_id=${chat_id}" \
     "${thread_args[@]}" \
     --data-urlencode "text=${text}" \
     >/dev/null; then
@@ -499,10 +528,12 @@ send_telegram_file() {
   local caption="$2"
   local profile="${3:-$(backup_scope_profile)}"
   local fallback_caption=""
+  local chat_id=""
   local response
   local thread_id=""
   local thread_args=()
 
+  chat_id="$(resolve_telegram_chat_id)"
   thread_id="$(resolve_telegram_thread_id "$profile")"
   if [[ -n "$thread_id" ]]; then
     thread_args+=(-F "message_thread_id=${thread_id}")
@@ -510,7 +541,7 @@ send_telegram_file() {
 
   response="$(curl -sS --max-time 300 \
     -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
-    -F "chat_id=${TELEGRAM_ADMIN_ID}" \
+    -F "chat_id=${chat_id}" \
     "${thread_args[@]}" \
     -F "parse_mode=HTML" \
     -F "caption=${caption}" \
@@ -524,7 +555,7 @@ send_telegram_file() {
   fallback_caption="$(build_caption_plain "$(basename "$file_path")")"
   response="$(curl -sS --max-time 300 \
     -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
-    -F "chat_id=${TELEGRAM_ADMIN_ID}" \
+    -F "chat_id=${chat_id}" \
     "${thread_args[@]}" \
     -F "caption=${fallback_caption}" \
     -F "document=@${file_path}")" || return 1
