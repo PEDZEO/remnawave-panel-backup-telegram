@@ -278,7 +278,7 @@ detect_remnawave_dir() {
 
 detect_bedolaga_bot_dir() {
   local guessed=""
-  for guessed in "${BEDOLAGA_BOT_DIR}" "/root/remnawave-bedolaga-telegram-bot" "/opt/remnawave-bedolaga-telegram-bot"; do
+  for guessed in "${BEDOLAGA_BOT_DIR:-}" "/root/remnawave-bedolaga-telegram-bot" "/opt/remnawave-bedolaga-telegram-bot"; do
     [[ -n "$guessed" ]] || continue
     if [[ -f "$guessed/.env" && -f "$guessed/docker-compose.yml" ]]; then
       echo "$guessed"
@@ -298,7 +298,7 @@ detect_bedolaga_bot_dir() {
 
 detect_bedolaga_cabinet_dir() {
   local guessed=""
-  for guessed in "${BEDOLAGA_CABINET_DIR}" "/root/bedolaga-cabinet" "/root/cabinet-frontend" "/opt/bedolaga-cabinet"; do
+  for guessed in "${BEDOLAGA_CABINET_DIR:-}" "/root/bedolaga-cabinet" "/root/cabinet-frontend" "/opt/bedolaga-cabinet"; do
     [[ -n "$guessed" ]] || continue
     if [[ -f "$guessed/.env" && -f "$guessed/docker-compose.yml" ]]; then
       echo "$guessed"
