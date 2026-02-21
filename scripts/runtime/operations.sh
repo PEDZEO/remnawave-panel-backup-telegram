@@ -88,7 +88,7 @@ run_backup_now() {
   if [[ -n "$SUDO" ]]; then
     if [[ -n "${BACKUP_INCLUDE:-}" ]]; then
       include_quoted="$(printf '%q' "${BACKUP_INCLUDE}")"
-      backup_cmd=("$SUDO" bash -lc "BACKUP_INCLUDE=${include_quoted} /usr/local/bin/panel-backup.sh")
+      backup_cmd=("$SUDO" bash -lc "BACKUP_INCLUDE_OVERRIDE=${include_quoted} /usr/local/bin/panel-backup.sh")
     else
       backup_cmd=("$SUDO" "${backup_cmd[@]}")
     fi
