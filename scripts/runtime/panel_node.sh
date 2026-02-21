@@ -158,10 +158,10 @@ services:
     hostname: remnawave
     <<: [*common, *logging, *env]
     ports:
-      - 127.0.0.1:${APP_PORT}:${APP_PORT}
-      - 127.0.0.1:3001:${METRICS_PORT:-3001}
+      - 127.0.0.1:\${APP_PORT}:\${APP_PORT}
+      - 127.0.0.1:3001:\${METRICS_PORT:-3001}
     healthcheck:
-      test: ['CMD-SHELL', 'curl -f http://localhost:${METRICS_PORT:-3001}/health']
+      test: ['CMD-SHELL', 'curl -f http://localhost:\${METRICS_PORT:-3001}/health']
       interval: 30s
       timeout: 5s
       retries: 3
@@ -178,16 +178,16 @@ services:
     hostname: remnawave-db
     <<: [*common, *logging, *env]
     environment:
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=\${POSTGRES_USER}
+      - POSTGRES_PASSWORD=\${POSTGRES_PASSWORD}
+      - POSTGRES_DB=\${POSTGRES_DB}
       - TZ=UTC
     ports:
       - 127.0.0.1:6767:5432
     volumes:
       - remnawave-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      test: ['CMD-SHELL', 'pg_isready -U \$\${POSTGRES_USER} -d \$\${POSTGRES_DB}']
       interval: 3s
       timeout: 10s
       retries: 3
