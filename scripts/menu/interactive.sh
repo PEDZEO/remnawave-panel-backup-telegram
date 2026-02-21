@@ -185,12 +185,12 @@ run_restore_wizard_flow() {
   wait_for_enter
 }
 
-menu_section_remnawave_components() {
+menu_section_remnawave_install_update() {
   local choice=""
   while true; do
-    draw_subheader "$(tr_text "Раздел: Компоненты Remnawave" "Section: Remnawave components")"
+    draw_subheader "$(tr_text "Remnawave: установка и обновление" "Remnawave: install and update")"
     show_back_hint
-    paint "$CLR_MUTED" "$(tr_text "Установка и обновление панели, подписок, Caddy и операции резервного копирования панели." "Install/update panel, subscription, panel Caddy and panel backup operations.")"
+    paint "$CLR_MUTED" "$(tr_text "Операции установки и обновления панели, подписок и Caddy." "Install/update operations for panel, subscription and Caddy.")"
     menu_option "1" "$(tr_text "Полная установка (панель + подписки + Caddy)" "Full install (panel + subscription + Caddy)")"
     menu_option "2" "$(tr_text "Установить панель Remnawave" "Install Remnawave panel")"
     menu_option "3" "$(tr_text "Установить страницу подписок" "Install subscription page")"
@@ -199,12 +199,9 @@ menu_section_remnawave_components() {
     menu_option "6" "$(tr_text "Обновить страницу подписок" "Update subscription page")"
     menu_option "7" "$(tr_text "Установить Caddy для панели" "Install panel Caddy")"
     menu_option "8" "$(tr_text "Обновить Caddy для панели" "Update panel Caddy")"
-    menu_option "9" "$(tr_text "Создать резервную копию панели" "Create panel backup")"
-    menu_option "10" "$(tr_text "Восстановление: выбрать состав" "Restore: choose scope")"
-    menu_option "11" "$(tr_text "Настройки backup панели" "Panel backup settings")"
-    menu_option "12" "$(tr_text "Назад" "Back")"
+    menu_option "9" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-12]: " "Choice [1-12]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-9]: " "Choice [1-9]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
@@ -233,31 +230,72 @@ menu_section_remnawave_components() {
       8)
         run_component_flow_action "$(tr_text "Обновить Caddy для панели" "Update panel Caddy")" run_panel_caddy_update_flow
         ;;
-      9)
-        run_backup_with_scope "$(tr_text "Резервная копия: только панель" "Backup: panel only")" "all"
-        ;;
-      10) run_restore_scope_selector "panel" ;;
-      11) menu_section_setup "panel" ;;
-      12) break ;;
+      9) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
 }
 
-menu_section_bedolaga_components() {
+menu_section_remnawave_backup_restore() {
   local choice=""
   while true; do
-    draw_subheader "$(tr_text "Раздел: Бот и кабинет Bedolaga" "Section: Bedolaga bot and cabinet")"
+    draw_subheader "$(tr_text "Remnawave: backup и восстановление" "Remnawave: backup and restore")"
     show_back_hint
-    paint "$CLR_MUTED" "$(tr_text "Установка и обновление Bedolaga, плюс отдельные резервные копии и восстановление для бота и кабинета." "Install/update Bedolaga plus dedicated backup and restore for bot and cabinet.")"
+    paint "$CLR_MUTED" "$(tr_text "Операции резервной копии, восстановления и настроек backup панели." "Panel backup, restore and backup settings.")"
+    menu_option "1" "$(tr_text "Создать резервную копию панели" "Create panel backup")"
+    menu_option "2" "$(tr_text "Восстановление: выбрать состав" "Restore: choose scope")"
+    menu_option "3" "$(tr_text "Настройки backup панели" "Panel backup settings")"
+    menu_option "4" "$(tr_text "Назад" "Back")"
+    print_separator
+    read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
+    if is_back_command "$choice"; then
+      break
+    fi
+    case "$choice" in
+      1)
+        run_backup_with_scope "$(tr_text "Резервная копия: только панель" "Backup: panel only")" "all"
+        ;;
+      2) run_restore_scope_selector "panel" ;;
+      3) menu_section_setup "panel" ;;
+      4) break ;;
+      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+    esac
+  done
+}
+
+menu_section_remnawave_components() {
+  local choice=""
+  while true; do
+    draw_subheader "$(tr_text "Раздел: Компоненты Remnawave" "Section: Remnawave components")"
+    show_back_hint
+    menu_option "1" "$(tr_text "Установка и обновление" "Install and update")"
+    menu_option "2" "$(tr_text "Backup и восстановление" "Backup and restore")"
+    menu_option "3" "$(tr_text "Назад" "Back")"
+    print_separator
+    read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
+    if is_back_command "$choice"; then
+      break
+    fi
+    case "$choice" in
+      1) menu_section_remnawave_install_update ;;
+      2) menu_section_remnawave_backup_restore ;;
+      3) break ;;
+      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+    esac
+  done
+}
+
+menu_section_bedolaga_install_update() {
+  local choice=""
+  while true; do
+    draw_subheader "$(tr_text "Bedolaga: установка и обновление" "Bedolaga: install and update")"
+    show_back_hint
+    paint "$CLR_MUTED" "$(tr_text "Операции установки и обновления стека Bedolaga (бот + кабинет)." "Install/update operations for Bedolaga stack (bot + cabinet).")"
     menu_option "1" "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")"
     menu_option "2" "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")"
-    menu_option "3" "$(tr_text "Создать резервную копию Bedolaga" "Create Bedolaga backup")"
-    menu_option "4" "$(tr_text "Восстановление: выбрать состав" "Restore: choose scope")"
-    menu_option "5" "$(tr_text "Настройки backup Bedolaga" "Bedolaga backup settings")"
-    menu_option "6" "$(tr_text "Назад" "Back")"
+    menu_option "3" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
@@ -268,12 +306,56 @@ menu_section_bedolaga_components() {
       2)
         run_component_flow_action "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")" run_bedolaga_stack_update_flow
         ;;
-      3)
+      3) break ;;
+      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+    esac
+  done
+}
+
+menu_section_bedolaga_backup_restore() {
+  local choice=""
+  while true; do
+    draw_subheader "$(tr_text "Bedolaga: backup и восстановление" "Bedolaga: backup and restore")"
+    show_back_hint
+    paint "$CLR_MUTED" "$(tr_text "Операции резервной копии, восстановления и настроек backup Bedolaga." "Bedolaga backup, restore and backup settings.")"
+    menu_option "1" "$(tr_text "Создать резервную копию Bedolaga" "Create Bedolaga backup")"
+    menu_option "2" "$(tr_text "Восстановление: выбрать состав" "Restore: choose scope")"
+    menu_option "3" "$(tr_text "Настройки backup Bedolaga" "Bedolaga backup settings")"
+    menu_option "4" "$(tr_text "Назад" "Back")"
+    print_separator
+    read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
+    if is_back_command "$choice"; then
+      break
+    fi
+    case "$choice" in
+      1)
         run_backup_with_scope "$(tr_text "Резервная копия: только Bedolaga" "Backup: Bedolaga only")" "bedolaga"
         ;;
-      4) run_restore_scope_selector "bedolaga" ;;
-      5) menu_section_setup "bedolaga" ;;
-      6) break ;;
+      2) run_restore_scope_selector "bedolaga" ;;
+      3) menu_section_setup "bedolaga" ;;
+      4) break ;;
+      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+    esac
+  done
+}
+
+menu_section_bedolaga_components() {
+  local choice=""
+  while true; do
+    draw_subheader "$(tr_text "Раздел: Бот и кабинет Bedolaga" "Section: Bedolaga bot and cabinet")"
+    show_back_hint
+    menu_option "1" "$(tr_text "Установка и обновление" "Install and update")"
+    menu_option "2" "$(tr_text "Backup и восстановление" "Backup and restore")"
+    menu_option "3" "$(tr_text "Назад" "Back")"
+    print_separator
+    read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
+    if is_back_command "$choice"; then
+      break
+    fi
+    case "$choice" in
+      1) menu_section_bedolaga_install_update ;;
+      2) menu_section_bedolaga_backup_restore ;;
+      3) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
