@@ -14,6 +14,8 @@ BACKUP_LANG="${BACKUP_LANG:-ru}"
 BACKUP_ENCRYPT="${BACKUP_ENCRYPT:-0}"
 BACKUP_PASSWORD="${BACKUP_PASSWORD:-}"
 BACKUP_INCLUDE="${BACKUP_INCLUDE:-all}"
+TELEGRAM_THREAD_ID_PANEL="${TELEGRAM_THREAD_ID_PANEL:-}"
+TELEGRAM_THREAD_ID_BEDOLAGA="${TELEGRAM_THREAD_ID_BEDOLAGA:-}"
 BEDOLAGA_LOGS_STRATEGY="${BEDOLAGA_LOGS_STRATEGY:-recent}"
 BEDOLAGA_LOGS_MAX_FILES="${BEDOLAGA_LOGS_MAX_FILES:-20}"
 BEDOLAGA_LOGS_MAX_FILE_BYTES="${BEDOLAGA_LOGS_MAX_FILE_BYTES:-1048576}"
@@ -404,12 +406,16 @@ backup_scope_profile() {
 
 send_telegram_text() {
   local text="$1"
+  local profile="${2:-$(backup_scope_profile)}"
+  local thread_id=""
   local thread_args=()
   if [[ -z "${TELEGRAM_BOT_TOKEN:-}" || -z "${TELEGRAM_ADMIN_ID:-}" ]]; then
     return 0
   fi
-  if [[ -n "${TELEGRAM_THREAD_ID:-}" ]]; then
-    thread_args+=(-d "message_thread_id=${TELEGRAM_THREAD_ID}")
+
+  thread_id="$(resolve_telegram_thread_id "$profile")"
+  if [[ -n "$thread_id" ]]; then
+    thread_args+=(-d "message_thread_id=${thread_id}")
   fi
   if ! curl -sS --max-time 20 \
     -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
@@ -490,12 +496,15 @@ backup_bedolaga_logs() {
 send_telegram_file() {
   local file_path="$1"
   local caption="$2"
+  local profile="${3:-$(backup_scope_profile)}"
   local fallback_caption=""
   local response
+  local thread_id=""
   local thread_args=()
 
-  if [[ -n "${TELEGRAM_THREAD_ID:-}" ]]; then
-    thread_args+=(-F "message_thread_id=${TELEGRAM_THREAD_ID}")
+  thread_id="$(resolve_telegram_thread_id "$profile")"
+  if [[ -n "$thread_id" ]]; then
+    thread_args+=(-F "message_thread_id=${thread_id}")
   fi
 
   response="$(curl -sS --max-time 300 \
@@ -522,6 +531,43 @@ send_telegram_file() {
   echo "$response" | grep -q '"ok":true'
 }
 
+resolve_telegram_thread_id() {
+  local profile="${1:-panel}"
+
+  case "$profile" in
+    panel)
+      if [[ -n "${TELEGRAM_THREAD_ID_PANEL:-}" ]]; then
+        printf '%s' "${TELEGRAM_THREAD_ID_PANEL}"
+        return 0
+      fi
+      ;;
+    bedolaga)
+      if [[ -n "${TELEGRAM_THREAD_ID_BEDOLAGA:-}" ]]; then
+        printf '%s' "${TELEGRAM_THREAD_ID_BEDOLAGA}"
+        return 0
+      fi
+      ;;
+    mixed)
+      if [[ -n "${TELEGRAM_THREAD_ID:-}" ]]; then
+        printf '%s' "${TELEGRAM_THREAD_ID}"
+        return 0
+      fi
+      if [[ -n "${TELEGRAM_THREAD_ID_PANEL:-}" ]]; then
+        printf '%s' "${TELEGRAM_THREAD_ID_PANEL}"
+        return 0
+      fi
+      if [[ -n "${TELEGRAM_THREAD_ID_BEDOLAGA:-}" ]]; then
+        printf '%s' "${TELEGRAM_THREAD_ID_BEDOLAGA}"
+        return 0
+      fi
+      ;;
+  esac
+
+  if [[ -n "${TELEGRAM_THREAD_ID:-}" ]]; then
+    printf '%s' "${TELEGRAM_THREAD_ID}"
+  fi
+}
+
 escape_html() {
   local value="$1"
   value="${value//&/&amp;}"
@@ -543,8 +589,10 @@ add_backup_item() {
 fail() {
   local msg="$1"
   local error_label=""
+  local profile=""
   log "ERROR: ${msg}"
-  case "$(backup_scope_profile)" in
+  profile="$(backup_scope_profile)"
+  case "$profile" in
     bedolaga) error_label="$(t "Ошибка backup бота/кабинета" "Bot/cabinet backup error")" ;;
     mixed) error_label="$(t "Ошибка backup панели + бота/кабинета" "Panel + bot/cabinet backup error")" ;;
     *) error_label="$(t "Ошибка backup панели" "Panel backup error")" ;;
@@ -552,7 +600,8 @@ fail() {
   send_telegram_text "ERROR: ${error_label}: ${HOSTNAME_FQDN}
 ${msg}
 $(t "Время (локальное):" "Time (local):") ${TIMESTAMP_LOCAL}
-$(t "Время (UTC):" "Time (UTC):") ${TIMESTAMP_UTC_HUMAN}"
+$(t "Время (UTC):" "Time (UTC):") ${TIMESTAMP_UTC_HUMAN}" \
+    "$profile"
   exit 1
 }
 
@@ -942,13 +991,13 @@ fi
 
 if (( ARCHIVE_SIZE_BYTES <= TG_SINGLE_LIMIT_BYTES )); then
   log "Отправляю архив одним файлом в Telegram"
-  send_telegram_file "$ARCHIVE_PATH" "$(build_caption "$(basename "$ARCHIVE_PATH")")" \
+  send_telegram_file "$ARCHIVE_PATH" "$(build_caption "$(basename "$ARCHIVE_PATH")")" "$(backup_scope_profile)" \
     || fail "не удалось отправить архив в Telegram"
 else
   log "Архив большой, режу на части по ${MAX_TG_PART_SIZE}"
   split -b "$MAX_TG_PART_SIZE" -d -a 3 "$ARCHIVE_PATH" "${ARCHIVE_PATH}.part."
   for part in "${ARCHIVE_PATH}.part."*; do
-    send_telegram_file "$part" "$(build_caption "$(basename "$part")")" \
+    send_telegram_file "$part" "$(build_caption "$(basename "$part")")" "$(backup_scope_profile)" \
       || fail "не удалось отправить часть $(basename "$part")"
   done
 fi

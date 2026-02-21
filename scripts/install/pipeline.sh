@@ -185,6 +185,8 @@ write_env() {
   local escaped_bot=""
   local escaped_admin=""
   local escaped_thread=""
+  local escaped_thread_panel=""
+  local escaped_thread_bedolaga=""
   local escaped_dir=""
   local escaped_calendar=""
   local escaped_backup_lang=""
@@ -195,6 +197,8 @@ write_env() {
   escaped_bot="$(escape_env_value "${TELEGRAM_BOT_TOKEN:-}")"
   escaped_admin="$(escape_env_value "${TELEGRAM_ADMIN_ID:-}")"
   escaped_thread="$(escape_env_value "${TELEGRAM_THREAD_ID:-}")"
+  escaped_thread_panel="$(escape_env_value "${TELEGRAM_THREAD_ID_PANEL:-}")"
+  escaped_thread_bedolaga="$(escape_env_value "${TELEGRAM_THREAD_ID_BEDOLAGA:-}")"
   escaped_dir="$(escape_env_value "${REMNAWAVE_DIR:-}")"
   escaped_calendar="$(escape_env_value "${BACKUP_ON_CALENDAR:-}")"
   escaped_backup_lang="$(escape_env_value "${BACKUP_LANG:-}")"
@@ -207,6 +211,8 @@ write_env() {
 ${TELEGRAM_BOT_TOKEN:+TELEGRAM_BOT_TOKEN=\"${escaped_bot}\"}
 ${TELEGRAM_ADMIN_ID:+TELEGRAM_ADMIN_ID=\"${escaped_admin}\"}
 ${TELEGRAM_THREAD_ID:+TELEGRAM_THREAD_ID=\"${escaped_thread}\"}
+${TELEGRAM_THREAD_ID_PANEL:+TELEGRAM_THREAD_ID_PANEL=\"${escaped_thread_panel}\"}
+${TELEGRAM_THREAD_ID_BEDOLAGA:+TELEGRAM_THREAD_ID_BEDOLAGA=\"${escaped_thread_bedolaga}\"}
 ${REMNAWAVE_DIR:+REMNAWAVE_DIR=\"${escaped_dir}\"}
 ${BACKUP_ON_CALENDAR:+BACKUP_ON_CALENDAR=\"${escaped_calendar}\"}
 ${BACKUP_LANG:+BACKUP_LANG=\"${escaped_backup_lang}\"}

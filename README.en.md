@@ -19,6 +19,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backu
 - Restore from local archive file or direct URL.
 - `dry-run` restore mode to validate flow before real changes.
 - Encrypted backup archives (GPG symmetric) for safer storage and transfer.
+- Telegram topic split support: separate topics for panel backups and Bedolaga backups (bot + cabinet).
 - Status and diagnostics: timer, service, latest backup, container state, and key runtime signals.
 - Disk usage analysis and safe cleanup without removing active containers or volumes.
 - Dedicated install/update actions for Remnawave panel.
