@@ -32,6 +32,8 @@ ARCHIVE_PATH="${BACKUP_ROOT}/${ARCHIVE_BASE}.tar.gz"
 LOG_TAG="panel-backup"
 LOCK_FILE="${LOCK_FILE:-/var/lock/panel-backup.lock}"
 TELEGRAM_ADMIN_ID_RESOLVED=""
+TELEGRAM_SEND_ERROR_DESC=""
+TELEGRAM_SEND_ERROR_HINT=""
 declare -a BACKUP_ITEMS=()
 WANT_DB=0
 WANT_REDIS=0
@@ -535,6 +537,8 @@ send_telegram_file() {
   local thread_args=()
   local response_desc=""
 
+  TELEGRAM_SEND_ERROR_DESC=""
+  TELEGRAM_SEND_ERROR_HINT=""
   chat_id="$(resolve_telegram_chat_id)"
   thread_id="$(resolve_telegram_thread_id "$profile")"
   if [[ -n "$thread_id" ]]; then
@@ -559,6 +563,12 @@ send_telegram_file() {
 
   response_desc="$(echo "$response" | sed -n 's/.*"description":"\([^"]*\)".*/\1/p')"
   [[ -n "$response_desc" ]] && log "$(t "Telegram ошибка (HTML-caption):" "Telegram error (HTML caption):") ${response_desc}"
+  TELEGRAM_SEND_ERROR_DESC="$response_desc"
+  case "${response_desc,,}" in
+    *"chat not found"*|*"forbidden"*|*"not enough rights"*|*"have no rights"*)
+      TELEGRAM_SEND_ERROR_HINT="$(t "нет прав на отправку в чат/топик или бот не добавлен в чат" "no permission to send to chat/topic or bot is not added to chat")"
+      ;;
+  esac
   log "$(t "Предупреждение: Telegram отклонил HTML-caption, пробую безопасный текстовый caption" "Warning: Telegram rejected HTML caption, trying safe plain-text caption")"
   fallback_caption="$(build_caption_plain "$(basename "$file_path")")"
   if (( ${#fallback_caption} > 900 )); then
@@ -576,6 +586,12 @@ send_telegram_file() {
   fi
   response_desc="$(echo "$response" | sed -n 's/.*"description":"\([^"]*\)".*/\1/p')"
   [[ -n "$response_desc" ]] && log "$(t "Telegram ошибка (plain-caption):" "Telegram error (plain caption):") ${response_desc}"
+  TELEGRAM_SEND_ERROR_DESC="$response_desc"
+  case "${response_desc,,}" in
+    *"chat not found"*|*"forbidden"*|*"not enough rights"*|*"have no rights"*)
+      TELEGRAM_SEND_ERROR_HINT="$(t "нет прав на отправку в чат/топик или бот не добавлен в чат" "no permission to send to chat/topic or bot is not added to chat")"
+      ;;
+  esac
   return 1
 }
 
@@ -1051,14 +1067,22 @@ fi
 
 if (( ARCHIVE_SIZE_BYTES <= TG_SINGLE_LIMIT_BYTES )); then
   log "Отправляю архив одним файлом в Telegram"
-  send_telegram_file "$ARCHIVE_PATH" "$(build_caption "$(basename "$ARCHIVE_PATH")")" "$(backup_scope_profile)" \
-    || fail "не удалось отправить архив в Telegram"
+  if ! send_telegram_file "$ARCHIVE_PATH" "$(build_caption "$(basename "$ARCHIVE_PATH")")" "$(backup_scope_profile)"; then
+    if [[ -n "${TELEGRAM_SEND_ERROR_HINT:-}" ]]; then
+      fail "$(t "не удалось отправить архив в Telegram" "failed to send archive to Telegram"): ${TELEGRAM_SEND_ERROR_HINT}${TELEGRAM_SEND_ERROR_DESC:+ (${TELEGRAM_SEND_ERROR_DESC})}"
+    fi
+    fail "не удалось отправить архив в Telegram"
+  fi
 else
   log "Архив большой, режу на части по ${MAX_TG_PART_SIZE}"
   split -b "$MAX_TG_PART_SIZE" -d -a 3 "$ARCHIVE_PATH" "${ARCHIVE_PATH}.part."
   for part in "${ARCHIVE_PATH}.part."*; do
-    send_telegram_file "$part" "$(build_caption "$(basename "$part")")" "$(backup_scope_profile)" \
-      || fail "не удалось отправить часть $(basename "$part")"
+    if ! send_telegram_file "$part" "$(build_caption "$(basename "$part")")" "$(backup_scope_profile)"; then
+      if [[ -n "${TELEGRAM_SEND_ERROR_HINT:-}" ]]; then
+        fail "$(t "не удалось отправить часть" "failed to send part") $(basename "$part"): ${TELEGRAM_SEND_ERROR_HINT}${TELEGRAM_SEND_ERROR_DESC:+ (${TELEGRAM_SEND_ERROR_DESC})}"
+      fi
+      fail "не удалось отправить часть $(basename "$part")"
+    fi
   done
 fi
 
