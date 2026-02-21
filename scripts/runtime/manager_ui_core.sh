@@ -229,6 +229,24 @@ choose_ui_lang() {
 
 detect_remnawave_dir() {
   local guessed
+  local compose_file=""
+
+  is_remnawave_panel_dir() {
+    local d="$1"
+    compose_file="$d/docker-compose.yml"
+    [[ -f "$d/.env" && -f "$compose_file" ]] || return 1
+
+    if grep -Eq 'container_name:[[:space:]]*remnawave_bot(_db|_redis)?([[:space:]]|$)' "$compose_file"; then
+      return 1
+    fi
+
+    if grep -Eq 'container_name:[[:space:]]*remnawave-(db|redis|caddy|subscription-page)([[:space:]]|$)' "$compose_file"; then
+      return 0
+    fi
+
+    [[ -d "$d/caddy" || -d "$d/subscription" ]] || return 1
+    return 0
+  }
 
   for guessed in \
     "${REMNAWAVE_DIR}" \
@@ -237,25 +255,65 @@ detect_remnawave_dir() {
     "/root/remnawave" \
     "/home/remnawave"; do
     [[ -n "$guessed" ]] || continue
-    if [[ -f "$guessed/.env" && -f "$guessed/docker-compose.yml" ]]; then
+    if is_remnawave_panel_dir "$guessed"; then
       echo "$guessed"
       return 0
     fi
   done
 
   guessed="$(docker inspect remnawave --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' 2>/dev/null || true)"
-  if [[ -n "$guessed" && -f "$guessed/.env" && -f "$guessed/docker-compose.yml" ]]; then
+  if [[ -n "$guessed" ]] && is_remnawave_panel_dir "$guessed"; then
     echo "$guessed"
     return 0
   fi
 
-  guessed="$(find /opt /srv /root /home -maxdepth 3 -type f -name '.env' 2>/dev/null | while read -r f; do d="$(dirname "$f")"; [[ -f "$d/docker-compose.yml" ]] || continue; grep -q '^POSTGRES_USER=' "$f" 2>/dev/null || continue; grep -q '^POSTGRES_DB=' "$f" 2>/dev/null || continue; echo "$d"; break; done)"
+  guessed="$(find /opt /srv /root /home -maxdepth 4 -type f -name '.env' 2>/dev/null | while read -r f; do d="$(dirname "$f")"; is_remnawave_panel_dir "$d" || continue; echo "$d"; break; done)"
   if [[ -n "$guessed" ]]; then
     echo "$guessed"
     return 0
   fi
 
   return 1
+}
+
+detect_bedolaga_bot_dir() {
+  local guessed=""
+  for guessed in "${BEDOLAGA_BOT_DIR}" "/root/remnawave-bedolaga-telegram-bot" "/opt/remnawave-bedolaga-telegram-bot"; do
+    [[ -n "$guessed" ]] || continue
+    if [[ -f "$guessed/.env" && -f "$guessed/docker-compose.yml" ]]; then
+      echo "$guessed"
+      return 0
+    fi
+  done
+
+  guessed="$(docker inspect remnawave_bot --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' 2>/dev/null || true)"
+  if [[ -n "$guessed" && -f "$guessed/.env" && -f "$guessed/docker-compose.yml" ]]; then
+    echo "$guessed"
+    return 0
+  fi
+
+  guessed="$(find /home -maxdepth 5 -type d -name 'remnawave-bedolaga-telegram-bot' 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
+  [[ -n "$guessed" ]] && echo "$guessed"
+}
+
+detect_bedolaga_cabinet_dir() {
+  local guessed=""
+  for guessed in "${BEDOLAGA_CABINET_DIR}" "/root/bedolaga-cabinet" "/root/cabinet-frontend" "/opt/bedolaga-cabinet"; do
+    [[ -n "$guessed" ]] || continue
+    if [[ -f "$guessed/.env" && -f "$guessed/docker-compose.yml" ]]; then
+      echo "$guessed"
+      return 0
+    fi
+  done
+
+  guessed="$(docker inspect cabinet_frontend --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' 2>/dev/null || true)"
+  if [[ -n "$guessed" && -f "$guessed/.env" && -f "$guessed/docker-compose.yml" ]]; then
+    echo "$guessed"
+    return 0
+  fi
+
+  guessed="$(find /home -maxdepth 5 -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' \) 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
+  [[ -n "$guessed" ]] && echo "$guessed"
 }
 
 get_current_timer_calendar() {
@@ -313,6 +371,24 @@ show_remnawave_autodetect() {
     paint "$CLR_OK" "  - subscription/: $(tr_text "найден" "found")"
   else
     paint "$CLR_WARN" "  - subscription/: $(tr_text "не найден (будет пропущен в backup)" "not found (will be skipped in backup)")"
+  fi
+}
+
+show_bedolaga_autodetect() {
+  local bot_dir="$1"
+  local cabinet_dir="$2"
+
+  paint "$CLR_TITLE" "$(tr_text "Автопоиск Bedolaga" "Bedolaga path autodetect")"
+  if [[ -n "$bot_dir" ]]; then
+    paint "$CLR_OK" "$(tr_text "Найден путь бота" "Detected bot path"): ${bot_dir}"
+  else
+    paint "$CLR_WARN" "$(tr_text "Путь бота не найден автоматически." "Bot path was not auto-detected.")"
+  fi
+
+  if [[ -n "$cabinet_dir" ]]; then
+    paint "$CLR_OK" "$(tr_text "Найден путь кабинета" "Detected cabinet path"): ${cabinet_dir}"
+  else
+    paint "$CLR_WARN" "$(tr_text "Путь кабинета не найден автоматически." "Cabinet path was not auto-detected.")"
   fi
 }
 

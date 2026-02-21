@@ -15,6 +15,8 @@ is_valid_telegram_id() {
 prompt_install_settings() {
   local val=""
   local detected_path=""
+  local detected_bedolaga_bot=""
+  local detected_bedolaga_cabinet=""
   local encrypt_choice=""
   local confirm_val=""
   local previous_password=""
@@ -23,14 +25,23 @@ prompt_install_settings() {
 
   draw_header "$(tr_text "Настройка резервного копирования" "Configure backup settings")"
   show_back_hint
-  paint "$CLR_MUTED" "$(tr_text "Сейчас вы настраиваете: Telegram-уведомления и путь к панели." "You are configuring: Telegram notifications and panel path.")"
+  paint "$CLR_MUTED" "$(tr_text "Сейчас вы настраиваете: Telegram-уведомления и пути для панели, бота и кабинета." "You are configuring: Telegram notifications and paths for panel, bot and cabinet.")"
   paint "$CLR_MUTED" "$(tr_text "Также можно включить шифрование архива резервной копии." "You can also enable backup archive encryption.")"
   paint "$CLR_MUTED" "$(tr_text "Пустое значение оставляет текущее (если есть)." "Empty input keeps current value (if any).")"
   echo
   detected_path="$(detect_remnawave_dir || true)"
+  detected_bedolaga_bot="$(detect_bedolaga_bot_dir || true)"
+  detected_bedolaga_cabinet="$(detect_bedolaga_cabinet_dir || true)"
   show_remnawave_autodetect "$detected_path"
+  show_bedolaga_autodetect "$detected_bedolaga_bot" "$detected_bedolaga_cabinet"
   if [[ -z "${REMNAWAVE_DIR:-}" && -n "$detected_path" ]]; then
     REMNAWAVE_DIR="$detected_path"
+  fi
+  if [[ -z "$detected_path" && -n "$detected_bedolaga_bot" ]]; then
+    if [[ -z "${BACKUP_INCLUDE:-}" || "${BACKUP_INCLUDE}" == "all" ]]; then
+      BACKUP_INCLUDE="bedolaga"
+      paint "$CLR_MUTED" "$(tr_text "Панель не обнаружена, установлен профиль backup: bedolaga (бот + кабинет)." "Panel was not detected, backup profile set to: bedolaga (bot + cabinet).")"
+    fi
   fi
   echo
 
