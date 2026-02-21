@@ -40,29 +40,50 @@ run_backup_with_scope() {
 }
 
 run_restore_scope_selector() {
+  local profile="${1:-global}"
   local choice=""
   while true; do
     draw_subheader "$(tr_text "Выбор состава восстановления" "Restore scope selection")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Выберите, что восстанавливать из архива." "Choose what to restore from archive.")"
-    menu_option "1" "$(tr_text "Полностью: панель + бот + кабинет" "Full: panel + bot + cabinet")"
-    menu_option "2" "$(tr_text "Только панель Remnawave" "Remnawave panel only")"
-    menu_option "3" "$(tr_text "Только бот и кабинет Bedolaga" "Bedolaga bot and cabinet only")"
-    menu_option "4" "$(tr_text "Ручной выбор компонентов" "Manual component selection")"
-    menu_option "5" "$(tr_text "Назад" "Back")"
-    print_separator
-    read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
-    if is_back_command "$choice"; then
-      return 1
+
+    if [[ "$profile" == "bedolaga" ]]; then
+      menu_option "1" "$(tr_text "Бот + кабинет Bedolaga" "Bedolaga bot + cabinet")"
+      menu_option "2" "$(tr_text "Только бот Bedolaga" "Bedolaga bot only")"
+      menu_option "3" "$(tr_text "Только кабинет Bedolaga" "Bedolaga cabinet only")"
+      menu_option "4" "$(tr_text "Ручной выбор компонентов Bedolaga" "Manual Bedolaga component selection")"
+      menu_option "5" "$(tr_text "Назад" "Back")"
+      print_separator
+      read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
+      if is_back_command "$choice"; then
+        return 1
+      fi
+      case "$choice" in
+        1) run_restore_wizard_flow "bedolaga" "1"; return 0 ;;
+        2) run_restore_wizard_flow "bedolaga-db,bedolaga-redis,bedolaga-bot" "1"; return 0 ;;
+        3) run_restore_wizard_flow "bedolaga-cabinet" "1"; return 0 ;;
+        4) run_restore_wizard_flow "bedolaga" "0"; return 0 ;;
+        5) return 1 ;;
+        *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+      esac
+    else
+      menu_option "1" "$(tr_text "Только панель Remnawave" "Remnawave panel only")"
+      menu_option "2" "$(tr_text "Полностью: панель + бот + кабинет" "Full: panel + bot + cabinet")"
+      menu_option "3" "$(tr_text "Ручной выбор компонентов" "Manual component selection")"
+      menu_option "4" "$(tr_text "Назад" "Back")"
+      print_separator
+      read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
+      if is_back_command "$choice"; then
+        return 1
+      fi
+      case "$choice" in
+        1) run_restore_wizard_flow "all" "1"; return 0 ;;
+        2) run_restore_wizard_flow "all,bedolaga" "1"; return 0 ;;
+        3) run_restore_wizard_flow "all,bedolaga" "0"; return 0 ;;
+        4) return 1 ;;
+        *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+      esac
     fi
-    case "$choice" in
-      1) run_restore_wizard_flow "all,bedolaga" "1"; return 0 ;;
-      2) run_restore_wizard_flow "all" "1"; return 0 ;;
-      3) run_restore_wizard_flow "bedolaga" "1"; return 0 ;;
-      4) run_restore_wizard_flow "all,bedolaga" "0"; return 0 ;;
-      5) return 1 ;;
-      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
-    esac
   done
 }
 
@@ -87,6 +108,8 @@ run_restore_wizard_flow() {
       all) preset_label="$(tr_text "панель (all)" "panel (all)")" ;;
       bedolaga) preset_label="$(tr_text "бот+кабинет (bedolaga)" "bot+cabinet (bedolaga)")" ;;
       all,bedolaga|bedolaga,all) preset_label="$(tr_text "полный (панель + бот + кабинет)" "full (panel + bot + cabinet)")" ;;
+      bedolaga-db,bedolaga-redis,bedolaga-bot|bedolaga-bot,bedolaga-db,bedolaga-redis) preset_label="$(tr_text "только бот Bedolaga (db + redis + bot)" "Bedolaga bot only (db + redis + bot)")" ;;
+      bedolaga-cabinet) preset_label="$(tr_text "только кабинет Bedolaga" "Bedolaga cabinet only")" ;;
       *) preset_label="$preset_restore_only" ;;
     esac
     paint "$CLR_MUTED" "$(tr_text "Состав восстановления зафиксирован:" "Restore scope is locked:") ${preset_label}"
@@ -214,7 +237,7 @@ menu_section_remnawave_components() {
       9)
         run_backup_with_scope "$(tr_text "Резервная копия: только панель" "Backup: panel only")" "all"
         ;;
-      10) run_restore_scope_selector ;;
+      10) run_restore_scope_selector "panel" ;;
       11) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
@@ -247,7 +270,7 @@ menu_section_bedolaga_components() {
       3)
         run_backup_with_scope "$(tr_text "Резервная копия: только Bedolaga" "Backup: Bedolaga only")" "bedolaga"
         ;;
-      4) run_restore_scope_selector ;;
+      4) run_restore_scope_selector "bedolaga" ;;
       5) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
