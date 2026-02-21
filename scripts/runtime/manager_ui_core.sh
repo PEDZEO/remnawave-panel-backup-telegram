@@ -320,7 +320,16 @@ get_current_timer_calendar() {
   local path=""
   local value=""
 
-  for path in /etc/systemd/system/panel-backup.timer /usr/lib/systemd/system/panel-backup.timer /lib/systemd/system/panel-backup.timer; do
+  for path in \
+    /etc/systemd/system/panel-backup-panel.timer \
+    /etc/systemd/system/panel-backup-bedolaga.timer \
+    /etc/systemd/system/panel-backup.timer \
+    /usr/lib/systemd/system/panel-backup-panel.timer \
+    /usr/lib/systemd/system/panel-backup-bedolaga.timer \
+    /usr/lib/systemd/system/panel-backup.timer \
+    /lib/systemd/system/panel-backup-panel.timer \
+    /lib/systemd/system/panel-backup-bedolaga.timer \
+    /lib/systemd/system/panel-backup.timer; do
     [[ -f "$path" ]] || continue
     value="$(grep -E '^OnCalendar=' "$path" | head -n1 | cut -d= -f2- || true)"
     if [[ -n "$value" ]]; then

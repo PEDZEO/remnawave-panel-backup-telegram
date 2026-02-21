@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Install pipeline functions for manager.sh
-INSTALL_TIMER_ENABLED="1"
+INSTALL_PANEL_TIMER_ENABLED="0"
+INSTALL_BEDOLAGA_TIMER_ENABLED="0"
 
 is_valid_telegram_token() {
   local token="$1"
@@ -153,26 +154,24 @@ prompt_install_settings() {
     BACKUP_PASSWORD=""
   fi
 
-  draw_header "$(tr_text "Состав резервной копии" "Backup scope")"
+  draw_header "$(tr_text "Профиль резервной копии" "Backup profile")"
   show_back_hint
-  paint "$CLR_MUTED" "$(tr_text "Выберите, какие данные включать в резервную копию." "Choose what to include in backup.")"
-  menu_option "1" "$(tr_text "Полный (панель + Bedolaga)" "Full (panel + Bedolaga)")"
-  menu_option "2" "$(tr_text "Только PostgreSQL (db)" "PostgreSQL only (db)")"
-  menu_option "3" "$(tr_text "Только Redis (redis)" "Redis only (redis)")"
-  menu_option "4" "$(tr_text "Только конфиги (панель + Bedolaga)" "Configs only (panel + Bedolaga)")"
-  menu_option "5" "$(tr_text "Свой список (пример: db,env,compose)" "Custom list (example: db,env,compose)")"
+  paint "$CLR_MUTED" "$(tr_text "Выберите профиль: отдельно панель, отдельно Bedolaga или оба проекта." "Choose profile: panel only, Bedolaga only, or both projects.")"
+  menu_option "1" "$(tr_text "Только панель Remnawave" "Remnawave panel only")"
+  menu_option "2" "$(tr_text "Только Bedolaga (бот + кабинет)" "Bedolaga only (bot + cabinet)")"
+  menu_option "3" "$(tr_text "Панель + Bedolaga (оба проекта)" "Panel + Bedolaga (both projects)")"
+  menu_option "4" "$(tr_text "Свой список компонентов" "Custom component list")"
   print_separator
   while true; do
-    read -r -p "$(tr_text "[8/8] Выбор [1-5]: " "[8/8] Choice [1-5]: ")" include_choice
+    read -r -p "$(tr_text "[8/8] Выбор [1-4]: " "[8/8] Choice [1-4]: ")" include_choice
     if is_back_command "$include_choice"; then
       return 1
     fi
     case "$include_choice" in
-      1) BACKUP_INCLUDE="all,bedolaga"; break ;;
-      2) BACKUP_INCLUDE="db"; break ;;
-      3) BACKUP_INCLUDE="redis"; break ;;
-      4) BACKUP_INCLUDE="configs,bedolaga-configs"; break ;;
-      5)
+      1) BACKUP_INCLUDE="all"; break ;;
+      2) BACKUP_INCLUDE="bedolaga"; break ;;
+      3) BACKUP_INCLUDE="all,bedolaga"; break ;;
+      4)
         val="$(ask_value "$(tr_text "Введите компоненты через запятую (all,db,redis,configs,env,compose,caddy,subscription,bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)" "Enter comma-separated components (all,db,redis,configs,env,compose,caddy,subscription,bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)")" "$BACKUP_INCLUDE")"
         [[ "$val" == "__PBM_BACK__" ]] && continue
         [[ -n "$val" ]] || { paint "$CLR_WARN" "$(tr_text "Список не может быть пустым." "List cannot be empty.")"; continue; }
@@ -194,12 +193,20 @@ install_files() {
   fetch "scripts/bin/panel-restore.sh" "$TMP_DIR/panel-restore.sh"
   fetch "systemd/panel-backup.service" "$TMP_DIR/panel-backup.service"
   fetch "systemd/panel-backup.timer" "$TMP_DIR/panel-backup.timer"
+  fetch "systemd/panel-backup-panel.service" "$TMP_DIR/panel-backup-panel.service"
+  fetch "systemd/panel-backup-panel.timer" "$TMP_DIR/panel-backup-panel.timer"
+  fetch "systemd/panel-backup-bedolaga.service" "$TMP_DIR/panel-backup-bedolaga.service"
+  fetch "systemd/panel-backup-bedolaga.timer" "$TMP_DIR/panel-backup-bedolaga.timer"
 
   paint "$CLR_ACCENT" "[2/5] $(tr_text "Установка скриптов и systemd-юнитов" "Installing scripts and systemd units")"
   $SUDO install -m 755 "$TMP_DIR/panel-backup.sh" /usr/local/bin/panel-backup.sh
   $SUDO install -m 755 "$TMP_DIR/panel-restore.sh" /usr/local/bin/panel-restore.sh
   $SUDO install -m 644 "$TMP_DIR/panel-backup.service" /etc/systemd/system/panel-backup.service
   $SUDO install -m 644 "$TMP_DIR/panel-backup.timer" /etc/systemd/system/panel-backup.timer
+  $SUDO install -m 644 "$TMP_DIR/panel-backup-panel.service" /etc/systemd/system/panel-backup-panel.service
+  $SUDO install -m 644 "$TMP_DIR/panel-backup-panel.timer" /etc/systemd/system/panel-backup-panel.timer
+  $SUDO install -m 644 "$TMP_DIR/panel-backup-bedolaga.service" /etc/systemd/system/panel-backup-bedolaga.service
+  $SUDO install -m 644 "$TMP_DIR/panel-backup-bedolaga.timer" /etc/systemd/system/panel-backup-bedolaga.timer
 }
 
 write_env() {
@@ -277,6 +284,36 @@ WantedBy=timers.target
 TIMER"
   $SUDO chmod 644 /etc/systemd/system/panel-backup.timer
   $SUDO chown root:root /etc/systemd/system/panel-backup.timer
+
+  $SUDO bash -c "cat > /etc/systemd/system/panel-backup-panel.timer <<TIMER
+[Unit]
+Description=Run Remnawave panel backup by configured schedule
+
+[Timer]
+OnCalendar=${calendar}
+Persistent=true
+Unit=panel-backup-panel.service
+
+[Install]
+WantedBy=timers.target
+TIMER"
+  $SUDO chmod 644 /etc/systemd/system/panel-backup-panel.timer
+  $SUDO chown root:root /etc/systemd/system/panel-backup-panel.timer
+
+  $SUDO bash -c "cat > /etc/systemd/system/panel-backup-bedolaga.timer <<TIMER
+[Unit]
+Description=Run Bedolaga backup by configured schedule
+
+[Timer]
+OnCalendar=${calendar}
+Persistent=true
+Unit=panel-backup-bedolaga.service
+
+[Install]
+WantedBy=timers.target
+TIMER"
+  $SUDO chmod 644 /etc/systemd/system/panel-backup-bedolaga.timer
+  $SUDO chown root:root /etc/systemd/system/panel-backup-bedolaga.timer
 }
 
 configure_schedule_menu() {
@@ -319,17 +356,7 @@ configure_schedule_menu() {
   done
 }
 
-enable_timer() {
-  write_timer_unit
-  paint "$CLR_ACCENT" "[4/5] $(tr_text "Перезагрузка systemd и включение таймера" "Reloading systemd and enabling timer")"
-  $SUDO systemctl daemon-reload
-  $SUDO systemctl enable --now panel-backup.timer
-
-  paint "$CLR_OK" "[5/5] $(tr_text "Готово" "Done")"
-  $SUDO systemctl status --no-pager panel-backup.timer | sed -n '1,12p'
-}
-
-is_backup_target_available() {
+is_panel_backup_target_available() {
   local candidate=""
 
   candidate="${REMNAWAVE_DIR:-}"
@@ -346,26 +373,88 @@ is_backup_target_available() {
   return 1
 }
 
-post_install_health_check() {
-  local timer_active="inactive"
-  local service_loaded="unknown"
+is_bedolaga_backup_target_available() {
+  local bot_candidate=""
+  local cabinet_candidate=""
 
-  timer_active="$($SUDO systemctl is-active panel-backup.timer 2>/dev/null || echo "inactive")"
-  if $SUDO systemctl cat panel-backup.service >/dev/null 2>&1; then
-    service_loaded="ok"
+  bot_candidate="${BEDOLAGA_BOT_DIR:-}"
+  cabinet_candidate="${BEDOLAGA_CABINET_DIR:-}"
+
+  if [[ -n "$bot_candidate" && -f "$bot_candidate/.env" && -f "$bot_candidate/docker-compose.yml" ]]; then
+    if [[ -n "$cabinet_candidate" && -f "$cabinet_candidate/.env" && -f "$cabinet_candidate/docker-compose.yml" ]]; then
+      return 0
+    fi
+  fi
+
+  bot_candidate="$(detect_bedolaga_bot_dir || true)"
+  cabinet_candidate="$(detect_bedolaga_cabinet_dir || true)"
+  if [[ -n "$bot_candidate" && -f "$bot_candidate/.env" && -f "$bot_candidate/docker-compose.yml" && -n "$cabinet_candidate" && -f "$cabinet_candidate/.env" && -f "$cabinet_candidate/docker-compose.yml" ]]; then
+    BEDOLAGA_BOT_DIR="$bot_candidate"
+    BEDOLAGA_CABINET_DIR="$cabinet_candidate"
+    return 0
+  fi
+
+  return 1
+}
+
+enable_timer() {
+  write_timer_unit
+  paint "$CLR_ACCENT" "[4/5] $(tr_text "Перезагрузка systemd и включение таймеров" "Reloading systemd and enabling timers")"
+  $SUDO systemctl daemon-reload
+
+  INSTALL_PANEL_TIMER_ENABLED="0"
+  INSTALL_BEDOLAGA_TIMER_ENABLED="0"
+  if is_panel_backup_target_available; then
+    $SUDO systemctl enable --now panel-backup-panel.timer >/dev/null 2>&1 || true
+    INSTALL_PANEL_TIMER_ENABLED="1"
   else
-    service_loaded="missing"
+    $SUDO systemctl disable --now panel-backup-panel.timer >/dev/null 2>&1 || true
+  fi
+
+  if is_bedolaga_backup_target_available; then
+    $SUDO systemctl enable --now panel-backup-bedolaga.timer >/dev/null 2>&1 || true
+    INSTALL_BEDOLAGA_TIMER_ENABLED="1"
+  else
+    $SUDO systemctl disable --now panel-backup-bedolaga.timer >/dev/null 2>&1 || true
+  fi
+
+  $SUDO systemctl disable --now panel-backup.timer >/dev/null 2>&1 || true
+
+  paint "$CLR_OK" "[5/5] $(tr_text "Готово" "Done")"
+  paint "$CLR_MUTED" "panel-backup-panel.timer: $($SUDO systemctl is-active panel-backup-panel.timer 2>/dev/null || echo inactive)"
+  paint "$CLR_MUTED" "panel-backup-bedolaga.timer: $($SUDO systemctl is-active panel-backup-bedolaga.timer 2>/dev/null || echo inactive)"
+}
+
+post_install_health_check() {
+  local panel_timer_active="inactive"
+  local bedolaga_timer_active="inactive"
+  local panel_service_loaded="unknown"
+  local bedolaga_service_loaded="unknown"
+
+  panel_timer_active="$($SUDO systemctl is-active panel-backup-panel.timer 2>/dev/null || echo "inactive")"
+  bedolaga_timer_active="$($SUDO systemctl is-active panel-backup-bedolaga.timer 2>/dev/null || echo "inactive")"
+  if $SUDO systemctl cat panel-backup-panel.service >/dev/null 2>&1; then
+    panel_service_loaded="ok"
+  else
+    panel_service_loaded="missing"
+  fi
+  if $SUDO systemctl cat panel-backup-bedolaga.service >/dev/null 2>&1; then
+    bedolaga_service_loaded="ok"
+  else
+    bedolaga_service_loaded="missing"
   fi
 
   paint "$CLR_TITLE" "$(tr_text "Проверка после установки" "Post-install check")"
-  paint "$CLR_MUTED" "panel-backup.timer: ${timer_active}"
-  paint "$CLR_MUTED" "panel-backup.service: ${service_loaded}"
-  if [[ "$INSTALL_TIMER_ENABLED" == "1" && "$timer_active" == "active" && "$service_loaded" == "ok" ]]; then
-    paint "$CLR_OK" "$(tr_text "Установка и запуск таймера подтверждены." "Install and timer activation confirmed.")"
-  elif [[ "$INSTALL_TIMER_ENABLED" == "0" && "$service_loaded" == "ok" ]]; then
-    paint "$CLR_OK" "$(tr_text "Панель не обнаружена: таймер оставлен выключенным до настройки панели." "Panel not detected: timer left disabled until panel is configured.")"
+  paint "$CLR_MUTED" "panel-backup-panel.timer: ${panel_timer_active}"
+  paint "$CLR_MUTED" "panel-backup-panel.service: ${panel_service_loaded}"
+  paint "$CLR_MUTED" "panel-backup-bedolaga.timer: ${bedolaga_timer_active}"
+  paint "$CLR_MUTED" "panel-backup-bedolaga.service: ${bedolaga_service_loaded}"
+  if [[ "$INSTALL_PANEL_TIMER_ENABLED" == "1" && "$INSTALL_BEDOLAGA_TIMER_ENABLED" == "1" && "$panel_timer_active" == "active" && "$bedolaga_timer_active" == "active" ]]; then
+    paint "$CLR_OK" "$(tr_text "Оба таймера включены и работают." "Both timers are enabled and active.")"
+  elif [[ "$INSTALL_PANEL_TIMER_ENABLED" == "1" || "$INSTALL_BEDOLAGA_TIMER_ENABLED" == "1" ]]; then
+    paint "$CLR_OK" "$(tr_text "Включен только доступный таймер для найденного проекта." "Only available project timer was enabled.")"
   else
-    paint "$CLR_WARN" "$(tr_text "Есть проблемы после установки, проверьте systemctl status." "Post-install checks reported issues, verify with systemctl status.")"
+    paint "$CLR_WARN" "$(tr_text "Проекты не обнаружены: таймеры выключены до настройки путей." "Projects were not detected: timers stay disabled until paths are configured.")"
   fi
 }
 
@@ -373,21 +462,16 @@ run_install_pipeline() {
   preflight_install_environment || return 1
   install_files
   write_env
-  if is_backup_target_available; then
-    INSTALL_TIMER_ENABLED="1"
-    enable_timer
-  else
-    INSTALL_TIMER_ENABLED="0"
-    paint "$CLR_WARN" "$(tr_text "Панель Remnawave не найдена: таймер резервного копирования не включен." "Remnawave panel was not found: backup timer was not enabled.")"
-    paint "$CLR_MUTED" "$(tr_text "Установите панель или укажите корректный REMNAWAVE_DIR, затем включите таймер в меню." "Install panel or set a valid REMNAWAVE_DIR, then enable timer from menu.")"
-    $SUDO systemctl disable --now panel-backup.timer >/dev/null 2>&1 || true
-  fi
+  enable_timer
   post_install_health_check
   return 0
 }
 
 disable_timer() {
-  echo "$(tr_text "Отключаю таймер резервного копирования" "Disabling backup timer")"
-  $SUDO systemctl disable --now panel-backup.timer
-  $SUDO systemctl status --no-pager panel-backup.timer | sed -n '1,12p' || true
+  echo "$(tr_text "Отключаю таймеры резервного копирования" "Disabling backup timers")"
+  $SUDO systemctl disable --now panel-backup-panel.timer >/dev/null 2>&1 || true
+  $SUDO systemctl disable --now panel-backup-bedolaga.timer >/dev/null 2>&1 || true
+  $SUDO systemctl disable --now panel-backup.timer >/dev/null 2>&1 || true
+  $SUDO systemctl status --no-pager panel-backup-panel.timer | sed -n '1,8p' || true
+  $SUDO systemctl status --no-pager panel-backup-bedolaga.timer | sed -n '1,8p' || true
 }

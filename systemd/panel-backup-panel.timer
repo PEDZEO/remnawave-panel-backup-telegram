@@ -1,0 +1,11 @@
+# update: panel-only backup timer unit
+[Unit]
+Description=Run Remnawave panel backup by configured schedule
+
+[Timer]
+OnCalendar=*-*-* 03:40:00 UTC
+Persistent=true
+Unit=panel-backup-panel.service
+
+[Install]
+WantedBy=timers.target

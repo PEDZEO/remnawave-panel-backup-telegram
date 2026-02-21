@@ -1,0 +1,11 @@
+# update: bedolaga-only backup timer unit
+[Unit]
+Description=Run Bedolaga backup by configured schedule
+
+[Timer]
+OnCalendar=*-*-* 03:40:00 UTC
+Persistent=true
+Unit=panel-backup-bedolaga.service
+
+[Install]
+WantedBy=timers.target

@@ -48,7 +48,8 @@ menu_flow_install_and_setup() {
     case $? in
       1)
         paint "$CLR_WARN" "$(tr_text "Таймер не включен. Позже можно включить так:" "Timer was not enabled. You can enable later with:")"
-        paint "$CLR_MUTED" "  sudo systemctl enable --now panel-backup.timer"
+        paint "$CLR_MUTED" "  sudo systemctl enable --now panel-backup-panel.timer"
+        paint "$CLR_MUTED" "  sudo systemctl enable --now panel-backup-bedolaga.timer"
         ;;
       2) paint "$CLR_WARN" "$(tr_text "Пропущено." "Skipped.")" ;;
     esac
@@ -295,9 +296,14 @@ menu_flow_quick_setup() {
         write_env
         write_timer_unit
         $SUDO systemctl daemon-reload
-        if $SUDO systemctl is-enabled --quiet panel-backup.timer 2>/dev/null; then
-          if ! $SUDO systemctl restart panel-backup.timer; then
-            paint "$CLR_WARN" "$(tr_text "Не удалось перезапустить timer после изменений." "Failed to restart timer after changes.")"
+        if $SUDO systemctl is-enabled --quiet panel-backup-panel.timer 2>/dev/null; then
+          if ! $SUDO systemctl restart panel-backup-panel.timer; then
+            paint "$CLR_WARN" "$(tr_text "Не удалось перезапустить timer панели после изменений." "Failed to restart panel timer after changes.")"
+          fi
+        fi
+        if $SUDO systemctl is-enabled --quiet panel-backup-bedolaga.timer 2>/dev/null; then
+          if ! $SUDO systemctl restart panel-backup-bedolaga.timer; then
+            paint "$CLR_WARN" "$(tr_text "Не удалось перезапустить timer Bedolaga после изменений." "Failed to restart Bedolaga timer after changes.")"
           fi
         fi
         paint "$CLR_OK" "$(tr_text "Быстрая настройка применена." "Quick setup applied.")"

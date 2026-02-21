@@ -326,12 +326,12 @@ menu_section_timer() {
   local choice=""
   local schedule_now=""
   while true; do
-    draw_subheader "$(tr_text "Раздел: Таймер и периодичность" "Section: Timer and schedule")"
+    draw_subheader "$(tr_text "Раздел: Таймеры и периодичность" "Section: Timers and schedule")"
     show_back_hint
     schedule_now="$(get_current_timer_calendar || true)"
     paint "$CLR_MUTED" "$(tr_text "Текущее расписание:" "Current schedule:") $(format_schedule_label "$schedule_now")"
-    menu_option "1" "$(tr_text "Включить таймер резервного копирования" "Enable backup timer")"
-    menu_option "2" "$(tr_text "Выключить таймер резервного копирования" "Disable backup timer")"
+    menu_option "1" "$(tr_text "Включить таймеры резервного копирования" "Enable backup timers")"
+    menu_option "2" "$(tr_text "Выключить таймеры резервного копирования" "Disable backup timers")"
     menu_option "3" "$(tr_text "Настроить периодичность резервного копирования" "Configure backup schedule")"
     menu_option "4" "$(tr_text "Назад" "Back")"
     print_separator
@@ -341,12 +341,12 @@ menu_section_timer() {
     fi
     case "$choice" in
       1)
-        draw_subheader "$(tr_text "Включение таймера резервного копирования" "Enable backup timer")"
+        draw_subheader "$(tr_text "Включение таймеров резервного копирования" "Enable backup timers")"
         enable_timer
         wait_for_enter
         ;;
       2)
-        draw_subheader "$(tr_text "Отключение таймера резервного копирования" "Disable backup timer")"
+        draw_subheader "$(tr_text "Отключение таймеров резервного копирования" "Disable backup timers")"
         disable_timer
         wait_for_enter
         ;;
@@ -356,9 +356,14 @@ menu_section_timer() {
           write_timer_unit
           $SUDO systemctl daemon-reload
           paint "$CLR_OK" "$(tr_text "Периодичность резервного копирования сохранена." "Backup schedule saved.")"
-          if $SUDO systemctl is-enabled --quiet panel-backup.timer 2>/dev/null; then
-            if ! $SUDO systemctl restart panel-backup.timer; then
-              paint "$CLR_WARN" "$(tr_text "Не удалось перезапустить timer после смены расписания." "Failed to restart timer after schedule update.")"
+          if $SUDO systemctl is-enabled --quiet panel-backup-panel.timer 2>/dev/null; then
+            if ! $SUDO systemctl restart panel-backup-panel.timer; then
+              paint "$CLR_WARN" "$(tr_text "Не удалось перезапустить timer панели после смены расписания." "Failed to restart panel timer after schedule update.")"
+            fi
+          fi
+          if $SUDO systemctl is-enabled --quiet panel-backup-bedolaga.timer 2>/dev/null; then
+            if ! $SUDO systemctl restart panel-backup-bedolaga.timer; then
+              paint "$CLR_WARN" "$(tr_text "Не удалось перезапустить timer Bedolaga после смены расписания." "Failed to restart Bedolaga timer after schedule update.")"
             fi
           fi
         fi

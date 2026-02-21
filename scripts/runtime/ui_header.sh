@@ -30,6 +30,9 @@ draw_header() {
   local title="$1"
   local subtitle="${2:-}"
   local timer_state=""
+  local timer_panel_state=""
+  local timer_bedolaga_state=""
+  local timer_status_label=""
   local schedule_now=""
   local schedule_label=""
   local latest_backup=""
@@ -78,7 +81,14 @@ draw_header() {
   local show_bedolaga_header="0"
 
   clear
-  timer_state="$($SUDO systemctl is-active panel-backup.timer 2>/dev/null || echo "inactive")"
+  timer_panel_state="$($SUDO systemctl is-active panel-backup-panel.timer 2>/dev/null || echo "inactive")"
+  timer_bedolaga_state="$($SUDO systemctl is-active panel-backup-bedolaga.timer 2>/dev/null || echo "inactive")"
+  if [[ "$timer_panel_state" == "active" || "$timer_bedolaga_state" == "active" ]]; then
+    timer_state="active"
+  else
+    timer_state="inactive"
+  fi
+  timer_status_label="panel:${timer_panel_state} / bedolaga:${timer_bedolaga_state}"
   schedule_now="$(get_current_timer_calendar || true)"
   schedule_label="$(format_schedule_label "$schedule_now")"
   panel_state="$(container_state remnawave)"
@@ -137,7 +147,10 @@ draw_header() {
     backup_age_color="$CLR_MUTED"
   fi
 
-  service_show="$($SUDO systemctl show panel-backup.service -p Result -p ExecMainStatus -p ExecMainExitTimestamp 2>/dev/null || true)"
+  service_show="$($SUDO systemctl show panel-backup-panel.service -p Result -p ExecMainStatus -p ExecMainExitTimestamp 2>/dev/null || true)"
+  if [[ -z "$service_show" || "$service_show" != *"Result="* ]]; then
+    service_show="$($SUDO systemctl show panel-backup-bedolaga.service -p Result -p ExecMainStatus -p ExecMainExitTimestamp 2>/dev/null || true)"
+  fi
   service_result="$(echo "$service_show" | awk -F= '/^Result=/{print $2}')"
   service_code="$(echo "$service_show" | awk -F= '/^ExecMainStatus=/{print $2}')"
   service_finish="$(echo "$service_show" | awk -F= '/^ExecMainExitTimestamp=/{print $2}')"
@@ -177,7 +190,10 @@ draw_header() {
     encrypt_state="$(tr_text "выключено" "disabled")"
     encrypt_color="$CLR_WARN"
   fi
-  next_run_raw="$($SUDO systemctl show panel-backup.timer -p NextElapseUSecRealtime --value 2>/dev/null || true)"
+  next_run_raw="$($SUDO systemctl show panel-backup-panel.timer -p NextElapseUSecRealtime --value 2>/dev/null || true)"
+  if [[ -z "$next_run_raw" || "$next_run_raw" == "n/a" ]]; then
+    next_run_raw="$($SUDO systemctl show panel-backup-bedolaga.timer -p NextElapseUSecRealtime --value 2>/dev/null || true)"
+  fi
   if [[ -n "$next_run_raw" && "$next_run_raw" != "n/a" ]]; then
     now_ts="$(date +%s)"
     next_ts="$(date -d "$next_run_raw" +%s 2>/dev/null || echo 0)"
@@ -221,7 +237,7 @@ draw_header() {
     paint_labeled_value "$(tr_text "Подписка:" "Subscription:")" "$sub_state" "$sub_color"
     paint_labeled_value "$(tr_text "Версия подписки:" "Subscription version:")" "$sub_version" "$CLR_ACCENT"
     print_separator
-    paint_labeled_value "$(tr_text "Таймер:" "Timer:")" "${timer_state}" "$timer_color"
+    paint_labeled_value "$(tr_text "Таймеры:" "Timers:")" "${timer_status_label}" "$timer_color"
     paint_labeled_value "$(tr_text "Расписание:" "Schedule:")" "${schedule_label}" "$CLR_ACCENT"
     paint_labeled_value "$(tr_text "До следующего backup:" "Until next backup:")" "${next_run_label}" "$next_run_color"
     paint_labeled_value "$(tr_text "Последний backup:" "Latest backup:")" "$(short_backup_label "$latest_label")" "$CLR_ACCENT"
