@@ -387,6 +387,13 @@ fi
 
 if (( need_remnawave_dir == 1 )); then
   REMNAWAVE_DIR="${REMNAWAVE_DIR:-$(detect_remnawave_dir || true)}"
+  if [[ -n "$REMNAWAVE_DIR" && ! -d "$REMNAWAVE_DIR" ]]; then
+    detected_remnawave_dir="$(detect_remnawave_dir || true)"
+    if [[ -n "$detected_remnawave_dir" && "$detected_remnawave_dir" != "$REMNAWAVE_DIR" ]]; then
+      log "WARNING: REMNAWAVE_DIR does not exist, using detected path: $detected_remnawave_dir"
+      REMNAWAVE_DIR="$detected_remnawave_dir"
+    fi
+  fi
   [[ -n "$REMNAWAVE_DIR" ]] || REMNAWAVE_DIR="$BACKUP_REMNAWAVE_DIR"
   [[ -n "$REMNAWAVE_DIR" ]] || { echo "Cannot detect remnawave dir. Set REMNAWAVE_DIR or restore archive with backup-info.txt" >&2; exit 1; }
   [[ -d "$REMNAWAVE_DIR" ]] && remnawave_dir_existed=1
@@ -394,6 +401,13 @@ if (( need_remnawave_dir == 1 )); then
 fi
 if (( need_bedolaga_bot_dir == 1 )); then
   BEDOLAGA_BOT_DIR="${BEDOLAGA_BOT_DIR:-$(detect_bedolaga_bot_dir || true)}"
+  if [[ -n "$BEDOLAGA_BOT_DIR" && ! -d "$BEDOLAGA_BOT_DIR" ]]; then
+    detected_bedolaga_bot_dir="$(detect_bedolaga_bot_dir || true)"
+    if [[ -n "$detected_bedolaga_bot_dir" && "$detected_bedolaga_bot_dir" != "$BEDOLAGA_BOT_DIR" ]]; then
+      log "WARNING: BEDOLAGA_BOT_DIR does not exist, using detected path: $detected_bedolaga_bot_dir"
+      BEDOLAGA_BOT_DIR="$detected_bedolaga_bot_dir"
+    fi
+  fi
   [[ -n "$BEDOLAGA_BOT_DIR" ]] || BEDOLAGA_BOT_DIR="$BACKUP_BEDOLAGA_BOT_DIR"
   [[ -n "$BEDOLAGA_BOT_DIR" ]] || { echo "Cannot detect Bedolaga bot dir. Set BEDOLAGA_BOT_DIR or restore archive with backup-info.txt" >&2; exit 1; }
   [[ -d "$BEDOLAGA_BOT_DIR" ]] && bedolaga_bot_dir_existed=1
@@ -401,6 +415,13 @@ if (( need_bedolaga_bot_dir == 1 )); then
 fi
 if (( need_bedolaga_cabinet_dir == 1 )); then
   BEDOLAGA_CABINET_DIR="${BEDOLAGA_CABINET_DIR:-$(detect_bedolaga_cabinet_dir || true)}"
+  if [[ -n "$BEDOLAGA_CABINET_DIR" && ! -d "$BEDOLAGA_CABINET_DIR" ]]; then
+    detected_bedolaga_cabinet_dir="$(detect_bedolaga_cabinet_dir || true)"
+    if [[ -n "$detected_bedolaga_cabinet_dir" && "$detected_bedolaga_cabinet_dir" != "$BEDOLAGA_CABINET_DIR" ]]; then
+      log "WARNING: BEDOLAGA_CABINET_DIR does not exist, using detected path: $detected_bedolaga_cabinet_dir"
+      BEDOLAGA_CABINET_DIR="$detected_bedolaga_cabinet_dir"
+    fi
+  fi
   [[ -n "$BEDOLAGA_CABINET_DIR" ]] || BEDOLAGA_CABINET_DIR="$BACKUP_BEDOLAGA_CABINET_DIR"
   [[ -n "$BEDOLAGA_CABINET_DIR" ]] || { echo "Cannot detect Bedolaga cabinet dir. Set BEDOLAGA_CABINET_DIR or restore archive with backup-info.txt" >&2; exit 1; }
   [[ -d "$BEDOLAGA_CABINET_DIR" ]] && bedolaga_cabinet_dir_existed=1

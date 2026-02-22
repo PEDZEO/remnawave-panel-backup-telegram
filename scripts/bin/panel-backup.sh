@@ -953,6 +953,29 @@ BEDOLAGA_POSTGRES_DB=""
 [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]] || fail "не найден TELEGRAM_BOT_TOKEN в ${BACKUP_ENV_PATH}"
 [[ -n "${TELEGRAM_ADMIN_ID:-}" ]] || fail "не найден TELEGRAM_ADMIN_ID в ${BACKUP_ENV_PATH}"
 
+# If user provided stale paths in env, auto-fallback to detected valid dirs.
+if [[ -n "${REMNAWAVE_DIR:-}" ]] && [[ ! -d "${REMNAWAVE_DIR}" ]]; then
+  _detected_remnawave_dir="$(detect_remnawave_dir || true)"
+  if [[ -n "$_detected_remnawave_dir" ]]; then
+    log "$(t "Предупреждение: REMNAWAVE_DIR недоступен, использую автонайденный путь" "Warning: REMNAWAVE_DIR is unavailable, using detected path"): ${_detected_remnawave_dir}"
+    REMNAWAVE_DIR="$_detected_remnawave_dir"
+  fi
+fi
+if [[ -n "${BEDOLAGA_BOT_DIR:-}" ]] && [[ ! -d "${BEDOLAGA_BOT_DIR}" ]]; then
+  _detected_bedolaga_bot_dir="$(detect_bedolaga_bot_dir || true)"
+  if [[ -n "$_detected_bedolaga_bot_dir" ]]; then
+    log "$(t "Предупреждение: BEDOLAGA_BOT_DIR недоступен, использую автонайденный путь" "Warning: BEDOLAGA_BOT_DIR is unavailable, using detected path"): ${_detected_bedolaga_bot_dir}"
+    BEDOLAGA_BOT_DIR="$_detected_bedolaga_bot_dir"
+  fi
+fi
+if [[ -n "${BEDOLAGA_CABINET_DIR:-}" ]] && [[ ! -d "${BEDOLAGA_CABINET_DIR}" ]]; then
+  _detected_bedolaga_cabinet_dir="$(detect_bedolaga_cabinet_dir || true)"
+  if [[ -n "$_detected_bedolaga_cabinet_dir" ]]; then
+    log "$(t "Предупреждение: BEDOLAGA_CABINET_DIR недоступен, использую автонайденный путь" "Warning: BEDOLAGA_CABINET_DIR is unavailable, using detected path"): ${_detected_bedolaga_cabinet_dir}"
+    BEDOLAGA_CABINET_DIR="$_detected_bedolaga_cabinet_dir"
+  fi
+fi
+
 if (( WANT_DB == 1 || WANT_ENV == 1 || WANT_COMPOSE == 1 || WANT_CADDY == 1 || WANT_SUBSCRIPTION == 1 )); then
   if [[ -z "${REMNAWAVE_DIR:-}" ]]; then
     fail "$(t "не найден путь панели Remnawave (REMNAWAVE_DIR)" "Remnawave panel path not found (REMNAWAVE_DIR)")"
