@@ -174,14 +174,16 @@ run_bedolaga_remote_migration_flow() {
   draw_subheader "$(tr_text "Выбор состава восстановления на новом VPS" "Select restore scope on the new VPS")"
   menu_option "1" "$(tr_text "Бот + кабинет (без DB/Redis, рекомендовано для старта)" "Bot + cabinet (without DB/Redis, recommended to start)")"
   menu_option "2" "$(tr_text "Полный Bedolaga (DB + Redis + бот + кабинет)" "Full Bedolaga (DB + Redis + bot + cabinet)")"
+  menu_option "3" "$(tr_text "Полный перенос: Remnawave + Bedolaga (весь backup)" "Full migration: Remnawave + Bedolaga (entire backup)")"
   print_separator
-  read -r -p "$(tr_text "Выбор [1-2]: " "Choice [1-2]: ")" restore_scope_choice
+  read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" restore_scope_choice
   if is_back_command "$restore_scope_choice"; then
     return 1
   fi
   case "$restore_scope_choice" in
     1) restore_only="bedolaga-bot,bedolaga-cabinet" ;;
     2) restore_only="bedolaga" ;;
+    3) restore_only="all,bedolaga" ;;
     *)
       paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"
       wait_for_enter
@@ -198,6 +200,7 @@ run_bedolaga_remote_migration_flow() {
   esac
   if (( create_fresh_backup == 1 )); then
     case "$restore_only" in
+      all,bedolaga|bedolaga,all) fresh_backup_scope="all,bedolaga" ;;
       bedolaga) fresh_backup_scope="bedolaga" ;;
       *) fresh_backup_scope="bedolaga-bot,bedolaga-cabinet" ;;
     esac
@@ -501,6 +504,24 @@ fi'
     fi
     if ! "${ssh_cmd[@]}" "set -e; cd /root/remnawave-bedolaga-telegram-bot && docker compose up -d; cabdir=''; for d in /root/cabinet-frontend /root/bedolaga-cabinet /opt/cabinet-frontend /opt/bedolaga-cabinet; do if [ -d \"\$d\" ]; then cabdir=\"\$d\"; break; fi; done; if [ -n \"\$cabdir\" ]; then if [ -f \"\$cabdir/docker-compose.yml\" ] || [ -f \"\$cabdir/docker-compose.caddy.yml\" ] || [ -f \"\$cabdir/compose.yaml\" ] || [ -f \"\$cabdir/compose.yml\" ]; then cd \"\$cabdir\" && docker compose up -d; fi; fi"; then
       paint "$CLR_DANGER" "$(tr_text "Не удалось поднять контейнеры Bedolaga на новом VPS." "Failed to start Bedolaga containers on the new VPS.")"
+      wait_for_enter
+      return 1
+    fi
+  fi
+
+  if (( restore_dry_run == 0 && auto_prepare_remote == 1 )) && ([[ "$restore_only" == "all,bedolaga" ]] || [[ "$restore_only" == "bedolaga,all" ]]); then
+    paint "$CLR_ACCENT" "$(tr_text "Пустой VPS: предварительно разворачиваю Remnawave+Bedolaga конфиги и поднимаю контейнеры перед полным restore..." "Empty VPS: pre-seeding Remnawave+Bedolaga configs and starting containers before full restore...")"
+    preseed_cmd="/usr/local/bin/panel-restore.sh --from $(printf '%q' "$remote_archive") --only env --only compose --only caddy --only subscription --only bedolaga-bot --only bedolaga-cabinet --no-restart"
+    if (( is_encrypted_archive == 1 )); then
+      preseed_cmd="BACKUP_PASSWORD=$(printf '%q' "$restore_password") ${preseed_cmd}"
+    fi
+    if ! "${ssh_cmd[@]}" "$preseed_cmd"; then
+      paint "$CLR_DANGER" "$(tr_text "Не удалось выполнить предварительное восстановление Remnawave+Bedolaga на новом VPS." "Failed to run Remnawave+Bedolaga pre-restore on the new VPS.")"
+      wait_for_enter
+      return 1
+    fi
+    if ! "${ssh_cmd[@]}" "set -e; paneldir=''; for d in /opt/remnawave /srv/remnawave /root/remnawave /home/remnawave; do if [ -f \"\$d/.env\" ] && [ -f \"\$d/docker-compose.yml\" ]; then paneldir=\"\$d\"; break; fi; done; if [ -z \"\$paneldir\" ]; then paneldir=$(find /root /opt /srv /home -maxdepth 6 -type d -name remnawave 2>/dev/null | while read -r d; do [ -f \"\$d/.env\" ] && [ -f \"\$d/docker-compose.yml\" ] || continue; echo \"\$d\"; break; done); fi; if [ -n \"\$paneldir\" ]; then cd \"\$paneldir\" && docker compose up -d; fi; cd /root/remnawave-bedolaga-telegram-bot && docker compose up -d; cabdir=''; for d in /root/cabinet-frontend /root/bedolaga-cabinet /opt/cabinet-frontend /opt/bedolaga-cabinet; do if [ -d \"\$d\" ]; then cabdir=\"\$d\"; break; fi; done; if [ -n \"\$cabdir\" ]; then if [ -f \"\$cabdir/docker-compose.yml\" ] || [ -f \"\$cabdir/docker-compose.caddy.yml\" ] || [ -f \"\$cabdir/compose.yaml\" ] || [ -f \"\$cabdir/compose.yml\" ]; then cd \"\$cabdir\" && docker compose up -d; fi; fi"; then
+      paint "$CLR_DANGER" "$(tr_text "Не удалось поднять контейнеры Remnawave+Bedolaga на новом VPS." "Failed to start Remnawave+Bedolaga containers on the new VPS.")"
       wait_for_enter
       return 1
     fi
