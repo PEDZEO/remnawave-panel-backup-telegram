@@ -3,7 +3,47 @@
 
 BEDOLAGA_BOT_REPO_DEFAULT="https://github.com/BEDOLAGA-DEV/remnawave-bedolaga-telegram-bot.git"
 BEDOLAGA_CABINET_REPO_DEFAULT="https://github.com/BEDOLAGA-DEV/bedolaga-cabinet.git"
+BEDOLAGA_BOT_REPO_FORK_DEFAULT="git@github.com:PEDZEO/remnawave-bedolaga-telegram-bot.git"
+BEDOLAGA_CABINET_REPO_FORK_DEFAULT="git@github.com:PEDZEO/cabinet-frontend.git"
 BEDOLAGA_SHARED_NETWORK="bedolaga-network"
+BEDOLAGA_BOT_REPO_LAST_CUSTOM="${BEDOLAGA_BOT_REPO_LAST_CUSTOM:-$BEDOLAGA_BOT_REPO_FORK_DEFAULT}"
+BEDOLAGA_CABINET_REPO_LAST_CUSTOM="${BEDOLAGA_CABINET_REPO_LAST_CUSTOM:-$BEDOLAGA_CABINET_REPO_FORK_DEFAULT}"
+
+bedolaga_detect_repo_origin_url() {
+  local repo_dir="$1"
+  local url=""
+
+  [[ -d "$repo_dir/.git" ]] || return 1
+  url="$(git -C "$repo_dir" remote get-url origin 2>/dev/null || true)"
+  [[ -n "$url" ]] || return 1
+  echo "$url"
+  return 0
+}
+
+bedolaga_autodetect_fork_repo_urls() {
+  local user_dir=""
+  local detected=""
+
+  for user_dir in /root /home/*; do
+    [[ -d "$user_dir" ]] || continue
+
+    detected="$(bedolaga_detect_repo_origin_url "${user_dir}/GitHub/remnawave-bedolaga-telegram-bot" || true)"
+    if bedolaga_validate_git_repo_url "$detected"; then
+      BEDOLAGA_BOT_REPO_LAST_CUSTOM="$detected"
+      break
+    fi
+  done
+
+  for user_dir in /root /home/*; do
+    [[ -d "$user_dir" ]] || continue
+
+    detected="$(bedolaga_detect_repo_origin_url "${user_dir}/GitHub/cabinet-frontend" || true)"
+    if bedolaga_validate_git_repo_url "$detected"; then
+      BEDOLAGA_CABINET_REPO_LAST_CUSTOM="$detected"
+      break
+    fi
+  done
+}
 
 ensure_git_available() {
   if command -v git >/dev/null 2>&1; then
@@ -78,6 +118,36 @@ bedolaga_validate_domain() {
 bedolaga_validate_https_url() {
   local value="$1"
   [[ "$value" =~ ^https://[^[:space:]]+$ ]]
+}
+
+bedolaga_validate_git_repo_url() {
+  local value="$1"
+  [[ "$value" =~ ^https://[^[:space:]]+\.git$ ]] && return 0
+  [[ "$value" =~ ^git@[^[:space:]]+:[^[:space:]]+\.git$ ]] && return 0
+  return 1
+}
+
+bedolaga_normalize_git_repo_url() {
+  local value
+  value="$(bedolaga_trim_value "$1")"
+
+  if [[ -z "$value" ]]; then
+    echo ""
+    return 0
+  fi
+  if [[ "$value" =~ ^https://[^[:space:]]+\.git$ ]] || [[ "$value" =~ ^git@[^[:space:]]+:[^[:space:]]+\.git$ ]]; then
+    echo "$value"
+    return 0
+  fi
+  if [[ "$value" =~ ^https://github\.com/[^/[:space:]]+/[^/[:space:]]+$ ]]; then
+    echo "${value}.git"
+    return 0
+  fi
+  if [[ "$value" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]]; then
+    echo "https://github.com/${value}.git"
+    return 0
+  fi
+  echo "$value"
 }
 
 bedolaga_validate_bot_token() {
@@ -652,11 +722,11 @@ bedolaga_verify_cabinet_ws_route() {
   return 1
 }
 
-run_bedolaga_stack_install_flow() {
+run_bedolaga_stack_install_with_repos() {
+  local bot_repo="$1"
+  local cabinet_repo="$2"
   local bot_dir="/root/remnawave-bedolaga-telegram-bot"
   local cabinet_dir="/root/bedolaga-cabinet"
-  local bot_repo="$BEDOLAGA_BOT_REPO_DEFAULT"
-  local cabinet_repo="$BEDOLAGA_CABINET_REPO_DEFAULT"
   local hooks_domain=""
   local cabinet_domain=""
   local api_domain=""
@@ -889,6 +959,46 @@ run_bedolaga_stack_install_flow() {
 
   paint "$CLR_OK" "$(tr_text "Bedolaga stack установлен и запущен." "Bedolaga stack installed and started.")"
   return 0
+}
+
+run_bedolaga_stack_install_flow() {
+  run_bedolaga_stack_install_with_repos "$BEDOLAGA_BOT_REPO_DEFAULT" "$BEDOLAGA_CABINET_REPO_DEFAULT"
+}
+
+run_bedolaga_stack_install_fork_flow() {
+  local bot_repo=""
+  local cabinet_repo=""
+  local normalized_repo=""
+
+  bedolaga_autodetect_fork_repo_urls
+  draw_subheader "$(tr_text "Bedolaga: установка из форка PEDZEO (бот + кабинет + Caddy)" "Bedolaga: install from PEDZEO fork (bot + cabinet + Caddy)")"
+  paint "$CLR_MUTED" "$(tr_text "Укажите URL репозиториев форка. Можно в формате owner/repo, https://github.com/owner/repo или полный .git." "Provide fork repository URLs. You can use owner/repo, https://github.com/owner/repo, or full .git URL.")"
+
+  while true; do
+    bot_repo="$(ask_value "$(tr_text "URL репозитория бота" "Bot repository URL")" "$BEDOLAGA_BOT_REPO_LAST_CUSTOM")"
+    [[ "$bot_repo" == "__PBM_BACK__" ]] && return 1
+    normalized_repo="$(bedolaga_normalize_git_repo_url "$bot_repo")"
+    if bedolaga_validate_git_repo_url "$normalized_repo"; then
+      bot_repo="$normalized_repo"
+      break
+    fi
+    paint "$CLR_WARN" "$(tr_text "Некорректный URL репозитория бота." "Invalid bot repository URL.")"
+  done
+
+  while true; do
+    cabinet_repo="$(ask_value "$(tr_text "URL репозитория кабинета" "Cabinet repository URL")" "$BEDOLAGA_CABINET_REPO_LAST_CUSTOM")"
+    [[ "$cabinet_repo" == "__PBM_BACK__" ]] && return 1
+    normalized_repo="$(bedolaga_normalize_git_repo_url "$cabinet_repo")"
+    if bedolaga_validate_git_repo_url "$normalized_repo"; then
+      cabinet_repo="$normalized_repo"
+      break
+    fi
+    paint "$CLR_WARN" "$(tr_text "Некорректный URL репозитория кабинета." "Invalid cabinet repository URL.")"
+  done
+
+  BEDOLAGA_BOT_REPO_LAST_CUSTOM="$bot_repo"
+  BEDOLAGA_CABINET_REPO_LAST_CUSTOM="$cabinet_repo"
+  run_bedolaga_stack_install_with_repos "$bot_repo" "$cabinet_repo"
 }
 
 run_bedolaga_stack_update_flow() {

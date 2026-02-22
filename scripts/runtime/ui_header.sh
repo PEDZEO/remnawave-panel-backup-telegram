@@ -257,6 +257,7 @@ draw_header() {
     paint_labeled_value "$(tr_text "Версия кабинета:" "Cabinet version:")" "$cabinet_version" "$CLR_ACCENT"
   fi
   paint "$CLR_TITLE" "============================================================"
+  paint "$CLR_MUTED" "  $(tr_text "Контакт:" "Contact:") @pedzeo"
   paint "$CLR_MUTED" "$(tr_text "Выберите действие." "Select an action.")"
   echo
 }
