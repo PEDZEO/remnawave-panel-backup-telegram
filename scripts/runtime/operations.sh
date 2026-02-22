@@ -104,8 +104,12 @@ normalize_env_file_format() {
 run_backup_now() {
   local backup_cmd
   local include_quoted=""
+  local backup_log="/tmp/panel-backup-last.log"
 
-  sync_runtime_scripts
+  if ! sync_runtime_scripts; then
+    paint "$CLR_DANGER" "$(tr_text "Не удалось обновить runtime-скрипты backup/restore." "Failed to update backup/restore runtime scripts.")"
+    return 1
+  fi
   normalize_env_file_format
 
   if [[ ! -x /usr/local/bin/panel-backup.sh ]]; then
@@ -126,7 +130,14 @@ run_backup_now() {
     backup_cmd=(env "BACKUP_INCLUDE_OVERRIDE=${BACKUP_INCLUDE}" /usr/local/bin/panel-backup.sh)
   fi
 
-  "${backup_cmd[@]}"
+  : > "$backup_log"
+  if "${backup_cmd[@]}" > >(tee -a "$backup_log") 2> >(tee -a "$backup_log" >&2); then
+    return 0
+  fi
+
+  paint "$CLR_DANGER" "$(tr_text "Подробный лог ошибки (хвост):" "Detailed error log (tail):")"
+  tail -n 40 "$backup_log" 2>/dev/null || true
+  return 1
 }
 
 humanize_systemd_state() {
