@@ -136,6 +136,8 @@ run_bedolaga_remote_migration_flow() {
   local remote_archive=""
   local restore_scope_choice=""
   local restore_only="bedolaga-bot,bedolaga-cabinet"
+  local create_fresh_backup=0
+  local fresh_backup_scope=""
   local restore_dry_run=1
   local restore_no_restart=1
   local restore_password="${BACKUP_PASSWORD:-}"
@@ -157,6 +159,7 @@ run_bedolaga_remote_migration_flow() {
   local caddy_source=""
   local caddy_parent=""
   local caddy_up_cmd=""
+  local old_include="${BACKUP_INCLUDE-__PBM_UNSET__}"
 
   latest_archive="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/pb-*.tar.gz.gpg /var/backups/panel/panel-backup-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz.gpg 2>/dev/null | head -n1 || true)"
   archive_path="${BACKUP_FILE:-$latest_archive}"
@@ -165,13 +168,8 @@ run_bedolaga_remote_migration_flow() {
   paint "$CLR_MUTED" "$(tr_text "Сценарий: копирование архива на удалённый сервер и запуск panel-restore.sh." "Flow: copy archive to remote server and run panel-restore.sh.")"
   paint "$CLR_MUTED" "$(tr_text "Можно включить автоподготовку пустого VPS: Docker + panel-restore.sh + подготовка контейнеров." "You can enable auto-prepare for an empty VPS: Docker + panel-restore.sh + container bootstrap.")"
 
-  archive_path="$(ask_value "$(tr_text "Путь к локальному архиву для переноса" "Local backup archive path for migration")" "$archive_path")"
+  archive_path="$(ask_value "$(tr_text "Путь к локальному архиву для переноса (Enter = последний)" "Local backup archive path for migration (Enter = latest)")" "$archive_path")"
   [[ "$archive_path" == "__PBM_BACK__" ]] && return 1
-  [[ -n "$archive_path" && -f "$archive_path" ]] || {
-    paint "$CLR_DANGER" "$(tr_text "Локальный архив не найден." "Local archive not found.")"
-    wait_for_enter
-    return 1
-  }
 
   draw_subheader "$(tr_text "Выбор состава восстановления на новом VPS" "Select restore scope on the new VPS")"
   menu_option "1" "$(tr_text "Бот + кабинет (без DB/Redis, рекомендовано для старта)" "Bot + cabinet (without DB/Redis, recommended to start)")"
@@ -190,6 +188,56 @@ run_bedolaga_remote_migration_flow() {
       return 1
       ;;
   esac
+
+  confirm_rc=0
+  ask_yes_no "$(tr_text "Создать свежий backup перед отправкой на новый VPS?" "Create a fresh backup before sending to the new VPS?")" "y" || confirm_rc=$?
+  case "$confirm_rc" in
+    0) create_fresh_backup=1 ;;
+    1) create_fresh_backup=0 ;;
+    2) return 1 ;;
+  esac
+  if (( create_fresh_backup == 1 )); then
+    case "$restore_only" in
+      bedolaga) fresh_backup_scope="bedolaga" ;;
+      *) fresh_backup_scope="bedolaga-bot,bedolaga-cabinet" ;;
+    esac
+
+    paint "$CLR_ACCENT" "$(tr_text "Создаю свежий backup перед миграцией..." "Creating a fresh backup before migration...")"
+    export BACKUP_INCLUDE="$fresh_backup_scope"
+    if ! run_backup_now; then
+      if [[ "$old_include" == "__PBM_UNSET__" ]]; then
+        unset BACKUP_INCLUDE
+      else
+        export BACKUP_INCLUDE="$old_include"
+      fi
+      paint "$CLR_DANGER" "$(tr_text "Не удалось создать свежий backup." "Failed to create a fresh backup.")"
+      wait_for_enter
+      return 1
+    fi
+    if [[ "$old_include" == "__PBM_UNSET__" ]]; then
+      unset BACKUP_INCLUDE
+    else
+      export BACKUP_INCLUDE="$old_include"
+    fi
+
+    latest_archive="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/pb-*.tar.gz.gpg /var/backups/panel/panel-backup-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz.gpg 2>/dev/null | head -n1 || true)"
+    archive_path="$latest_archive"
+    [[ -n "$archive_path" && -f "$archive_path" ]] || {
+      paint "$CLR_DANGER" "$(tr_text "Свежий backup не найден после создания." "Fresh backup not found after creation.")"
+      wait_for_enter
+      return 1
+    }
+    paint "$CLR_OK" "$(tr_text "Свежий backup готов:" "Fresh backup is ready:") ${archive_path}"
+  fi
+
+  if [[ -z "$archive_path" ]]; then
+    archive_path="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/pb-*.tar.gz.gpg /var/backups/panel/panel-backup-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz.gpg 2>/dev/null | head -n1 || true)"
+  fi
+  [[ -n "$archive_path" && -f "$archive_path" ]] || {
+    paint "$CLR_DANGER" "$(tr_text "Локальный архив не найден." "Local archive not found.")"
+    wait_for_enter
+    return 1
+  }
 
   confirm_rc=0
   ask_yes_no "$(tr_text "Включить автоподготовку нового VPS (рекомендуется)?" "Enable auto-prepare for the new VPS (recommended)?")" "y" || confirm_rc=$?
