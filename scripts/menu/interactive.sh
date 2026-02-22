@@ -499,7 +499,7 @@ fi'
       wait_for_enter
       return 1
     fi
-    if ! "${ssh_cmd[@]}" "set -e; cd /root/remnawave-bedolaga-telegram-bot && docker compose up -d; if [ -d /root/cabinet-frontend ]; then cd /root/cabinet-frontend && docker compose up -d; fi"; then
+    if ! "${ssh_cmd[@]}" "set -e; cd /root/remnawave-bedolaga-telegram-bot && docker compose up -d; cabdir=''; for d in /root/cabinet-frontend /root/bedolaga-cabinet /opt/cabinet-frontend /opt/bedolaga-cabinet; do if [ -d \"\$d\" ]; then cabdir=\"\$d\"; break; fi; done; if [ -n \"\$cabdir\" ]; then cd \"\$cabdir\" && docker compose up -d; fi"; then
       paint "$CLR_DANGER" "$(tr_text "Не удалось поднять контейнеры Bedolaga на новом VPS." "Failed to start Bedolaga containers on the new VPS.")"
       wait_for_enter
       return 1
