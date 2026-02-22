@@ -252,28 +252,35 @@ detect_bedolaga_bot_dir() {
 }
 
 detect_bedolaga_cabinet_dir() {
+  is_bedolaga_cabinet_dir() {
+    local d="$1"
+    [[ -f "$d/.env" ]] || return 1
+    [[ -f "$d/docker-compose.yml" || -f "$d/package.json" ]] || return 1
+    return 0
+  }
+
   local guessed=""
   for guessed in "${BEDOLAGA_CABINET_DIR}" "/root/bedolaga-cabinet" "/root/cabinet-frontend" "/opt/bedolaga-cabinet" "/opt/cabinet-frontend"; do
     [[ -n "$guessed" ]] || continue
-    if [[ -f "$guessed/.env" && -f "$guessed/docker-compose.yml" ]]; then
+    if is_bedolaga_cabinet_dir "$guessed"; then
       echo "$guessed"
       return 0
     fi
   done
 
   guessed="$(docker inspect cabinet_frontend --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' 2>/dev/null || true)"
-  if [[ -n "$guessed" && -f "$guessed/.env" && -f "$guessed/docker-compose.yml" ]]; then
+  if [[ -n "$guessed" ]] && is_bedolaga_cabinet_dir "$guessed"; then
     echo "$guessed"
     return 0
   fi
 
-  guessed="$(find /home /opt /srv /root -maxdepth 6 -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' \) 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
+  guessed="$(find /home /opt /srv /root -maxdepth 6 -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' \) 2>/dev/null | while read -r d; do is_bedolaga_cabinet_dir "$d" || continue; echo "$d"; break; done)"
   if [[ -n "$guessed" ]]; then
     echo "$guessed"
     return 0
   fi
 
-  guessed="$(find / -xdev -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' \) 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
+  guessed="$(find / -xdev -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' \) 2>/dev/null | while read -r d; do is_bedolaga_cabinet_dir "$d" || continue; echo "$d"; break; done)"
   [[ -n "$guessed" ]] && echo "$guessed"
 }
 
@@ -1021,11 +1028,23 @@ fi
 
 if (( WANT_BEDOLAGA_CABINET == 1 )); then
   log "Копирую данные Bedolaga кабинета"
-  copy_backup_entry "${BEDOLAGA_CABINET_DIR}/docker-compose.yml" "$WORKDIR/payload/bedolaga/cabinet/" "bedolaga cabinet docker-compose.yml"
   copy_backup_entry "${BEDOLAGA_CABINET_DIR}/.env" "$WORKDIR/payload/bedolaga/cabinet/" "bedolaga cabinet .env"
+  [[ -f "${BEDOLAGA_CABINET_DIR}/docker-compose.yml" ]] && copy_backup_entry "${BEDOLAGA_CABINET_DIR}/docker-compose.yml" "$WORKDIR/payload/bedolaga/cabinet/" "bedolaga cabinet docker-compose.yml"
   [[ -f "${BEDOLAGA_CABINET_DIR}/docker-compose.override.yml" ]] && copy_backup_entry "${BEDOLAGA_CABINET_DIR}/docker-compose.override.yml" "$WORKDIR/payload/bedolaga/cabinet/" "bedolaga cabinet docker-compose.override.yml"
+  [[ -f "${BEDOLAGA_CABINET_DIR}/package.json" ]] && copy_backup_entry "${BEDOLAGA_CABINET_DIR}/package.json" "$WORKDIR/payload/bedolaga/cabinet/" "bedolaga cabinet package.json"
+  [[ -f "${BEDOLAGA_CABINET_DIR}/package-lock.json" ]] && copy_backup_entry "${BEDOLAGA_CABINET_DIR}/package-lock.json" "$WORKDIR/payload/bedolaga/cabinet/" "bedolaga cabinet package-lock.json"
+  [[ -f "${BEDOLAGA_CABINET_DIR}/yarn.lock" ]] && copy_backup_entry "${BEDOLAGA_CABINET_DIR}/yarn.lock" "$WORKDIR/payload/bedolaga/cabinet/" "bedolaga cabinet yarn.lock"
+  [[ -f "${BEDOLAGA_CABINET_DIR}/pnpm-lock.yaml" ]] && copy_backup_entry "${BEDOLAGA_CABINET_DIR}/pnpm-lock.yaml" "$WORKDIR/payload/bedolaga/cabinet/" "bedolaga cabinet pnpm-lock.yaml"
+  [[ -f "${BEDOLAGA_CABINET_DIR}/npm-shrinkwrap.json" ]] && copy_backup_entry "${BEDOLAGA_CABINET_DIR}/npm-shrinkwrap.json" "$WORKDIR/payload/bedolaga/cabinet/" "bedolaga cabinet npm-shrinkwrap.json"
+  [[ -f "${BEDOLAGA_CABINET_DIR}/ecosystem.config.js" ]] && copy_backup_entry "${BEDOLAGA_CABINET_DIR}/ecosystem.config.js" "$WORKDIR/payload/bedolaga/cabinet/" "bedolaga cabinet ecosystem.config.js"
+  [[ -f "${BEDOLAGA_CABINET_DIR}/ecosystem.config.cjs" ]] && copy_backup_entry "${BEDOLAGA_CABINET_DIR}/ecosystem.config.cjs" "$WORKDIR/payload/bedolaga/cabinet/" "bedolaga cabinet ecosystem.config.cjs"
+  [[ -f "${BEDOLAGA_CABINET_DIR}/nginx.conf" ]] && copy_backup_entry "${BEDOLAGA_CABINET_DIR}/nginx.conf" "$WORKDIR/payload/bedolaga/cabinet/" "bedolaga cabinet nginx.conf"
+  [[ -d "${BEDOLAGA_CABINET_DIR}/dist" ]] && copy_backup_entry "${BEDOLAGA_CABINET_DIR}/dist" "$WORKDIR/payload/bedolaga/cabinet/" "bedolaga cabinet dist"
+  [[ -d "${BEDOLAGA_CABINET_DIR}/public" ]] && copy_backup_entry "${BEDOLAGA_CABINET_DIR}/public" "$WORKDIR/payload/bedolaga/cabinet/" "bedolaga cabinet public"
   add_backup_item "Bedolaga cabinet ENV (.env)" "$WORKDIR/payload/bedolaga/cabinet/.env"
   add_backup_item "Bedolaga cabinet compose (docker-compose.yml)" "$WORKDIR/payload/bedolaga/cabinet/docker-compose.yml"
+  add_backup_item "Bedolaga cabinet npm metadata (package.json)" "$WORKDIR/payload/bedolaga/cabinet/package.json"
+  add_backup_item "Bedolaga cabinet dist (dist)" "$WORKDIR/payload/bedolaga/cabinet/dist"
 fi
 
 cat > "$WORKDIR/payload/backup-info.txt" <<INFO

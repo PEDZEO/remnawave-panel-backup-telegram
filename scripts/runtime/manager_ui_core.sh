@@ -304,28 +304,35 @@ detect_bedolaga_bot_dir() {
 }
 
 detect_bedolaga_cabinet_dir() {
+  is_bedolaga_cabinet_dir() {
+    local d="$1"
+    [[ -f "$d/.env" ]] || return 1
+    [[ -f "$d/docker-compose.yml" || -f "$d/package.json" ]] || return 1
+    return 0
+  }
+
   local guessed=""
   for guessed in "${BEDOLAGA_CABINET_DIR:-}" "/root/bedolaga-cabinet" "/root/cabinet-frontend" "/opt/bedolaga-cabinet" "/opt/cabinet-frontend"; do
     [[ -n "$guessed" ]] || continue
-    if [[ -f "$guessed/.env" && -f "$guessed/docker-compose.yml" ]]; then
+    if is_bedolaga_cabinet_dir "$guessed"; then
       echo "$guessed"
       return 0
     fi
   done
 
   guessed="$(docker inspect cabinet_frontend --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' 2>/dev/null || true)"
-  if [[ -n "$guessed" && -f "$guessed/.env" && -f "$guessed/docker-compose.yml" ]]; then
+  if [[ -n "$guessed" ]] && is_bedolaga_cabinet_dir "$guessed"; then
     echo "$guessed"
     return 0
   fi
 
-  guessed="$(find /home /opt /srv /root -maxdepth 6 -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' \) 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
+  guessed="$(find /home /opt /srv /root -maxdepth 6 -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' \) 2>/dev/null | while read -r d; do is_bedolaga_cabinet_dir "$d" || continue; echo "$d"; break; done)"
   if [[ -n "$guessed" ]]; then
     echo "$guessed"
     return 0
   fi
 
-  guessed="$(find / -xdev -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' \) 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
+  guessed="$(find / -xdev -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' \) 2>/dev/null | while read -r d; do is_bedolaga_cabinet_dir "$d" || continue; echo "$d"; break; done)"
   [[ -n "$guessed" ]] && echo "$guessed"
 }
 

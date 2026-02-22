@@ -113,28 +113,35 @@ detect_bedolaga_bot_dir() {
 }
 
 detect_bedolaga_cabinet_dir() {
+  is_bedolaga_cabinet_dir() {
+    local d="$1"
+    [[ -f "$d/.env" ]] || return 1
+    [[ -f "$d/docker-compose.yml" || -f "$d/package.json" ]] || return 1
+    return 0
+  }
+
   local guessed=""
   for guessed in "${BEDOLAGA_CABINET_DIR}" "/root/bedolaga-cabinet" "/root/cabinet-frontend" "/opt/bedolaga-cabinet" "/opt/cabinet-frontend"; do
     [[ -n "$guessed" ]] || continue
-    if [[ -f "$guessed/.env" && -f "$guessed/docker-compose.yml" ]]; then
+    if is_bedolaga_cabinet_dir "$guessed"; then
       echo "$guessed"
       return 0
     fi
   done
 
   guessed="$(docker inspect cabinet_frontend --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' 2>/dev/null || true)"
-  if [[ -n "$guessed" && -f "$guessed/.env" && -f "$guessed/docker-compose.yml" ]]; then
+  if [[ -n "$guessed" ]] && is_bedolaga_cabinet_dir "$guessed"; then
     echo "$guessed"
     return 0
   fi
 
-  guessed="$(find /home /opt /srv /root -maxdepth 6 -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' \) 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
+  guessed="$(find /home /opt /srv /root -maxdepth 6 -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' \) 2>/dev/null | while read -r d; do is_bedolaga_cabinet_dir "$d" || continue; echo "$d"; break; done)"
   if [[ -n "$guessed" ]]; then
     echo "$guessed"
     return 0
   fi
 
-  guessed="$(find / -xdev -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' \) 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
+  guessed="$(find / -xdev -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' \) 2>/dev/null | while read -r d; do is_bedolaga_cabinet_dir "$d" || continue; echo "$d"; break; done)"
   [[ -n "$guessed" ]] && echo "$guessed"
 }
 
@@ -515,6 +522,16 @@ if component_selected bedolaga-cabinet; then
   [[ -f "${SRC_BEDOLAGA_CABINET}/.env" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_CABINET}/.env\" \"${BEDOLAGA_CABINET_DIR}/.env\""
   [[ -f "${SRC_BEDOLAGA_CABINET}/docker-compose.yml" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_CABINET}/docker-compose.yml\" \"${BEDOLAGA_CABINET_DIR}/docker-compose.yml\""
   [[ -f "${SRC_BEDOLAGA_CABINET}/docker-compose.override.yml" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_CABINET}/docker-compose.override.yml\" \"${BEDOLAGA_CABINET_DIR}/docker-compose.override.yml\""
+  [[ -f "${SRC_BEDOLAGA_CABINET}/package.json" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_CABINET}/package.json\" \"${BEDOLAGA_CABINET_DIR}/package.json\""
+  [[ -f "${SRC_BEDOLAGA_CABINET}/package-lock.json" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_CABINET}/package-lock.json\" \"${BEDOLAGA_CABINET_DIR}/package-lock.json\""
+  [[ -f "${SRC_BEDOLAGA_CABINET}/yarn.lock" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_CABINET}/yarn.lock\" \"${BEDOLAGA_CABINET_DIR}/yarn.lock\""
+  [[ -f "${SRC_BEDOLAGA_CABINET}/pnpm-lock.yaml" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_CABINET}/pnpm-lock.yaml\" \"${BEDOLAGA_CABINET_DIR}/pnpm-lock.yaml\""
+  [[ -f "${SRC_BEDOLAGA_CABINET}/npm-shrinkwrap.json" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_CABINET}/npm-shrinkwrap.json\" \"${BEDOLAGA_CABINET_DIR}/npm-shrinkwrap.json\""
+  [[ -f "${SRC_BEDOLAGA_CABINET}/ecosystem.config.js" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_CABINET}/ecosystem.config.js\" \"${BEDOLAGA_CABINET_DIR}/ecosystem.config.js\""
+  [[ -f "${SRC_BEDOLAGA_CABINET}/ecosystem.config.cjs" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_CABINET}/ecosystem.config.cjs\" \"${BEDOLAGA_CABINET_DIR}/ecosystem.config.cjs\""
+  [[ -f "${SRC_BEDOLAGA_CABINET}/nginx.conf" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_CABINET}/nginx.conf\" \"${BEDOLAGA_CABINET_DIR}/nginx.conf\""
+  [[ -d "${SRC_BEDOLAGA_CABINET}/dist" ]] && run_cmd "rm -rf \"${BEDOLAGA_CABINET_DIR}/dist\" && cp -a \"${SRC_BEDOLAGA_CABINET}/dist\" \"${BEDOLAGA_CABINET_DIR}/dist\""
+  [[ -d "${SRC_BEDOLAGA_CABINET}/public" ]] && run_cmd "rm -rf \"${BEDOLAGA_CABINET_DIR}/public\" && cp -a \"${SRC_BEDOLAGA_CABINET}/public\" \"${BEDOLAGA_CABINET_DIR}/public\""
 fi
 
 if component_selected bedolaga-db; then
@@ -568,8 +585,22 @@ if (( NO_RESTART == 0 )); then
   fi
 
   if component_selected bedolaga-cabinet; then
-    log "Apply compose and restart Bedolaga cabinet stack"
-    run_cmd "cd \"$BEDOLAGA_CABINET_DIR\" && docker compose up -d"
+    if [[ -f "${BEDOLAGA_CABINET_DIR}/docker-compose.yml" || -f "${BEDOLAGA_CABINET_DIR}/docker-compose.caddy.yml" || -f "${BEDOLAGA_CABINET_DIR}/compose.yaml" || -f "${BEDOLAGA_CABINET_DIR}/compose.yml" ]]; then
+      log "Apply compose and restart Bedolaga cabinet stack"
+      run_cmd "cd \"$BEDOLAGA_CABINET_DIR\" && docker compose up -d"
+    elif systemctl list-unit-files 2>/dev/null | grep -Eq '^(cabinet-frontend|bedolaga-cabinet)\.service'; then
+      log "Restart Bedolaga cabinet systemd service"
+      if systemctl list-unit-files 2>/dev/null | grep -Eq '^cabinet-frontend\.service'; then
+        run_cmd "systemctl restart cabinet-frontend"
+      else
+        run_cmd "systemctl restart bedolaga-cabinet"
+      fi
+    elif command -v pm2 >/dev/null 2>&1; then
+      log "Restart Bedolaga cabinet via PM2 (if configured)"
+      run_cmd "pm2 restart cabinet-frontend >/dev/null 2>&1 || pm2 restart bedolaga-cabinet >/dev/null 2>&1 || true"
+    else
+      log "WARNING: Bedolaga cabinet restart skipped (no compose/systemd/pm2 target found)"
+    fi
   fi
 fi
 
