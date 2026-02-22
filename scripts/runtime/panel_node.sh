@@ -1018,10 +1018,9 @@ run_subscription_update_flow() {
 
 run_remnawave_full_install_flow() {
   local prev_auto_caddy="${AUTO_PANEL_CADDY:-0}"
-  local prev_auto_full="${AUTO_REMNAWAVE_FULL:-0}"
   local panel_step_rc=0
-  draw_header "$(tr_text "Remnawave: полная установка" "Remnawave: full install")"
-  paint "$CLR_MUTED" "$(tr_text "Шаг 1/3: панель, шаг 2/3: страница подписок, шаг 3/3: Caddy." "Step 1/3: panel, step 2/3: subscription page, step 3/3: Caddy.")"
+  draw_header "$(tr_text "Remnawave: установка панели + Caddy" "Remnawave: panel + Caddy install")"
+  paint "$CLR_MUTED" "$(tr_text "Шаг 1/2: панель, шаг 2/2: Caddy." "Step 1/2: panel, step 2/2: Caddy.")"
   if ! run_panel_install_flow; then
     panel_step_rc=$?
   fi
@@ -1034,43 +1033,33 @@ run_remnawave_full_install_flow() {
   if [[ "$panel_step_rc" -eq 2 ]]; then
     paint "$CLR_MUTED" "$(tr_text "Шаг панели пропущен: используется текущая установка." "Panel step skipped: using existing installation.")"
   fi
-  AUTO_REMNAWAVE_FULL=1
-  if ! run_subscription_install_flow; then
-    AUTO_REMNAWAVE_FULL="$prev_auto_full"
-    paint "$CLR_WARN" "$(tr_text "Панель установлена, но шаг подписок не завершен." "Panel installed, but subscription step did not finish.")"
-    return 1
-  fi
-  AUTO_REMNAWAVE_FULL="$prev_auto_full"
+
   AUTO_PANEL_CADDY=1
   if ! run_panel_caddy_install_flow; then
     AUTO_PANEL_CADDY="$prev_auto_caddy"
-    paint "$CLR_WARN" "$(tr_text "Панель и подписки установлены, но шаг Caddy не завершен." "Panel and subscription installed, but Caddy step did not finish.")"
+    paint "$CLR_WARN" "$(tr_text "Панель установлена, но шаг Caddy не завершен." "Panel installed, but Caddy step did not finish.")"
     return 1
   fi
   AUTO_PANEL_CADDY="$prev_auto_caddy"
-  paint "$CLR_OK" "$(tr_text "Полная установка Remnawave завершена." "Remnawave full install completed.")"
+  paint "$CLR_OK" "$(tr_text "Установка панели и Caddy завершена. Подписку можно установить отдельно в меню." "Panel and Caddy install completed. Subscription can be installed separately from the menu.")"
   return 0
 }
 
 run_remnawave_full_update_flow() {
   local prev_auto_caddy="${AUTO_PANEL_CADDY:-0}"
-  draw_header "$(tr_text "Remnawave: полное обновление" "Remnawave: full update")"
-  paint "$CLR_MUTED" "$(tr_text "Шаг 1/3: панель, шаг 2/3: страница подписок, шаг 3/3: Caddy." "Step 1/3: panel, step 2/3: subscription page, step 3/3: Caddy.")"
+  draw_header "$(tr_text "Remnawave: обновление панели + Caddy" "Remnawave: panel + Caddy update")"
+  paint "$CLR_MUTED" "$(tr_text "Шаг 1/2: панель, шаг 2/2: Caddy." "Step 1/2: panel, step 2/2: Caddy.")"
   if ! run_panel_update_flow; then
     paint "$CLR_WARN" "$(tr_text "Полное обновление остановлено на шаге панели." "Full update stopped at panel step.")"
-    return 1
-  fi
-  if ! run_subscription_update_flow; then
-    paint "$CLR_WARN" "$(tr_text "Панель обновлена, но шаг подписок не завершен." "Panel updated, but subscription step did not finish.")"
     return 1
   fi
   AUTO_PANEL_CADDY=1
   if ! run_panel_caddy_update_flow; then
     AUTO_PANEL_CADDY="$prev_auto_caddy"
-    paint "$CLR_WARN" "$(tr_text "Панель и подписки обновлены, но шаг Caddy не завершен." "Panel and subscription updated, but Caddy step did not finish.")"
+    paint "$CLR_WARN" "$(tr_text "Панель обновлена, но шаг Caddy не завершен." "Panel updated, but Caddy step did not finish.")"
     return 1
   fi
   AUTO_PANEL_CADDY="$prev_auto_caddy"
-  paint "$CLR_OK" "$(tr_text "Полное обновление Remnawave завершено." "Remnawave full update completed.")"
+  paint "$CLR_OK" "$(tr_text "Обновление панели и Caddy завершено. Подписку можно обновить отдельно в меню." "Panel and Caddy update completed. Subscription can be updated separately from the menu.")"
   return 0
 }

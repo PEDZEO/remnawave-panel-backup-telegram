@@ -694,10 +694,10 @@ menu_section_remnawave_install_update() {
     draw_subheader "$(tr_text "Remnawave: установка и обновление" "Remnawave: install and update")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Операции установки и обновления панели, подписок и Caddy." "Install/update operations for panel, subscription and Caddy.")"
-    menu_option "1" "$(tr_text "Полная установка (панель + подписки + Caddy)" "Full install (panel + subscription + Caddy)")"
+    menu_option "1" "$(tr_text "Быстрая установка панели (панель + Caddy)" "Quick panel install (panel + Caddy)")"
     menu_option "2" "$(tr_text "Установить панель Remnawave" "Install Remnawave panel")"
     menu_option "3" "$(tr_text "Установить страницу подписок" "Install subscription page")"
-    menu_option "4" "$(tr_text "Полное обновление (панель + подписки + Caddy)" "Full update (panel + subscription + Caddy)")"
+    menu_option "4" "$(tr_text "Быстрое обновление панели (панель + Caddy)" "Quick panel update (panel + Caddy)")"
     menu_option "5" "$(tr_text "Обновить панель Remnawave" "Update Remnawave panel")"
     menu_option "6" "$(tr_text "Обновить страницу подписок" "Update subscription page")"
     menu_option "7" "$(tr_text "Установить Caddy для панели" "Install panel Caddy")"
@@ -710,7 +710,7 @@ menu_section_remnawave_install_update() {
     fi
     case "$choice" in
       1)
-        run_component_flow_action "$(tr_text "Полная установка (панель + подписки + Caddy)" "Full install (panel + subscription + Caddy)")" run_remnawave_full_install_flow
+        run_component_flow_action "$(tr_text "Быстрая установка панели (панель + Caddy)" "Quick panel install (panel + Caddy)")" run_remnawave_full_install_flow
         ;;
       2)
         run_component_flow_action "$(tr_text "Установить панель Remnawave" "Install Remnawave panel")" run_panel_install_flow
@@ -719,7 +719,7 @@ menu_section_remnawave_install_update() {
         run_component_flow_action "$(tr_text "Установить страницу подписок" "Install subscription page")" run_subscription_install_flow
         ;;
       4)
-        run_component_flow_action "$(tr_text "Полное обновление (панель + подписки + Caddy)" "Full update (panel + subscription + Caddy)")" run_remnawave_full_update_flow
+        run_component_flow_action "$(tr_text "Быстрое обновление панели (панель + Caddy)" "Quick panel update (panel + Caddy)")" run_remnawave_full_update_flow
         ;;
       5)
         run_component_flow_action "$(tr_text "Обновить панель Remnawave" "Update Remnawave panel")" run_panel_update_flow
