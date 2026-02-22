@@ -241,7 +241,13 @@ detect_bedolaga_bot_dir() {
     return 0
   fi
 
-  guessed="$(find /home -maxdepth 5 -type d -name 'remnawave-bedolaga-telegram-bot' 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
+  guessed="$(find /home /opt /srv /root -maxdepth 6 -type d -name 'remnawave-bedolaga-telegram-bot' 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
+  if [[ -n "$guessed" ]]; then
+    echo "$guessed"
+    return 0
+  fi
+
+  guessed="$(find / -xdev -type d -name 'remnawave-bedolaga-telegram-bot' 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
   [[ -n "$guessed" ]] && echo "$guessed"
 }
 
@@ -261,7 +267,13 @@ detect_bedolaga_cabinet_dir() {
     return 0
   fi
 
-  guessed="$(find /home -maxdepth 5 -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' \) 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
+  guessed="$(find /home /opt /srv /root -maxdepth 6 -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' \) 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
+  if [[ -n "$guessed" ]]; then
+    echo "$guessed"
+    return 0
+  fi
+
+  guessed="$(find / -xdev -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' \) 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
   [[ -n "$guessed" ]] && echo "$guessed"
 }
 
