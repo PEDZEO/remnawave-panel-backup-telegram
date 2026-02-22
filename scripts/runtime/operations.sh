@@ -50,11 +50,41 @@ run_restore() {
 }
 
 sync_runtime_scripts() {
+  local backup_fetched=0
+  local restore_fetched=0
+  local can_continue=1
+
   paint "$CLR_ACCENT" "$(tr_text "Обновляю runtime-скрипты backup/restore..." "Updating backup/restore runtime scripts...")"
-  fetch "scripts/bin/panel-backup.sh" "$TMP_DIR/panel-backup.sh"
-  fetch "scripts/bin/panel-restore.sh" "$TMP_DIR/panel-restore.sh"
-  $SUDO install -m 755 "$TMP_DIR/panel-backup.sh" /usr/local/bin/panel-backup.sh
-  $SUDO install -m 755 "$TMP_DIR/panel-restore.sh" /usr/local/bin/panel-restore.sh
+  if fetch "scripts/bin/panel-backup.sh" "$TMP_DIR/panel-backup.sh"; then
+    backup_fetched=1
+  else
+    paint "$CLR_WARN" "$(tr_text "Не удалось скачать panel-backup.sh, пробую использовать локально установленный файл." "Failed to download panel-backup.sh, trying local installed file.")"
+  fi
+
+  if fetch "scripts/bin/panel-restore.sh" "$TMP_DIR/panel-restore.sh"; then
+    restore_fetched=1
+  else
+    paint "$CLR_WARN" "$(tr_text "Не удалось скачать panel-restore.sh, пробую использовать локально установленный файл." "Failed to download panel-restore.sh, trying local installed file.")"
+  fi
+
+  if (( backup_fetched == 1 )); then
+    $SUDO install -m 755 "$TMP_DIR/panel-backup.sh" /usr/local/bin/panel-backup.sh
+  elif [[ ! -x /usr/local/bin/panel-backup.sh ]]; then
+    paint "$CLR_DANGER" "$(tr_text "Ошибка: panel-backup.sh недоступен (скачивание не удалось и локальный файл не найден)." "Error: panel-backup.sh unavailable (download failed and local file not found).")"
+    can_continue=0
+  fi
+
+  if (( restore_fetched == 1 )); then
+    $SUDO install -m 755 "$TMP_DIR/panel-restore.sh" /usr/local/bin/panel-restore.sh
+  elif [[ ! -x /usr/local/bin/panel-restore.sh ]]; then
+    paint "$CLR_DANGER" "$(tr_text "Ошибка: panel-restore.sh недоступен (скачивание не удалось и локальный файл не найден)." "Error: panel-restore.sh unavailable (download failed and local file not found).")"
+    can_continue=0
+  fi
+
+  if (( can_continue == 0 )); then
+    paint "$CLR_DANGER" "$(tr_text "Проверьте доступ к raw.githubusercontent.com или переустановите backup-скрипты вручную." "Check access to raw.githubusercontent.com or reinstall backup scripts manually.")"
+    return 1
+  fi
 }
 
 normalize_env_file_format() {
