@@ -20,6 +20,15 @@ bedolaga_detect_repo_origin_url() {
   return 0
 }
 
+bedolaga_repo_url_to_https() {
+  local url="$1"
+  if [[ "$url" =~ ^git@github\.com:(.+)\.git$ ]]; then
+    echo "https://github.com/${BASH_REMATCH[1]}.git"
+    return 0
+  fi
+  echo "$url"
+}
+
 bedolaga_autodetect_fork_repo_urls() {
   local user_dir=""
   local detected=""
@@ -28,6 +37,7 @@ bedolaga_autodetect_fork_repo_urls() {
     [[ -d "$user_dir" ]] || continue
 
     detected="$(bedolaga_detect_repo_origin_url "${user_dir}/GitHub/remnawave-bedolaga-telegram-bot" || true)"
+    detected="$(bedolaga_repo_url_to_https "$detected")"
     if bedolaga_validate_git_repo_url "$detected"; then
       BEDOLAGA_BOT_REPO_LAST_CUSTOM="$detected"
       break
@@ -38,6 +48,7 @@ bedolaga_autodetect_fork_repo_urls() {
     [[ -d "$user_dir" ]] || continue
 
     detected="$(bedolaga_detect_repo_origin_url "${user_dir}/GitHub/cabinet-frontend" || true)"
+    detected="$(bedolaga_repo_url_to_https "$detected")"
     if bedolaga_validate_git_repo_url "$detected"; then
       BEDOLAGA_CABINET_REPO_LAST_CUSTOM="$detected"
       break
