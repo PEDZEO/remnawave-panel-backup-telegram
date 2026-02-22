@@ -50,6 +50,7 @@ log() {
 
 detect_remnawave_dir() {
   local guessed
+  local name
 
   is_remnawave_panel_dir() {
     local d="$1"
@@ -68,6 +69,19 @@ detect_remnawave_dir() {
     return 0
   }
 
+  detect_compose_workdir_by_container_names() {
+    local n=""
+    local wd=""
+    for n in "$@"; do
+      [[ -n "$n" ]] || continue
+      wd="$(docker inspect "$n" --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' 2>/dev/null || true)"
+      [[ -n "$wd" ]] || continue
+      echo "$wd"
+      return 0
+    done
+    return 1
+  }
+
   for guessed in "${REMNAWAVE_DIR}" "/opt/remnawave" "/srv/remnawave" "/root/remnawave" "/home/remnawave"; do
     [[ -n "$guessed" ]] || continue
     if is_remnawave_panel_dir "$guessed"; then
@@ -76,7 +90,9 @@ detect_remnawave_dir() {
     fi
   done
 
-  guessed="$(docker inspect remnawave --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' 2>/dev/null || true)"
+  guessed="$(detect_compose_workdir_by_container_names \
+    remnawave remnawave-db remnawave-redis remnawave-caddy remnawave-subscription-page \
+    remnawave_db remnawave_redis remnawave_caddy remnawave_subscription_page || true)"
   if [[ -n "$guessed" ]] && is_remnawave_panel_dir "$guessed"; then
     echo "$guessed"
     return 0
@@ -88,6 +104,19 @@ detect_remnawave_dir() {
 
 detect_bedolaga_bot_dir() {
   local guessed=""
+
+  detect_compose_workdir_by_container_names() {
+    local name=""
+    local wd=""
+    for name in "$@"; do
+      [[ -n "$name" ]] || continue
+      wd="$(docker inspect "$name" --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' 2>/dev/null || true)"
+      [[ -n "$wd" ]] || continue
+      echo "$wd"
+      return 0
+    done
+    return 1
+  }
   for guessed in "${BEDOLAGA_BOT_DIR}" "/root/remnawave-bedolaga-telegram-bot" "/opt/remnawave-bedolaga-telegram-bot"; do
     [[ -n "$guessed" ]] || continue
     if [[ -f "$guessed/.env" && -f "$guessed/docker-compose.yml" ]]; then
@@ -96,7 +125,7 @@ detect_bedolaga_bot_dir() {
     fi
   done
 
-  guessed="$(docker inspect remnawave_bot --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' 2>/dev/null || true)"
+  guessed="$(detect_compose_workdir_by_container_names remnawave_bot remnawave-bot remnawave_bot_db remnawave_bot_redis || true)"
   if [[ -n "$guessed" && -f "$guessed/.env" && -f "$guessed/docker-compose.yml" ]]; then
     echo "$guessed"
     return 0
@@ -121,6 +150,19 @@ detect_bedolaga_cabinet_dir() {
   }
 
   local guessed=""
+
+  detect_compose_workdir_by_container_names() {
+    local name=""
+    local wd=""
+    for name in "$@"; do
+      [[ -n "$name" ]] || continue
+      wd="$(docker inspect "$name" --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' 2>/dev/null || true)"
+      [[ -n "$wd" ]] || continue
+      echo "$wd"
+      return 0
+    done
+    return 1
+  }
   for guessed in "${BEDOLAGA_CABINET_DIR}" "/root/bedolaga-cabinet" "/root/cabinet-frontend" "/opt/bedolaga-cabinet" "/opt/cabinet-frontend"; do
     [[ -n "$guessed" ]] || continue
     if is_bedolaga_cabinet_dir "$guessed"; then
@@ -129,7 +171,7 @@ detect_bedolaga_cabinet_dir() {
     fi
   done
 
-  guessed="$(docker inspect cabinet_frontend --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' 2>/dev/null || true)"
+  guessed="$(detect_compose_workdir_by_container_names cabinet_frontend cabinet-frontend bedolaga-cabinet || true)"
   if [[ -n "$guessed" ]] && is_bedolaga_cabinet_dir "$guessed"; then
     echo "$guessed"
     return 0
