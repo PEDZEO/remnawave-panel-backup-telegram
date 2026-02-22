@@ -366,6 +366,10 @@ show_status() {
   if (( panel_present == 1 )); then
     paint "$CLR_MUTED" "  $(tr_text "Путь Remnawave:" "Remnawave path:") ${REMNAWAVE_DIR:-not-detected}"
   fi
+  if (( bedolaga_present == 1 )); then
+    paint "$CLR_MUTED" "  $(tr_text "Путь Bedolaga бота:" "Bedolaga bot path:") ${BEDOLAGA_BOT_DIR:-not-detected}"
+    paint "$CLR_MUTED" "  $(tr_text "Путь Bedolaga кабинета:" "Bedolaga cabinet path:") ${BEDOLAGA_CABINET_DIR:-not-detected}"
+  fi
   print_separator
 }
 

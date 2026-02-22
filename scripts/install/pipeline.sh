@@ -19,6 +19,8 @@ prompt_install_settings() {
   local detected_bedolaga_bot=""
   local detected_bedolaga_cabinet=""
   local panel_path_prompt=""
+  local bot_path_prompt=""
+  local cabinet_path_prompt=""
   local encrypt_choice=""
   local confirm_val=""
   local previous_password=""
@@ -46,6 +48,12 @@ prompt_install_settings() {
   if [[ -z "${REMNAWAVE_DIR:-}" && -n "$detected_path" ]]; then
     REMNAWAVE_DIR="$detected_path"
   fi
+  if [[ -z "${BEDOLAGA_BOT_DIR:-}" && -n "$detected_bedolaga_bot" ]]; then
+    BEDOLAGA_BOT_DIR="$detected_bedolaga_bot"
+  fi
+  if [[ -z "${BEDOLAGA_CABINET_DIR:-}" && -n "$detected_bedolaga_cabinet" ]]; then
+    BEDOLAGA_CABINET_DIR="$detected_bedolaga_cabinet"
+  fi
   if [[ -z "$detected_path" && -n "$detected_bedolaga_bot" && "${REMNAWAVE_DIR:-}" == "$detected_bedolaga_bot" ]]; then
     REMNAWAVE_DIR=""
     paint "$CLR_WARN" "$(tr_text "Сброшен путь панели: ранее был подставлен путь бота." "Panel path was reset: bot path had been filled there before.")"
@@ -57,9 +65,19 @@ prompt_install_settings() {
     fi
   fi
   if [[ -z "$detected_path" ]]; then
-    panel_path_prompt="$(tr_text "[4/7] Путь к папке панели Remnawave (опционально, можно оставить пусто)" "[4/7] Path to Remnawave panel directory (optional, you can leave it empty)")"
+    panel_path_prompt="$(tr_text "Путь к папке панели Remnawave (опционально, можно оставить пусто)" "Path to Remnawave panel directory (optional, you can leave it empty)")"
   else
-    panel_path_prompt="$(tr_text "[4/7] Путь к папке панели Remnawave (пример: /opt/remnawave)" "[4/7] Path to Remnawave panel directory (example: /opt/remnawave)")"
+    panel_path_prompt="$(tr_text "Путь к папке панели Remnawave (пример: /opt/remnawave)" "Path to Remnawave panel directory (example: /opt/remnawave)")"
+  fi
+  if [[ -z "$detected_bedolaga_bot" ]]; then
+    bot_path_prompt="$(tr_text "Путь к папке Bedolaga бота (опционально, можно оставить пусто)" "Path to Bedolaga bot directory (optional, you can leave it empty)")"
+  else
+    bot_path_prompt="$(tr_text "Путь к папке Bedolaga бота (пример: /opt/remnawave-bedolaga-telegram-bot)" "Path to Bedolaga bot directory (example: /opt/remnawave-bedolaga-telegram-bot)")"
+  fi
+  if [[ -z "$detected_bedolaga_cabinet" ]]; then
+    cabinet_path_prompt="$(tr_text "Путь к папке Bedolaga кабинета (опционально, можно оставить пусто)" "Path to Bedolaga cabinet directory (optional, you can leave it empty)")"
+  else
+    cabinet_path_prompt="$(tr_text "Путь к папке Bedolaga кабинета (docker или npm-проект)" "Path to Bedolaga cabinet directory (docker or npm project)")"
   fi
   echo
 
@@ -96,12 +114,29 @@ prompt_install_settings() {
     break
   done
 
-  while true; do
-    val="$(ask_value "$panel_path_prompt" "$REMNAWAVE_DIR")"
-    [[ "$val" == "__PBM_BACK__" ]] && return 1
-    REMNAWAVE_DIR="$val"
-    break
-  done
+  if [[ "$setup_scope" != "bedolaga" ]]; then
+    while true; do
+      val="$(ask_value "$panel_path_prompt" "$REMNAWAVE_DIR")"
+      [[ "$val" == "__PBM_BACK__" ]] && return 1
+      REMNAWAVE_DIR="$val"
+      break
+    done
+  fi
+
+  if [[ "$setup_scope" != "panel" ]]; then
+    while true; do
+      val="$(ask_value "$bot_path_prompt" "${BEDOLAGA_BOT_DIR:-}")"
+      [[ "$val" == "__PBM_BACK__" ]] && return 1
+      BEDOLAGA_BOT_DIR="$val"
+      break
+    done
+    while true; do
+      val="$(ask_value "$cabinet_path_prompt" "${BEDOLAGA_CABINET_DIR:-}")"
+      [[ "$val" == "__PBM_BACK__" ]] && return 1
+      BEDOLAGA_CABINET_DIR="$val"
+      break
+    done
+  fi
 
   while true; do
     val="$(ask_value "$(tr_text "[5/8] Язык описания резервной копии в Telegram (ru/en)" "[5/8] Backup description language in Telegram (ru/en)")" "$BACKUP_LANG")"
@@ -261,6 +296,8 @@ write_env() {
   local escaped_thread_panel=""
   local escaped_thread_bedolaga=""
   local escaped_dir=""
+  local escaped_bedolaga_bot_dir=""
+  local escaped_bedolaga_cabinet_dir=""
   local escaped_calendar=""
   local escaped_calendar_panel=""
   local escaped_calendar_bedolaga=""
@@ -275,6 +312,8 @@ write_env() {
   escaped_thread_panel="$(escape_env_value "${TELEGRAM_THREAD_ID_PANEL:-}")"
   escaped_thread_bedolaga="$(escape_env_value "${TELEGRAM_THREAD_ID_BEDOLAGA:-}")"
   escaped_dir="$(escape_env_value "${REMNAWAVE_DIR:-}")"
+  escaped_bedolaga_bot_dir="$(escape_env_value "${BEDOLAGA_BOT_DIR:-}")"
+  escaped_bedolaga_cabinet_dir="$(escape_env_value "${BEDOLAGA_CABINET_DIR:-}")"
   escaped_calendar="$(escape_env_value "${BACKUP_ON_CALENDAR:-}")"
   escaped_calendar_panel="$(escape_env_value "${BACKUP_ON_CALENDAR_PANEL:-${BACKUP_ON_CALENDAR:-}}")"
   escaped_calendar_bedolaga="$(escape_env_value "${BACKUP_ON_CALENDAR_BEDOLAGA:-${BACKUP_ON_CALENDAR:-}}")"
@@ -291,6 +330,8 @@ ${TELEGRAM_THREAD_ID:+TELEGRAM_THREAD_ID=\"${escaped_thread}\"}
 ${TELEGRAM_THREAD_ID_PANEL:+TELEGRAM_THREAD_ID_PANEL=\"${escaped_thread_panel}\"}
 ${TELEGRAM_THREAD_ID_BEDOLAGA:+TELEGRAM_THREAD_ID_BEDOLAGA=\"${escaped_thread_bedolaga}\"}
 ${REMNAWAVE_DIR:+REMNAWAVE_DIR=\"${escaped_dir}\"}
+${BEDOLAGA_BOT_DIR:+BEDOLAGA_BOT_DIR=\"${escaped_bedolaga_bot_dir}\"}
+${BEDOLAGA_CABINET_DIR:+BEDOLAGA_CABINET_DIR=\"${escaped_bedolaga_cabinet_dir}\"}
 ${BACKUP_ON_CALENDAR:+BACKUP_ON_CALENDAR=\"${escaped_calendar}\"}
 ${BACKUP_ON_CALENDAR_PANEL:+BACKUP_ON_CALENDAR_PANEL=\"${escaped_calendar_panel}\"}
 ${BACKUP_ON_CALENDAR_BEDOLAGA:+BACKUP_ON_CALENDAR_BEDOLAGA=\"${escaped_calendar_bedolaga}\"}
@@ -303,6 +344,8 @@ ENV"
   $SUDO chown root:root /etc/panel-backup.env
 
   paint "$CLR_MUTED" "REMNAWAVE_DIR=${REMNAWAVE_DIR:-not-detected}"
+  paint "$CLR_MUTED" "BEDOLAGA_BOT_DIR=${BEDOLAGA_BOT_DIR:-not-detected}"
+  paint "$CLR_MUTED" "BEDOLAGA_CABINET_DIR=${BEDOLAGA_CABINET_DIR:-not-detected}"
   paint "$CLR_MUTED" "BACKUP_ON_CALENDAR_PANEL=${BACKUP_ON_CALENDAR_PANEL:-${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}}"
   paint "$CLR_MUTED" "BACKUP_ON_CALENDAR_BEDOLAGA=${BACKUP_ON_CALENDAR_BEDOLAGA:-${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}}"
   paint "$CLR_MUTED" "BACKUP_LANG=${BACKUP_LANG:-ru}"
@@ -488,18 +531,26 @@ is_bedolaga_backup_target_available() {
   local bot_candidate=""
   local cabinet_candidate=""
 
+  is_bedolaga_cabinet_target_dir() {
+    local d="$1"
+    [[ -n "$d" ]] || return 1
+    [[ -f "$d/.env" ]] || return 1
+    [[ -f "$d/docker-compose.yml" || -f "$d/package.json" ]] || return 1
+    return 0
+  }
+
   bot_candidate="${BEDOLAGA_BOT_DIR:-}"
   cabinet_candidate="${BEDOLAGA_CABINET_DIR:-}"
 
   if [[ -n "$bot_candidate" && -f "$bot_candidate/.env" && -f "$bot_candidate/docker-compose.yml" ]]; then
-    if [[ -n "$cabinet_candidate" && -f "$cabinet_candidate/.env" && -f "$cabinet_candidate/docker-compose.yml" ]]; then
+    if is_bedolaga_cabinet_target_dir "$cabinet_candidate"; then
       return 0
     fi
   fi
 
   bot_candidate="$(detect_bedolaga_bot_dir || true)"
   cabinet_candidate="$(detect_bedolaga_cabinet_dir || true)"
-  if [[ -n "$bot_candidate" && -f "$bot_candidate/.env" && -f "$bot_candidate/docker-compose.yml" && -n "$cabinet_candidate" && -f "$cabinet_candidate/.env" && -f "$cabinet_candidate/docker-compose.yml" ]]; then
+  if [[ -n "$bot_candidate" && -f "$bot_candidate/.env" && -f "$bot_candidate/docker-compose.yml" ]] && is_bedolaga_cabinet_target_dir "$cabinet_candidate"; then
     BEDOLAGA_BOT_DIR="$bot_candidate"
     BEDOLAGA_CABINET_DIR="$cabinet_candidate"
     return 0

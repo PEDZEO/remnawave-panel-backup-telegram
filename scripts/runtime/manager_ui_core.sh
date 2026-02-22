@@ -295,6 +295,7 @@ detect_remnawave_dir() {
 
 detect_bedolaga_bot_dir() {
   local guessed=""
+  local compose_file=""
 
   detect_compose_workdir_by_container_names() {
     local name=""
@@ -328,6 +329,12 @@ detect_bedolaga_bot_dir() {
     return 0
   fi
 
+  guessed="$(find /home /opt /srv /root -maxdepth 7 -type f -name 'docker-compose.yml' 2>/dev/null | while read -r compose_file; do d="$(dirname "$compose_file")"; grep -Eq 'container_name:[[:space:]]*(remnawave_bot|remnawave-bot|remnawave_bot_db|remnawave_bot_redis)([[:space:]]|$)' "$compose_file" || continue; [[ -f "$d/.env" ]] || continue; echo "$d"; break; done)"
+  if [[ -n "$guessed" ]]; then
+    echo "$guessed"
+    return 0
+  fi
+
   guessed="$(find / -xdev -type d -name 'remnawave-bedolaga-telegram-bot' 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
   [[ -n "$guessed" ]] && echo "$guessed"
 }
@@ -341,6 +348,7 @@ detect_bedolaga_cabinet_dir() {
   }
 
   local guessed=""
+  local compose_file=""
 
   detect_compose_workdir_by_container_names() {
     local name=""
@@ -354,7 +362,7 @@ detect_bedolaga_cabinet_dir() {
     done
     return 1
   }
-  for guessed in "${BEDOLAGA_CABINET_DIR:-}" "/root/bedolaga-cabinet" "/root/cabinet-frontend" "/opt/bedolaga-cabinet" "/opt/cabinet-frontend"; do
+  for guessed in "${BEDOLAGA_CABINET_DIR:-}" "/root/bedolaga-cabinet" "/root/cabinet-frontend" "/opt/bedolaga-cabinet" "/opt/bedolaga-cabine" "/opt/cabinet-frontend"; do
     [[ -n "$guessed" ]] || continue
     if is_bedolaga_cabinet_dir "$guessed"; then
       echo "$guessed"
@@ -368,13 +376,19 @@ detect_bedolaga_cabinet_dir() {
     return 0
   fi
 
-  guessed="$(find /home /opt /srv /root -maxdepth 6 -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' \) 2>/dev/null | while read -r d; do is_bedolaga_cabinet_dir "$d" || continue; echo "$d"; break; done)"
+  guessed="$(find /home /opt /srv /root -maxdepth 7 -type f -name 'docker-compose.yml' 2>/dev/null | while read -r compose_file; do d="$(dirname "$compose_file")"; grep -Eq 'container_name:[[:space:]]*(cabinet_frontend|cabinet-frontend|bedolaga-cabinet)([[:space:]]|$)' "$compose_file" || continue; is_bedolaga_cabinet_dir "$d" || continue; echo "$d"; break; done)"
   if [[ -n "$guessed" ]]; then
     echo "$guessed"
     return 0
   fi
 
-  guessed="$(find / -xdev -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' \) 2>/dev/null | while read -r d; do is_bedolaga_cabinet_dir "$d" || continue; echo "$d"; break; done)"
+  guessed="$(find /home /opt /srv /root -maxdepth 6 -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' -o -name 'bedolaga-cabine' \) 2>/dev/null | while read -r d; do is_bedolaga_cabinet_dir "$d" || continue; echo "$d"; break; done)"
+  if [[ -n "$guessed" ]]; then
+    echo "$guessed"
+    return 0
+  fi
+
+  guessed="$(find / -xdev -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' -o -name 'bedolaga-cabine' \) 2>/dev/null | while read -r d; do is_bedolaga_cabinet_dir "$d" || continue; echo "$d"; break; done)"
   [[ -n "$guessed" ]] && echo "$guessed"
 }
 
@@ -500,6 +514,8 @@ load_existing_env_defaults() {
   local old_thread_panel=""
   local old_thread_bedolaga=""
   local old_dir=""
+  local old_bedolaga_bot_dir=""
+  local old_bedolaga_cabinet_dir=""
   local old_calendar=""
   local old_calendar_panel=""
   local old_calendar_bedolaga=""
@@ -516,6 +532,8 @@ load_existing_env_defaults() {
     old_thread_panel="$(grep -E '^TELEGRAM_THREAD_ID_PANEL=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
     old_thread_bedolaga="$(grep -E '^TELEGRAM_THREAD_ID_BEDOLAGA=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
     old_dir="$(grep -E '^REMNAWAVE_DIR=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
+    old_bedolaga_bot_dir="$(grep -E '^BEDOLAGA_BOT_DIR=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
+    old_bedolaga_cabinet_dir="$(grep -E '^BEDOLAGA_CABINET_DIR=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
     old_calendar="$(grep -E '^BACKUP_ON_CALENDAR=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
     old_calendar_panel="$(grep -E '^BACKUP_ON_CALENDAR_PANEL=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
     old_calendar_bedolaga="$(grep -E '^BACKUP_ON_CALENDAR_BEDOLAGA=' /etc/panel-backup.env | head -n1 | cut -d= -f2- || true)"
@@ -532,6 +550,8 @@ load_existing_env_defaults() {
     old_thread_panel="$(normalize_env_value_raw "$old_thread_panel")"
     old_thread_bedolaga="$(normalize_env_value_raw "$old_thread_bedolaga")"
     old_dir="$(normalize_env_value_raw "$old_dir")"
+    old_bedolaga_bot_dir="$(normalize_env_value_raw "$old_bedolaga_bot_dir")"
+    old_bedolaga_cabinet_dir="$(normalize_env_value_raw "$old_bedolaga_cabinet_dir")"
     old_backup_lang="$(normalize_env_value_raw "$old_backup_lang")"
     old_backup_encrypt="$(normalize_backup_encrypt_raw "$old_backup_encrypt")"
     old_backup_password="$(normalize_env_value_raw "$old_backup_password")"
@@ -544,6 +564,8 @@ load_existing_env_defaults() {
   TELEGRAM_THREAD_ID_PANEL="${TELEGRAM_THREAD_ID_PANEL:-$old_thread_panel}"
   TELEGRAM_THREAD_ID_BEDOLAGA="${TELEGRAM_THREAD_ID_BEDOLAGA:-$old_thread_bedolaga}"
   REMNAWAVE_DIR="${REMNAWAVE_DIR:-$old_dir}"
+  BEDOLAGA_BOT_DIR="${BEDOLAGA_BOT_DIR:-$old_bedolaga_bot_dir}"
+  BEDOLAGA_CABINET_DIR="${BEDOLAGA_CABINET_DIR:-$old_bedolaga_cabinet_dir}"
   BACKUP_ON_CALENDAR="${BACKUP_ON_CALENDAR:-$old_calendar}"
   BACKUP_ON_CALENDAR_PANEL="${BACKUP_ON_CALENDAR_PANEL:-$old_calendar_panel}"
   BACKUP_ON_CALENDAR_BEDOLAGA="${BACKUP_ON_CALENDAR_BEDOLAGA:-$old_calendar_bedolaga}"
@@ -554,6 +576,10 @@ load_existing_env_defaults() {
 
   detected="$(detect_remnawave_dir || true)"
   REMNAWAVE_DIR="${REMNAWAVE_DIR:-$detected}"
+  detected="$(detect_bedolaga_bot_dir || true)"
+  BEDOLAGA_BOT_DIR="${BEDOLAGA_BOT_DIR:-$detected}"
+  detected="$(detect_bedolaga_cabinet_dir || true)"
+  BEDOLAGA_CABINET_DIR="${BEDOLAGA_CABINET_DIR:-$detected}"
   BACKUP_ON_CALENDAR_PANEL="${BACKUP_ON_CALENDAR_PANEL:-$(get_timer_calendar_for_unit "panel-backup-panel.timer" || true)}"
   BACKUP_ON_CALENDAR_BEDOLAGA="${BACKUP_ON_CALENDAR_BEDOLAGA:-$(get_timer_calendar_for_unit "panel-backup-bedolaga.timer" || true)}"
   BACKUP_ON_CALENDAR="${BACKUP_ON_CALENDAR:-$(get_current_timer_calendar || true)}"

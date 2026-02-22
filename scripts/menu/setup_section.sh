@@ -6,6 +6,8 @@ menu_flow_install_and_setup() {
   local old_admin=""
   local old_thread=""
   local old_dir=""
+  local old_bedolaga_bot_dir=""
+  local old_bedolaga_cabinet_dir=""
   local old_lang=""
   local old_encrypt=""
   local old_password=""
@@ -17,6 +19,8 @@ menu_flow_install_and_setup() {
   old_admin="$TELEGRAM_ADMIN_ID"
   old_thread="$TELEGRAM_THREAD_ID"
   old_dir="$REMNAWAVE_DIR"
+  old_bedolaga_bot_dir="${BEDOLAGA_BOT_DIR:-}"
+  old_bedolaga_cabinet_dir="${BEDOLAGA_CABINET_DIR:-}"
   old_lang="$BACKUP_LANG"
   old_encrypt="$BACKUP_ENCRYPT"
   old_password="$BACKUP_PASSWORD"
@@ -28,7 +32,7 @@ menu_flow_install_and_setup() {
   if ! prompt_install_settings; then
     return 0
   fi
-  show_quick_setup_summary "$old_bot" "$old_admin" "$old_thread" "$old_dir" "$old_lang" "$old_encrypt" "$old_password" "$old_calendar" "$old_include"
+  show_quick_setup_summary "$old_bot" "$old_admin" "$old_thread" "$old_dir" "$old_bedolaga_bot_dir" "$old_bedolaga_cabinet_dir" "$old_lang" "$old_encrypt" "$old_password" "$old_calendar" "$old_include"
   if ! ask_yes_no "$(tr_text "Применить эти настройки и продолжить установку?" "Apply these settings and continue installation?")" "y"; then
     [[ "$?" == "2" ]] && return 0
     paint "$CLR_WARN" "$(tr_text "Отменено пользователем." "Cancelled by user.")"
@@ -82,11 +86,13 @@ show_quick_setup_summary() {
   local old_admin="$2"
   local old_thread="$3"
   local old_dir="$4"
-  local old_lang="$5"
-  local old_encrypt="$6"
-  local old_password="$7"
-  local old_calendar="$8"
-  local old_include="$9"
+  local old_bedolaga_bot_dir="$5"
+  local old_bedolaga_cabinet_dir="$6"
+  local old_lang="$7"
+  local old_encrypt="$8"
+  local old_password="$9"
+  local old_calendar="${10}"
+  local old_include="${11}"
 
   draw_subheader "$(tr_text "Краткий итог изменений" "Quick changes summary")"
   paint "$CLR_MUTED" "$(tr_text "Легенда: * изменено, = без изменений." "Legend: * changed, = unchanged.")"
@@ -95,6 +101,8 @@ show_quick_setup_summary() {
   render_change_line "TELEGRAM_ADMIN_ID" "$old_admin" "$TELEGRAM_ADMIN_ID"
   render_change_line "TELEGRAM_THREAD_ID" "$old_thread" "$TELEGRAM_THREAD_ID"
   render_change_line "REMNAWAVE_DIR" "$old_dir" "$REMNAWAVE_DIR"
+  render_change_line "BEDOLAGA_BOT_DIR" "$old_bedolaga_bot_dir" "${BEDOLAGA_BOT_DIR:-}"
+  render_change_line "BEDOLAGA_CABINET_DIR" "$old_bedolaga_cabinet_dir" "${BEDOLAGA_CABINET_DIR:-}"
   render_change_line "BACKUP_LANG" "$old_lang" "$BACKUP_LANG"
   render_change_line "BACKUP_ENCRYPT" "$old_encrypt" "$BACKUP_ENCRYPT"
   render_change_line "BACKUP_PASSWORD" "$old_password" "$BACKUP_PASSWORD"
@@ -111,18 +119,23 @@ menu_flow_quick_setup() {
   local old_admin=""
   local old_thread=""
   local old_dir=""
+  local old_bedolaga_bot_dir=""
+  local old_bedolaga_cabinet_dir=""
   local old_lang=""
   local old_encrypt=""
   local old_password=""
   local old_calendar=""
   local old_include=""
   local prev_password=""
+  local setup_scope="${BACKUP_SETUP_SCOPE:-global}"
 
   load_existing_env_defaults
   old_bot="$TELEGRAM_BOT_TOKEN"
   old_admin="$TELEGRAM_ADMIN_ID"
   old_thread="$TELEGRAM_THREAD_ID"
   old_dir="$REMNAWAVE_DIR"
+  old_bedolaga_bot_dir="${BEDOLAGA_BOT_DIR:-}"
+  old_bedolaga_cabinet_dir="${BEDOLAGA_CABINET_DIR:-}"
   old_lang="$BACKUP_LANG"
   old_encrypt="$BACKUP_ENCRYPT"
   old_password="$BACKUP_PASSWORD"
@@ -132,8 +145,15 @@ menu_flow_quick_setup() {
   while true; do
     case "$step" in
       1)
-        draw_subheader "$(tr_text "Быстрая настройка" "Quick setup")" "$(tr_text "Шаг 1/3: Telegram и путь" "Step 1/3: Telegram and path")"
+        draw_subheader "$(tr_text "Быстрая настройка" "Quick setup")" "$(tr_text "Шаг 1/3: Telegram и пути проектов" "Step 1/3: Telegram and project paths")"
         paint "$CLR_MUTED" "$(tr_text "Команды: b = выход из мастера, p = предыдущий шаг." "Commands: b = exit wizard, p = previous step.")"
+        if [[ "$setup_scope" == "panel" ]]; then
+          paint "$CLR_MUTED" "$(tr_text "Раздел панели: укажите путь к Remnawave." "Panel section: provide the Remnawave path.")"
+        elif [[ "$setup_scope" == "bedolaga" ]]; then
+          paint "$CLR_MUTED" "$(tr_text "Раздел Bedolaga: укажите путь бота и путь кабинета." "Bedolaga section: provide bot and cabinet paths.")"
+        else
+          paint "$CLR_MUTED" "$(tr_text "Глобальный раздел: можно задать путь панели, бота и кабинета." "Global section: you can set panel, bot and cabinet paths.")"
+        fi
 
         while true; do
           input="$(ask_value_nav "$(tr_text "Токен Telegram-бота" "Telegram bot token")" "$TELEGRAM_BOT_TOKEN")"
@@ -180,16 +200,42 @@ menu_flow_quick_setup() {
           break
         done
 
-        while true; do
-          input="$(ask_value_nav "$(tr_text "Путь к Remnawave" "Remnawave path")" "$REMNAWAVE_DIR")"
-          [[ "$input" == "__PBM_BACK__" ]] && return 0
-          if [[ "$input" == "__PBM_PREV__" ]]; then
-            step=1
-            continue 2
-          fi
-          REMNAWAVE_DIR="$input"
-          break
-        done
+        if [[ "$setup_scope" != "bedolaga" ]]; then
+          while true; do
+            input="$(ask_value_nav "$(tr_text "Путь к Remnawave (панель)" "Remnawave path (panel)")" "$REMNAWAVE_DIR")"
+            [[ "$input" == "__PBM_BACK__" ]] && return 0
+            if [[ "$input" == "__PBM_PREV__" ]]; then
+              step=1
+              continue 2
+            fi
+            REMNAWAVE_DIR="$input"
+            break
+          done
+        fi
+
+        if [[ "$setup_scope" != "panel" ]]; then
+          while true; do
+            input="$(ask_value_nav "$(tr_text "Путь к Bedolaga боту" "Bedolaga bot path")" "${BEDOLAGA_BOT_DIR:-}")"
+            [[ "$input" == "__PBM_BACK__" ]] && return 0
+            if [[ "$input" == "__PBM_PREV__" ]]; then
+              step=1
+              continue 2
+            fi
+            BEDOLAGA_BOT_DIR="$input"
+            break
+          done
+
+          while true; do
+            input="$(ask_value_nav "$(tr_text "Путь к Bedolaga кабинету (docker или npm)" "Bedolaga cabinet path (docker or npm)")" "${BEDOLAGA_CABINET_DIR:-}")"
+            [[ "$input" == "__PBM_BACK__" ]] && return 0
+            if [[ "$input" == "__PBM_PREV__" ]]; then
+              step=1
+              continue 2
+            fi
+            BEDOLAGA_CABINET_DIR="$input"
+            break
+          done
+        fi
 
         while true; do
           input="$(ask_value_nav "$(tr_text "Язык описания резервной копии (ru/en)" "Backup language (ru/en)")" "$BACKUP_LANG")"
@@ -293,7 +339,7 @@ menu_flow_quick_setup() {
           BACKUP_ON_CALENDAR_BEDOLAGA="$BACKUP_ON_CALENDAR"
         fi
 
-        show_quick_setup_summary "$old_bot" "$old_admin" "$old_thread" "$old_dir" "$old_lang" "$old_encrypt" "$old_password" "$old_calendar" "$old_include"
+        show_quick_setup_summary "$old_bot" "$old_admin" "$old_thread" "$old_dir" "$old_bedolaga_bot_dir" "$old_bedolaga_cabinet_dir" "$old_lang" "$old_encrypt" "$old_password" "$old_calendar" "$old_include"
         if ! ask_yes_no "$(tr_text "Сохранить эти изменения?" "Save these changes?")" "y"; then
           [[ "$?" == "2" ]] && { step=2; continue; }
           paint "$CLR_WARN" "$(tr_text "Изменения отменены." "Changes cancelled.")"
