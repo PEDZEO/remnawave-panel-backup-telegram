@@ -82,7 +82,7 @@ prompt_install_settings() {
   echo
 
   while true; do
-    val="$(ask_value "$(tr_text "[1/7] Токен Telegram-бота (пример: 123456:ABCDEF...)" "[1/7] Telegram bot token (example: 123456:ABCDEF...)")" "$TELEGRAM_BOT_TOKEN")"
+    val="$(ask_value "$(tr_text "Токен Telegram-бота (пример: 123456:ABCDEF...)" "Telegram bot token (example: 123456:ABCDEF...)")" "$TELEGRAM_BOT_TOKEN")"
     [[ "$val" == "__PBM_BACK__" ]] && return 1
     if [[ -n "$val" ]] && ! is_valid_telegram_token "$val"; then
       paint "$CLR_WARN" "$(tr_text "Похоже на некорректный токен Telegram. Формат: digits:token" "Looks like an invalid Telegram token. Format: digits:token")"
@@ -93,7 +93,7 @@ prompt_install_settings() {
   done
 
   while true; do
-    val="$(ask_value "$(tr_text "[2/7] ID чата/канала Telegram (пример: 123456789 или -1001234567890)" "[2/7] Telegram chat/channel ID (example: 123456789 or -1001234567890)")" "$TELEGRAM_ADMIN_ID")"
+    val="$(ask_value "$(tr_text "ID чата/канала Telegram (пример: 123456789 или -1001234567890)" "Telegram chat/channel ID (example: 123456789 or -1001234567890)")" "$TELEGRAM_ADMIN_ID")"
     [[ "$val" == "__PBM_BACK__" ]] && return 1
     if [[ -n "$val" ]] && ! is_valid_telegram_id "$val"; then
       paint "$CLR_WARN" "$(tr_text "ID чата должен быть числом (например 123456789 или -1001234567890)." "Chat ID must be numeric (for example 123456789 or -1001234567890).")"
@@ -104,7 +104,7 @@ prompt_install_settings() {
   done
 
   while true; do
-    val="$(ask_value "$(tr_text "[3/7] ID темы (topic), если нужен (иначе оставьте пусто)" "[3/7] Topic/thread ID if needed (otherwise leave empty)")" "$TELEGRAM_THREAD_ID")"
+    val="$(ask_value "$(tr_text "ID темы (topic), если нужен (иначе оставьте пусто)" "Topic/thread ID if needed (otherwise leave empty)")" "$TELEGRAM_THREAD_ID")"
     [[ "$val" == "__PBM_BACK__" ]] && return 1
     if [[ -n "$val" ]] && ! is_valid_telegram_id "$val"; then
       paint "$CLR_WARN" "$(tr_text "ID темы должен быть числом." "Thread ID must be numeric.")"
@@ -139,7 +139,7 @@ prompt_install_settings() {
   fi
 
   while true; do
-    val="$(ask_value "$(tr_text "[5/8] Язык описания резервной копии в Telegram (ru/en)" "[5/8] Backup description language in Telegram (ru/en)")" "$BACKUP_LANG")"
+    val="$(ask_value "$(tr_text "Язык описания резервной копии в Telegram (ru/en)" "Backup description language in Telegram (ru/en)")" "$BACKUP_LANG")"
     [[ "$val" == "__PBM_BACK__" ]] && return 1
     case "${val,,}" in
       en|eu) BACKUP_LANG="en"; break ;;
@@ -157,7 +157,7 @@ prompt_install_settings() {
   menu_option "2" "$(tr_text "Выключить шифрование" "Disable encryption")"
   print_separator
   while true; do
-    read -r -p "$(tr_text "[6/8] Выбор [1-2]: " "[6/8] Choice [1-2]: ")" encrypt_choice
+    read -r -p "$(tr_text "Выбор [1-2]: " "Choice [1-2]: ")" encrypt_choice
     if is_back_command "$encrypt_choice"; then
       return 1
     fi
@@ -173,7 +173,7 @@ prompt_install_settings() {
   if [[ "$BACKUP_ENCRYPT" == "1" ]]; then
     while true; do
       previous_password="$BACKUP_PASSWORD"
-      val="$(ask_secret_value "$(tr_text "[7/8] Пароль шифрования (GPG symmetric)" "[7/8] Encryption password (GPG symmetric)")" "$BACKUP_PASSWORD")"
+      val="$(ask_secret_value "$(tr_text "Пароль шифрования (GPG symmetric)" "Encryption password (GPG symmetric)")" "$BACKUP_PASSWORD")"
       [[ "$val" == "__PBM_BACK__" ]] && return 1
       if [[ -n "$previous_password" && "$val" == "$previous_password" ]]; then
         BACKUP_PASSWORD="$val"
@@ -216,9 +216,9 @@ prompt_install_settings() {
   print_separator
   while true; do
     if [[ "$setup_scope" == "global" ]]; then
-      read -r -p "$(tr_text "[8/8] Выбор [1-4]: " "[8/8] Choice [1-4]: ")" include_choice
+      read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" include_choice
     else
-      read -r -p "$(tr_text "[8/8] Выбор [1-2]: " "[8/8] Choice [1-2]: ")" include_choice
+      read -r -p "$(tr_text "Выбор [1-2]: " "Choice [1-2]: ")" include_choice
     fi
     if is_back_command "$include_choice"; then
       return 1
