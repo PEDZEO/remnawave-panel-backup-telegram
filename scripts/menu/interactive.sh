@@ -797,7 +797,7 @@ menu_section_bedolaga_install_update() {
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Операции установки и обновления стека Bedolaga (бот + кабинет)." "Install/update operations for Bedolaga stack (bot + cabinet).")"
     menu_option "1" "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")"
-    menu_option "2" "$(tr_text "Установить Bedolaga из форка PEDZEO (бот + кабинет + Caddy)" "Install Bedolaga from PEDZEO fork (bot + cabinet + Caddy)")"
+    menu_option "2" "$(tr_text "Автоустановка из форка PEDZEO (бот + кабинет + Caddy)" "Auto install from PEDZEO fork (bot + cabinet + Caddy)")"
     menu_option "3" "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")"
     menu_option "4" "$(tr_text "Назад" "Back")"
     print_separator
@@ -810,7 +810,7 @@ menu_section_bedolaga_install_update() {
         run_component_flow_action "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")" run_bedolaga_stack_install_flow
         ;;
       2)
-        run_component_flow_action "$(tr_text "Установить Bedolaga из форка PEDZEO (бот + кабинет + Caddy)" "Install Bedolaga from PEDZEO fork (bot + cabinet + Caddy)")" run_bedolaga_stack_install_fork_flow
+        run_component_flow_action "$(tr_text "Автоустановка из форка PEDZEO (бот + кабинет + Caddy)" "Auto install from PEDZEO fork (bot + cabinet + Caddy)")" run_bedolaga_stack_install_fork_flow
         ;;
       3)
         run_component_flow_action "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")" run_bedolaga_stack_update_flow
