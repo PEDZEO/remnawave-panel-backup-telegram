@@ -141,6 +141,10 @@ run_bedolaga_remote_migration_flow() {
   local restore_password="${BACKUP_PASSWORD:-}"
   local is_encrypted_archive=0
   local auto_prepare_remote=1
+  local include_caddy=0
+  local detected_caddy_dir=""
+  local detected_caddy_container=""
+  local remote_caddy_dir="/root/caddy"
   local confirm_rc=0
   local ssh_cmd=()
   local scp_cmd=()
@@ -150,6 +154,9 @@ run_bedolaga_remote_migration_flow() {
   local postcheck_cmd=""
   local only_args=""
   local item=""
+  local caddy_source=""
+  local caddy_parent=""
+  local caddy_up_cmd=""
 
   latest_archive="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/pb-*.tar.gz.gpg /var/backups/panel/panel-backup-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz.gpg 2>/dev/null | head -n1 || true)"
   archive_path="${BACKUP_FILE:-$latest_archive}"
@@ -240,6 +247,39 @@ run_bedolaga_remote_migration_flow() {
   [[ -n "$remote_backup_dir" ]] || remote_backup_dir="/var/backups/panel"
   remote_archive="${remote_backup_dir}/$(basename "$archive_path")"
 
+  detected_caddy_dir=""
+  detected_caddy_container=""
+  for c in remnawave-caddy remnawave_caddy caddy; do
+    caddy_source="$(docker inspect "$c" --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{println .Source}}{{end}}{{end}}' 2>/dev/null | head -n1 || true)"
+    [[ -n "$caddy_source" ]] || continue
+    caddy_source="$(echo "$caddy_source" | xargs 2>/dev/null || echo "$caddy_source")"
+    [[ -f "$caddy_source" ]] || continue
+    caddy_parent="$(dirname "$caddy_source")"
+    if [[ -f "${caddy_parent}/docker-compose.yml" || -f "${caddy_parent}/docker-compose.caddy.yml" || -f "${caddy_parent}/compose.yaml" || -f "${caddy_parent}/compose.yml" ]]; then
+      detected_caddy_dir="$caddy_parent"
+      detected_caddy_container="$c"
+      break
+    fi
+  done
+  if [[ -z "$detected_caddy_dir" ]] && [[ -f /root/caddy/Caddyfile ]] && [[ -f /root/caddy/docker-compose.yml || -f /root/caddy/docker-compose.caddy.yml || -f /root/caddy/compose.yaml || -f /root/caddy/compose.yml ]]; then
+    detected_caddy_dir="/root/caddy"
+    detected_caddy_container="remnawave-caddy"
+  fi
+  if [[ -n "$detected_caddy_dir" ]]; then
+    confirm_rc=0
+    ask_yes_no "$(tr_text "Найден Docker Caddy. Перенести Caddy на новый VPS?" "Docker Caddy detected. Migrate Caddy to the new VPS?")" "y" || confirm_rc=$?
+    case "$confirm_rc" in
+      0) include_caddy=1 ;;
+      1) include_caddy=0 ;;
+      2) return 1 ;;
+    esac
+    if (( include_caddy == 1 )); then
+      remote_caddy_dir="$(ask_value "$(tr_text "Путь Caddy на новом VPS" "Caddy path on the new VPS")" "$remote_caddy_dir")"
+      [[ "$remote_caddy_dir" == "__PBM_BACK__" ]] && return 1
+      [[ -n "$remote_caddy_dir" ]] || remote_caddy_dir="/root/caddy"
+    fi
+  fi
+
   if [[ "$archive_path" == *.gpg ]]; then
     is_encrypted_archive=1
     restore_password="$(ask_secret_value "$(tr_text "Пароль шифрования архива (BACKUP_PASSWORD) для нового VPS" "Archive encryption password (BACKUP_PASSWORD) for new VPS")" "$restore_password")"
@@ -281,6 +321,11 @@ run_bedolaga_remote_migration_flow() {
   paint "$CLR_MUTED" "  $(tr_text "Файл на новом VPS:" "Archive on new VPS:") ${remote_archive}"
   paint "$CLR_MUTED" "  $(tr_text "Состав восстановления:" "Restore scope:") ${restore_only}"
   paint "$CLR_MUTED" "  $(tr_text "Автоподготовка VPS:" "VPS auto-prepare:") $([[ "$auto_prepare_remote" == "1" ]] && tr_text "включена" "enabled" || tr_text "выключена" "disabled")"
+  if (( include_caddy == 1 )); then
+    paint "$CLR_MUTED" "  $(tr_text "Caddy перенос:" "Caddy migration:") ${detected_caddy_dir} -> ${remote_caddy_dir}"
+  else
+    paint "$CLR_MUTED" "  $(tr_text "Caddy перенос:" "Caddy migration:") $(tr_text "пропущен" "skipped")"
+  fi
   paint "$CLR_MUTED" "  $(tr_text "Режим:" "Mode:") $([[ "$restore_dry_run" == "1" ]] && tr_text "тестовый (--dry-run)" "test (--dry-run)" || tr_text "боевой" "real")"
   paint "$CLR_MUTED" "  $(tr_text "Перезапуски:" "Restarts:") $([[ "$restore_no_restart" == "1" ]] && tr_text "отключены (--no-restart)" "disabled (--no-restart)" || tr_text "включены" "enabled")"
   if [[ -n "$ssh_password" ]]; then
@@ -307,6 +352,25 @@ run_bedolaga_remote_migration_flow() {
     paint "$CLR_DANGER" "$(tr_text "Не удалось скопировать архив на новый VPS." "Failed to copy archive to the new VPS.")"
     wait_for_enter
     return 1
+  fi
+
+  if (( include_caddy == 1 )); then
+    paint "$CLR_ACCENT" "$(tr_text "Копирую Caddy-конфиг и compose на новый VPS..." "Copying Caddy config and compose to the new VPS...")"
+    if [[ ! -d "$detected_caddy_dir" ]]; then
+      paint "$CLR_DANGER" "$(tr_text "Исходная папка Caddy недоступна." "Source Caddy directory is not accessible.")"
+      wait_for_enter
+      return 1
+    fi
+    if ! "${ssh_cmd[@]}" "mkdir -p $(printf '%q' "$remote_caddy_dir")"; then
+      paint "$CLR_DANGER" "$(tr_text "Не удалось создать папку Caddy на новом VPS." "Failed to create Caddy directory on the new VPS.")"
+      wait_for_enter
+      return 1
+    fi
+    if ! tar -C "$detected_caddy_dir" -czf - . | "${ssh_cmd[@]}" "tar -xzf - -C $(printf '%q' "$remote_caddy_dir")"; then
+      paint "$CLR_DANGER" "$(tr_text "Не удалось перенести файлы Caddy на новый VPS." "Failed to transfer Caddy files to the new VPS.")"
+      wait_for_enter
+      return 1
+    fi
   fi
 
   if (( auto_prepare_remote == 1 )); then
@@ -401,6 +465,14 @@ fi'
     return 1
   fi
 
+  if (( include_caddy == 1 && restore_dry_run == 0 )); then
+    paint "$CLR_ACCENT" "$(tr_text "Поднимаю Caddy на новом VPS..." "Starting Caddy on the new VPS...")"
+    caddy_up_cmd="set -e; cd $(printf '%q' "$remote_caddy_dir"); cfile=''; if [ -f docker-compose.yml ]; then cfile='docker-compose.yml'; elif [ -f docker-compose.caddy.yml ]; then cfile='docker-compose.caddy.yml'; elif [ -f compose.yaml ]; then cfile='compose.yaml'; elif [ -f compose.yml ]; then cfile='compose.yml'; fi; if [ -n \"\$cfile\" ]; then docker compose -f \"\$cfile\" up -d; else echo 'compose file not found in caddy dir'; exit 1; fi"
+    if ! "${ssh_cmd[@]}" "$caddy_up_cmd"; then
+      paint "$CLR_WARN" "$(tr_text "Не удалось запустить Caddy на новом VPS." "Failed to start Caddy on the new VPS.")"
+    fi
+  fi
+
   if (( restore_dry_run == 0 )); then
     paint "$CLR_ACCENT" "$(tr_text "Проверяю состояние сервисов и последние логи на новом VPS..." "Checking service state and recent logs on the new VPS...")"
     postcheck_cmd='
@@ -408,7 +480,7 @@ set +e
 echo "============================================================"
 echo "  Post-check: Bedolaga stack"
 echo "============================================================"
-for c in remnawave_bot_db remnawave_bot_redis remnawave_bot cabinet_frontend; do
+for c in remnawave_bot_db remnawave_bot_redis remnawave_bot cabinet_frontend remnawave-caddy remnawave_caddy caddy; do
   st="$(docker inspect -f "{{.State.Status}}" "$c" 2>/dev/null || echo "not-found")"
   printf "  %-20s %s\n" "$c:" "$st"
 done
@@ -427,6 +499,14 @@ docker logs --tail 30 remnawave_bot_db 2>&1 || true
 echo "------------------------------------------------------------"
 echo "logs: remnawave_bot_redis (tail 30)"
 docker logs --tail 30 remnawave_bot_redis 2>&1 || true
+echo "------------------------------------------------------------"
+for cc in remnawave-caddy remnawave_caddy caddy; do
+  if docker inspect "$cc" >/dev/null 2>&1; then
+    echo "logs: ${cc} (tail 30)"
+    docker logs --tail 30 "$cc" 2>&1 || true
+    break
+  fi
+done
 '
     if ! "${ssh_cmd[@]}" "$postcheck_cmd"; then
       paint "$CLR_WARN" "$(tr_text "Постпроверка вернула ошибку. Проверьте SSH/логи вручную." "Post-check returned an error. Verify SSH/logs manually.")"
