@@ -295,6 +295,69 @@ bedolaga_clone_or_update_repo() {
   git clone "$repo_url" "$target_dir"
 }
 
+bedolaga_update_repo_from_remote_default_branch() {
+  local repo_url="$1"
+  local target_dir="$2"
+  local current_origin=""
+  local default_branch=""
+
+  if [[ ! -d "${target_dir}/.git" ]]; then
+    paint "$CLR_DANGER" "$(tr_text "Папка не является git-репозиторием:" "Directory is not a git repository:") ${target_dir}"
+    return 1
+  fi
+
+  if [[ -n "$(git -C "$target_dir" status --porcelain 2>/dev/null || true)" ]]; then
+    paint "$CLR_DANGER" "$(tr_text "В репозитории есть локальные изменения, автообновление форка остановлено:" "Repository has local changes, fork auto-update is stopped:") ${target_dir}"
+    paint "$CLR_WARN" "$(tr_text "Сделайте commit/stash и повторите." "Commit/stash your changes and retry.")"
+    return 1
+  fi
+
+  current_origin="$(git -C "$target_dir" remote get-url origin 2>/dev/null || true)"
+  if [[ -n "$current_origin" && "$current_origin" != "$repo_url" ]]; then
+    paint "$CLR_MUTED" "$(tr_text "Переключаю origin на форк:" "Switching origin to fork:") ${repo_url}"
+  fi
+  if ! git -C "$target_dir" remote set-url origin "$repo_url"; then
+    paint "$CLR_DANGER" "$(tr_text "Не удалось переключить origin на форк." "Failed to switch origin to fork.")"
+    return 1
+  fi
+
+  if ! git -C "$target_dir" fetch origin --prune; then
+    paint "$CLR_DANGER" "$(tr_text "Не удалось получить ветки форка (fetch)." "Failed to fetch fork branches.")"
+    return 1
+  fi
+
+  default_branch="$(git -C "$target_dir" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || true)"
+  if [[ -z "$default_branch" ]]; then
+    default_branch="$(git -C "$target_dir" remote show origin 2>/dev/null | sed -n 's/.*HEAD branch: //p' | head -n1 || true)"
+  fi
+  if [[ -z "$default_branch" ]]; then
+    if git -C "$target_dir" show-ref --verify --quiet refs/remotes/origin/main; then
+      default_branch="main"
+    else
+      default_branch="master"
+    fi
+  fi
+
+  if git -C "$target_dir" show-ref --verify --quiet "refs/heads/${default_branch}"; then
+    if ! git -C "$target_dir" checkout "${default_branch}"; then
+      paint "$CLR_DANGER" "$(tr_text "Не удалось переключиться на ветку" "Failed to switch to branch"): ${default_branch}"
+      return 1
+    fi
+  else
+    if ! git -C "$target_dir" checkout -B "${default_branch}" "origin/${default_branch}"; then
+      paint "$CLR_DANGER" "$(tr_text "Не удалось создать локальную ветку" "Failed to create local branch"): ${default_branch}"
+      return 1
+    fi
+  fi
+
+  if ! git -C "$target_dir" pull --ff-only origin "${default_branch}"; then
+    paint "$CLR_DANGER" "$(tr_text "Не удалось обновить ветку (pull --ff-only)." "Failed to update branch (pull --ff-only).")"
+    return 1
+  fi
+
+  return 0
+}
+
 bedolaga_configure_bot_env() {
   local bot_dir="$1"
   local bot_token="$2"
@@ -997,7 +1060,11 @@ run_bedolaga_stack_install_fork_flow() {
   run_bedolaga_stack_install_with_repos "$bot_repo" "$cabinet_repo"
 }
 
-run_bedolaga_stack_update_flow() {
+run_bedolaga_stack_update_with_repos() {
+  local bot_repo="$1"
+  local cabinet_repo="$2"
+  local fork_mode="${3:-0}"
+  local flow_title="${4:-$(tr_text "Bedolaga: обновление (бот + кабинет)" "Bedolaga: update (bot + cabinet)")}"
   local bot_dir="/root/remnawave-bedolaga-telegram-bot"
   local cabinet_dir="/root/bedolaga-cabinet"
   local replace_caddy_config="0"
@@ -1009,7 +1076,7 @@ run_bedolaga_stack_update_flow() {
   local bot_username=""
   local bot_token=""
 
-  draw_subheader "$(tr_text "Bedolaga: обновление (бот + кабинет)" "Bedolaga: update (bot + cabinet)")"
+  draw_subheader "${flow_title}"
 
   if ! ensure_docker_available; then
     return 1
@@ -1046,8 +1113,14 @@ run_bedolaga_stack_update_flow() {
     return 1
   fi
 
-  bedolaga_clone_or_update_repo "$BEDOLAGA_BOT_REPO_DEFAULT" "$bot_dir" || return 1
-  bedolaga_clone_or_update_repo "$BEDOLAGA_CABINET_REPO_DEFAULT" "$cabinet_dir" || return 1
+  if [[ "$fork_mode" == "1" ]]; then
+    paint "$CLR_MUTED" "$(tr_text "Режим форка: переключаю репозитории на PEDZEO и обновляю по дефолтной ветке origin." "Fork mode: switching repositories to PEDZEO and updating via origin default branch.")"
+    bedolaga_update_repo_from_remote_default_branch "$bot_repo" "$bot_dir" || return 1
+    bedolaga_update_repo_from_remote_default_branch "$cabinet_repo" "$cabinet_dir" || return 1
+  else
+    bedolaga_clone_or_update_repo "$bot_repo" "$bot_dir" || return 1
+    bedolaga_clone_or_update_repo "$cabinet_repo" "$cabinet_dir" || return 1
+  fi
   bedolaga_write_bot_compose_override "$bot_dir"
   bedolaga_write_cabinet_compose_override "$cabinet_dir"
 
@@ -1084,4 +1157,33 @@ run_bedolaga_stack_update_flow() {
 
   paint "$CLR_OK" "$(tr_text "Bedolaga stack обновлен." "Bedolaga stack updated.")"
   return 0
+}
+
+run_bedolaga_stack_update_flow() {
+  run_bedolaga_stack_update_with_repos \
+    "$BEDOLAGA_BOT_REPO_DEFAULT" \
+    "$BEDOLAGA_CABINET_REPO_DEFAULT" \
+    "0" \
+    "$(tr_text "Bedolaga: обновление (бот + кабинет)" "Bedolaga: update (bot + cabinet)")"
+}
+
+run_bedolaga_stack_update_fork_flow() {
+  local bot_repo="$BEDOLAGA_BOT_REPO_FORK_DEFAULT"
+  local cabinet_repo="$BEDOLAGA_CABINET_REPO_FORK_DEFAULT"
+
+  bedolaga_autodetect_fork_repo_urls
+  if bedolaga_validate_git_repo_url "${BEDOLAGA_BOT_REPO_LAST_CUSTOM:-}"; then
+    bot_repo="${BEDOLAGA_BOT_REPO_LAST_CUSTOM}"
+  fi
+  if bedolaga_validate_git_repo_url "${BEDOLAGA_CABINET_REPO_LAST_CUSTOM:-}"; then
+    cabinet_repo="${BEDOLAGA_CABINET_REPO_LAST_CUSTOM}"
+  fi
+
+  BEDOLAGA_BOT_REPO_LAST_CUSTOM="$bot_repo"
+  BEDOLAGA_CABINET_REPO_LAST_CUSTOM="$cabinet_repo"
+  run_bedolaga_stack_update_with_repos \
+    "$bot_repo" \
+    "$cabinet_repo" \
+    "1" \
+    "$(tr_text "Bedolaga: автообновление форка PEDZEO (безопасный режим)" "Bedolaga: PEDZEO fork auto-update (safe mode)")"
 }

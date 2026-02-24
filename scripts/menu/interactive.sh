@@ -799,9 +799,10 @@ menu_section_bedolaga_install_update() {
     menu_option "1" "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")"
     menu_option "2" "$(tr_text "Автоустановка из форка PEDZEO (бот + кабинет + Caddy)" "Auto install from PEDZEO fork (bot + cabinet + Caddy)")"
     menu_option "3" "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")"
-    menu_option "4" "$(tr_text "Назад" "Back")"
+    menu_option "4" "$(tr_text "Автообновление форка PEDZEO (safe)" "Auto-update PEDZEO fork (safe)")"
+    menu_option "5" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
@@ -815,7 +816,10 @@ menu_section_bedolaga_install_update() {
       3)
         run_component_flow_action "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")" run_bedolaga_stack_update_flow
         ;;
-      4) break ;;
+      4)
+        run_component_flow_action "$(tr_text "Автообновление форка PEDZEO (safe)" "Auto-update PEDZEO fork (safe)")" run_bedolaga_stack_update_fork_flow
+        ;;
+      5) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
