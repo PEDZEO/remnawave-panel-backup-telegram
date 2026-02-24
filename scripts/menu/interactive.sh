@@ -790,19 +790,17 @@ menu_section_remnawave_components() {
   done
 }
 
-menu_section_bedolaga_install_update() {
+menu_section_bedolaga_install_update_official() {
   local choice=""
   while true; do
-    draw_subheader "$(tr_text "Bedolaga: установка и обновление" "Bedolaga: install and update")"
+    draw_subheader "$(tr_text "Bedolaga: официальный стек" "Bedolaga: official stack")"
     show_back_hint
-    paint "$CLR_MUTED" "$(tr_text "Операции установки и обновления стека Bedolaga (бот + кабинет)." "Install/update operations for Bedolaga stack (bot + cabinet).")"
+    paint "$CLR_MUTED" "$(tr_text "Установка и обновление официального стека Bedolaga (бот + кабинет)." "Install and update for the official Bedolaga stack (bot + cabinet).")"
     menu_option "1" "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")"
-    menu_option "2" "$(tr_text "Автоустановка из форка PEDZEO (бот + кабинет + Caddy)" "Auto install from PEDZEO fork (bot + cabinet + Caddy)")"
-    menu_option "3" "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")"
-    menu_option "4" "$(tr_text "Автообновление форка PEDZEO (safe)" "Auto-update PEDZEO fork (safe)")"
-    menu_option "5" "$(tr_text "Назад" "Back")"
+    menu_option "2" "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")"
+    menu_option "3" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
@@ -811,15 +809,59 @@ menu_section_bedolaga_install_update() {
         run_component_flow_action "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")" run_bedolaga_stack_install_flow
         ;;
       2)
-        run_component_flow_action "$(tr_text "Автоустановка из форка PEDZEO (бот + кабинет + Caddy)" "Auto install from PEDZEO fork (bot + cabinet + Caddy)")" run_bedolaga_stack_install_fork_flow
-        ;;
-      3)
         run_component_flow_action "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")" run_bedolaga_stack_update_flow
         ;;
-      4)
+      3) break ;;
+      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+    esac
+  done
+}
+
+menu_section_bedolaga_install_update_fork() {
+  local choice=""
+  while true; do
+    draw_subheader "$(tr_text "Bedolaga: fork PEDZEO" "Bedolaga: PEDZEO fork")"
+    show_back_hint
+    paint "$CLR_MUTED" "$(tr_text "Автоустановка и безопасное автообновление форка PEDZEO." "Auto-install and safe auto-update for PEDZEO fork.")"
+    menu_option "1" "$(tr_text "Автоустановка форка PEDZEO (бот + кабинет + Caddy)" "Auto-install PEDZEO fork (bot + cabinet + Caddy)")"
+    menu_option "2" "$(tr_text "Автообновление форка PEDZEO (safe)" "Auto-update PEDZEO fork (safe)")"
+    menu_option "3" "$(tr_text "Назад" "Back")"
+    print_separator
+    read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
+    if is_back_command "$choice"; then
+      break
+    fi
+    case "$choice" in
+      1)
+        run_component_flow_action "$(tr_text "Автоустановка форка PEDZEO (бот + кабинет + Caddy)" "Auto-install PEDZEO fork (bot + cabinet + Caddy)")" run_bedolaga_stack_install_fork_flow
+        ;;
+      2)
         run_component_flow_action "$(tr_text "Автообновление форка PEDZEO (safe)" "Auto-update PEDZEO fork (safe)")" run_bedolaga_stack_update_fork_flow
         ;;
-      5) break ;;
+      3) break ;;
+      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+    esac
+  done
+}
+
+menu_section_bedolaga_install_update() {
+  local choice=""
+  while true; do
+    draw_subheader "$(tr_text "Bedolaga: установка и обновление" "Bedolaga: install and update")"
+    show_back_hint
+    paint "$CLR_MUTED" "$(tr_text "Выберите ветку: официальный стек Bedolaga или fork PEDZEO." "Choose line: official Bedolaga stack or PEDZEO fork.")"
+    menu_option "1" "$(tr_text "Официальный Bedolaga" "Official Bedolaga")"
+    menu_option "2" "$(tr_text "Fork PEDZEO" "PEDZEO fork")"
+    menu_option "3" "$(tr_text "Назад" "Back")"
+    print_separator
+    read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
+    if is_back_command "$choice"; then
+      break
+    fi
+    case "$choice" in
+      1) menu_section_bedolaga_install_update_official ;;
+      2) menu_section_bedolaga_install_update_fork ;;
+      3) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
