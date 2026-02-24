@@ -358,6 +358,69 @@ bedolaga_update_repo_from_remote_default_branch() {
   return 0
 }
 
+bedolaga_detect_bot_repo_dir() {
+  local guessed=""
+  local d=""
+
+  for guessed in "${BEDOLAGA_BOT_DIR:-}" "/root/remnawave-bedolaga-telegram-bot" "/opt/remnawave-bedolaga-telegram-bot"; do
+    [[ -n "$guessed" ]] || continue
+    [[ -d "$guessed/.git" ]] || continue
+    echo "$guessed"
+    return 0
+  done
+
+  if declare -F detect_bedolaga_bot_dir >/dev/null 2>&1; then
+    guessed="$(detect_bedolaga_bot_dir || true)"
+    if [[ -n "$guessed" && -d "$guessed/.git" ]]; then
+      echo "$guessed"
+      return 0
+    fi
+  fi
+
+  for d in /root /opt /srv /home/*; do
+    [[ -d "$d" ]] || continue
+    guessed="${d%/}/remnawave-bedolaga-telegram-bot"
+    [[ -d "$guessed/.git" ]] || continue
+    echo "$guessed"
+    return 0
+  done
+
+  return 1
+}
+
+bedolaga_detect_cabinet_repo_dir() {
+  local guessed=""
+
+  for guessed in \
+    "${BEDOLAGA_CABINET_DIR:-}" \
+    "/root/bedolaga-cabinet" \
+    "/root/cabinet-frontend" \
+    "/opt/bedolaga-cabinet" \
+    "/opt/bedolaga-cabine" \
+    "/opt/cabinet-frontend"; do
+    [[ -n "$guessed" ]] || continue
+    [[ -d "$guessed/.git" ]] || continue
+    echo "$guessed"
+    return 0
+  done
+
+  if declare -F detect_bedolaga_cabinet_dir >/dev/null 2>&1; then
+    guessed="$(detect_bedolaga_cabinet_dir || true)"
+    if [[ -n "$guessed" && -d "$guessed/.git" ]]; then
+      echo "$guessed"
+      return 0
+    fi
+  fi
+
+  guessed="$(find /home /opt /srv /root -maxdepth 6 -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' -o -name 'bedolaga-cabine' \) 2>/dev/null | while read -r d; do [[ -d "$d/.git" ]] || continue; echo "$d"; break; done)"
+  if [[ -n "$guessed" ]]; then
+    echo "$guessed"
+    return 0
+  fi
+
+  return 1
+}
+
 bedolaga_configure_bot_env() {
   local bot_dir="$1"
   local bot_token="$2"
@@ -1065,14 +1128,14 @@ run_bedolaga_stack_update_with_repos() {
   local cabinet_repo="$2"
   local fork_mode="${3:-0}"
   local flow_title="${4:-$(tr_text "Bedolaga: обновление (бот + кабинет)" "Bedolaga: update (bot + cabinet)")}"
-  local bot_dir="/root/remnawave-bedolaga-telegram-bot"
-  local cabinet_dir="/root/bedolaga-cabinet"
+  local bot_dir=""
+  local cabinet_dir=""
   local replace_caddy_config="0"
   local hooks_domain=""
   local cabinet_domain=""
   local api_domain=""
   local cabinet_port="3020"
-  local bot_env_file="${bot_dir}/.env"
+  local bot_env_file=""
   local bot_username=""
   local bot_token=""
 
@@ -1088,12 +1151,15 @@ run_bedolaga_stack_update_with_repos() {
     return 1
   fi
 
-  if [[ ! -d "${bot_dir}/.git" ]]; then
-    paint "$CLR_DANGER" "$(tr_text "Не найден установленный репозиторий бота в /root/remnawave-bedolaga-telegram-bot" "Installed bot repository not found in /root/remnawave-bedolaga-telegram-bot")"
+  bot_dir="$(bedolaga_detect_bot_repo_dir || true)"
+  cabinet_dir="$(bedolaga_detect_cabinet_repo_dir || true)"
+  bot_env_file="${bot_dir}/.env"
+  if [[ -z "$bot_dir" || ! -d "${bot_dir}/.git" ]]; then
+    paint "$CLR_DANGER" "$(tr_text "Не найден установленный репозиторий бота (ожидаемые пути: /root/remnawave-bedolaga-telegram-bot, /opt/remnawave-bedolaga-telegram-bot)" "Installed bot repository not found (expected paths: /root/remnawave-bedolaga-telegram-bot, /opt/remnawave-bedolaga-telegram-bot)")"
     return 1
   fi
-  if [[ ! -d "${cabinet_dir}/.git" ]]; then
-    paint "$CLR_DANGER" "$(tr_text "Не найден установленный репозиторий кабинета в /root/bedolaga-cabinet" "Installed cabinet repository not found in /root/bedolaga-cabinet")"
+  if [[ -z "$cabinet_dir" || ! -d "${cabinet_dir}/.git" ]]; then
+    paint "$CLR_DANGER" "$(tr_text "Не найден установленный репозиторий кабинета (ожидаемые пути: /root/bedolaga-cabinet, /root/cabinet-frontend, /opt/bedolaga-cabinet, /opt/cabinet-frontend)" "Installed cabinet repository not found (expected paths: /root/bedolaga-cabinet, /root/cabinet-frontend, /opt/bedolaga-cabinet, /opt/cabinet-frontend)")"
     return 1
   fi
 
