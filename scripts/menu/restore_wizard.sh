@@ -192,7 +192,8 @@ show_restore_summary() {
   case "${RESTORE_ONLY:-all}" in
     all,bedolaga|bedolaga,all) components_label="$(tr_text "полный (панель + бот + кабинет)" "full (panel + bot + cabinet)")" ;;
     all) components_label="$(tr_text "всё (панель: база + redis + конфиги)" "everything (panel: db + redis + configs)")" ;;
-    bedolaga) components_label="$(tr_text "бот + кабинет Bedolaga" "Bedolaga bot + cabinet")" ;;
+    bedolaga) components_label="$(tr_text "полный Bedolaga (db + redis + бот + кабинет)" "full Bedolaga (db + redis + bot + cabinet)")" ;;
+    bedolaga-bot,bedolaga-cabinet|bedolaga-cabinet,bedolaga-bot) components_label="$(tr_text "бот + кабинет Bedolaga" "Bedolaga bot + cabinet")" ;;
     bedolaga-db,bedolaga-redis,bedolaga-bot|bedolaga-bot,bedolaga-db,bedolaga-redis) components_label="$(tr_text "только бот Bedolaga (db + redis + bot)" "Bedolaga bot only (db + redis + bot)")" ;;
     bedolaga-cabinet) components_label="$(tr_text "только кабинет Bedolaga" "Bedolaga cabinet only")" ;;
     db) components_label="$(tr_text "только база PostgreSQL" "PostgreSQL database only")" ;;
