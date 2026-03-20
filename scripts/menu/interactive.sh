@@ -885,7 +885,7 @@ true"
       wait_for_enter
       return 1
     fi
-    if ! "${ssh_cmd[@]}" "set -e; cd $(printf '%q' "$target_bot_dir") && docker compose up -d"; then
+    if ! "${ssh_cmd[@]}" "set -e; test -f $(printf '%q' "$target_bot_dir")/.env; docker network inspect remnawave-network >/dev/null 2>&1 || docker network create remnawave-network >/dev/null 2>&1 || true; cd $(printf '%q' "$target_bot_dir") && docker compose up -d"; then
       paint "$CLR_DANGER" "$(tr_text "Не удалось поднять контейнеры Bedolaga бота на новом VPS." "Failed to start Bedolaga bot containers on the new VPS.")"
       wait_for_enter
       return 1
@@ -906,7 +906,7 @@ true"
       wait_for_enter
       return 1
     fi
-    if ! "${ssh_cmd[@]}" "set -e; cd $(printf '%q' "$target_bot_dir") && docker compose up -d; cabdir=$(printf '%q' "$target_cabinet_dir"); if [ -d \"\$cabdir\" ]; then if [ -f \"\$cabdir/docker-compose.yml\" ] || [ -f \"\$cabdir/docker-compose.caddy.yml\" ] || [ -f \"\$cabdir/compose.yaml\" ] || [ -f \"\$cabdir/compose.yml\" ]; then cd \"\$cabdir\" && docker compose up -d; fi; fi"; then
+    if ! "${ssh_cmd[@]}" "set -e; test -f $(printf '%q' "$target_bot_dir")/.env; docker network inspect remnawave-network >/dev/null 2>&1 || docker network create remnawave-network >/dev/null 2>&1 || true; cd $(printf '%q' "$target_bot_dir") && docker compose up -d; cabdir=$(printf '%q' "$target_cabinet_dir"); if [ -d \"\$cabdir\" ]; then if [ -f \"\$cabdir/.env\" ] && { [ -f \"\$cabdir/docker-compose.yml\" ] || [ -f \"\$cabdir/docker-compose.caddy.yml\" ] || [ -f \"\$cabdir/compose.yaml\" ] || [ -f \"\$cabdir/compose.yml\" ]; }; then cd \"\$cabdir\" && docker compose up -d; fi; fi"; then
       paint "$CLR_DANGER" "$(tr_text "Не удалось поднять контейнеры Bedolaga на новом VPS." "Failed to start Bedolaga containers on the new VPS.")"
       wait_for_enter
       return 1
@@ -927,7 +927,7 @@ true"
       wait_for_enter
       return 1
     fi
-    if ! "${ssh_cmd[@]}" "set -e; paneldir=$(printf '%q' "$target_remnawave_dir"); if [ -z \"\$paneldir\" ] || { [ ! -d \"\$paneldir\" ] && [ ! -f \"\$paneldir/docker-compose.yml\" ] && [ ! -f \"\$paneldir/compose.yaml\" ] && [ ! -f \"\$paneldir/compose.yml\" ]; }; then paneldir=''; for d in /opt/remnawave /srv/remnawave /root/remnawave /home/remnawave; do if [ -f \"\$d/.env\" ] && [ -f \"\$d/docker-compose.yml\" ]; then paneldir=\"\$d\"; break; fi; done; if [ -z \"\$paneldir\" ]; then paneldir=$(find /root /opt /srv /home -maxdepth 6 -type d -name remnawave 2>/dev/null | while read -r d; do [ -f \"\$d/.env\" ] && [ -f \"\$d/docker-compose.yml\" ] || continue; echo \"\$d\"; break; done); fi; fi; if [ -n \"\$paneldir\" ]; then cd \"\$paneldir\" && docker compose up -d; fi; cd $(printf '%q' "$target_bot_dir") && docker compose up -d; cabdir=$(printf '%q' "$target_cabinet_dir"); if [ -d \"\$cabdir\" ]; then if [ -f \"\$cabdir/docker-compose.yml\" ] || [ -f \"\$cabdir/docker-compose.caddy.yml\" ] || [ -f \"\$cabdir/compose.yaml\" ] || [ -f \"\$cabdir/compose.yml\" ]; then cd \"\$cabdir\" && docker compose up -d; fi; fi"; then
+    if ! "${ssh_cmd[@]}" "set -e; docker network inspect remnawave-network >/dev/null 2>&1 || docker network create remnawave-network >/dev/null 2>&1 || true; paneldir=$(printf '%q' "$target_remnawave_dir"); if [ -z \"\$paneldir\" ] || { [ ! -d \"\$paneldir\" ] && [ ! -f \"\$paneldir/docker-compose.yml\" ] && [ ! -f \"\$paneldir/compose.yaml\" ] && [ ! -f \"\$paneldir/compose.yml\" ]; }; then paneldir=''; for d in /opt/remnawave /srv/remnawave /root/remnawave /home/remnawave; do if [ -f \"\$d/.env\" ] && [ -f \"\$d/docker-compose.yml\" ]; then paneldir=\"\$d\"; break; fi; done; if [ -z \"\$paneldir\" ]; then paneldir=$(find /root /opt /srv /home -maxdepth 6 -type d -name remnawave 2>/dev/null | while read -r d; do [ -f \"\$d/.env\" ] && [ -f \"\$d/docker-compose.yml\" ] || continue; echo \"\$d\"; break; done); fi; fi; if [ -n \"\$paneldir\" ]; then cd \"\$paneldir\" && docker compose up -d; fi; test -f $(printf '%q' "$target_bot_dir")/.env; cd $(printf '%q' "$target_bot_dir") && docker compose up -d; cabdir=$(printf '%q' "$target_cabinet_dir"); if [ -d \"\$cabdir\" ]; then if [ -f \"\$cabdir/.env\" ] && { [ -f \"\$cabdir/docker-compose.yml\" ] || [ -f \"\$cabdir/docker-compose.caddy.yml\" ] || [ -f \"\$cabdir/compose.yaml\" ] || [ -f \"\$cabdir/compose.yml\" ]; }; then cd \"\$cabdir\" && docker compose up -d; fi; fi"; then
       paint "$CLR_DANGER" "$(tr_text "Не удалось поднять контейнеры Remnawave+Bedolaga на новом VPS." "Failed to start Remnawave+Bedolaga containers on the new VPS.")"
       wait_for_enter
       return 1
@@ -943,7 +943,7 @@ true"
 
   if (( include_caddy == 1 && restore_dry_run == 0 )); then
     paint "$CLR_ACCENT" "$(tr_text "Поднимаю Caddy на новом VPS..." "Starting Caddy on the new VPS...")"
-    caddy_up_cmd="set -e; cd $(printf '%q' "$remote_caddy_dir"); cfile=''; if [ -f docker-compose.yml ]; then cfile='docker-compose.yml'; elif [ -f docker-compose.caddy.yml ]; then cfile='docker-compose.caddy.yml'; elif [ -f compose.yaml ]; then cfile='compose.yaml'; elif [ -f compose.yml ]; then cfile='compose.yml'; fi; if [ -n \"\$cfile\" ]; then docker compose -f \"\$cfile\" up -d; else echo 'compose file not found in caddy dir'; exit 1; fi"
+    caddy_up_cmd="set -e; docker network inspect remnawave-network >/dev/null 2>&1 || docker network create remnawave-network >/dev/null 2>&1 || true; cd $(printf '%q' "$remote_caddy_dir"); cfile=''; if [ -f docker-compose.yml ]; then cfile='docker-compose.yml'; elif [ -f docker-compose.caddy.yml ]; then cfile='docker-compose.caddy.yml'; elif [ -f compose.yaml ]; then cfile='compose.yaml'; elif [ -f compose.yml ]; then cfile='compose.yml'; fi; if [ -n \"\$cfile\" ]; then docker compose -f \"\$cfile\" up -d; else echo 'compose file not found in caddy dir'; exit 1; fi"
     if ! "${ssh_cmd[@]}" "$caddy_up_cmd"; then
       paint "$CLR_WARN" "$(tr_text "Не удалось запустить Caddy на новом VPS." "Failed to start Caddy on the new VPS.")"
     fi
