@@ -348,6 +348,8 @@ bedolaga_prepare_local_repos_for_restore() {
 run_bedolaga_local_migration_restore_flow() {
   local bot_repo_url=""
   local cabinet_repo_url=""
+  local restore_scope_choice=""
+  local restore_only="bedolaga-bot,bedolaga-cabinet"
   local target_bot_dir=""
   local target_cabinet_dir=""
 
@@ -366,11 +368,36 @@ run_bedolaga_local_migration_restore_flow() {
   if [[ -n "$target_cabinet_dir" ]]; then
     paint "$CLR_MUTED" "  cabinet target: ${target_cabinet_dir}"
   fi
+
+  draw_subheader "$(tr_text "Выбор состава восстановления на новом VPS" "Select restore scope on the new VPS")"
+  menu_option "1" "$(tr_text "Только бот Bedolaga" "Bedolaga bot only")"
+  menu_option "2" "$(tr_text "Только кабинет Bedolaga" "Bedolaga cabinet only")"
+  menu_option "3" "$(tr_text "Бот + кабинет (без DB/Redis, рекомендовано для старта)" "Bot + cabinet (without DB/Redis, recommended to start)")"
+  menu_option "4" "$(tr_text "Полный Bedolaga (DB + Redis + бот + кабинет)" "Full Bedolaga (DB + Redis + bot + cabinet)")"
+  menu_option "5" "$(tr_text "Полный перенос: Remnawave + Bedolaga (весь backup)" "Full migration: Remnawave + Bedolaga (entire backup)")"
+  print_separator
+  read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" restore_scope_choice
+  if is_back_command "$restore_scope_choice"; then
+    return 1
+  fi
+  case "$restore_scope_choice" in
+    1) restore_only="bedolaga-db,bedolaga-redis,bedolaga-bot" ;;
+    2) restore_only="bedolaga-cabinet" ;;
+    3) restore_only="bedolaga-bot,bedolaga-cabinet" ;;
+    4) restore_only="bedolaga" ;;
+    5) restore_only="all,bedolaga" ;;
+    *)
+      paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"
+      wait_for_enter
+      return 1
+      ;;
+  esac
+
   if ask_yes_no "$(tr_text "Подготовить репозитории Bedolaga перед восстановлением?" "Prepare Bedolaga repositories before restore?")" "y"; then
     bedolaga_prepare_local_repos_for_restore "$bot_repo_url" "$cabinet_repo_url" "$target_bot_dir" "$target_cabinet_dir" || true
   fi
 
-  run_restore_wizard_flow "bedolaga" "1"
+  run_restore_wizard_flow "$restore_only" "1"
 }
 
 run_bedolaga_remote_migration_flow() {
@@ -432,18 +459,22 @@ run_bedolaga_remote_migration_flow() {
   [[ "$archive_path" == "__PBM_BACK__" ]] && return 1
 
   draw_subheader "$(tr_text "Выбор состава восстановления на новом VPS" "Select restore scope on the new VPS")"
-  menu_option "1" "$(tr_text "Бот + кабинет (без DB/Redis, рекомендовано для старта)" "Bot + cabinet (without DB/Redis, recommended to start)")"
-  menu_option "2" "$(tr_text "Полный Bedolaga (DB + Redis + бот + кабинет)" "Full Bedolaga (DB + Redis + bot + cabinet)")"
-  menu_option "3" "$(tr_text "Полный перенос: Remnawave + Bedolaga (весь backup)" "Full migration: Remnawave + Bedolaga (entire backup)")"
+  menu_option "1" "$(tr_text "Только бот Bedolaga" "Bedolaga bot only")"
+  menu_option "2" "$(tr_text "Только кабинет Bedolaga" "Bedolaga cabinet only")"
+  menu_option "3" "$(tr_text "Бот + кабинет (без DB/Redis, рекомендовано для старта)" "Bot + cabinet (without DB/Redis, recommended to start)")"
+  menu_option "4" "$(tr_text "Полный Bedolaga (DB + Redis + бот + кабинет)" "Full Bedolaga (DB + Redis + bot + cabinet)")"
+  menu_option "5" "$(tr_text "Полный перенос: Remnawave + Bedolaga (весь backup)" "Full migration: Remnawave + Bedolaga (entire backup)")"
   print_separator
-  read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" restore_scope_choice
+  read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" restore_scope_choice
   if is_back_command "$restore_scope_choice"; then
     return 1
   fi
   case "$restore_scope_choice" in
-    1) restore_only="bedolaga-bot,bedolaga-cabinet" ;;
-    2) restore_only="bedolaga" ;;
-    3) restore_only="all,bedolaga" ;;
+    1) restore_only="bedolaga-db,bedolaga-redis,bedolaga-bot" ;;
+    2) restore_only="bedolaga-cabinet" ;;
+    3) restore_only="bedolaga-bot,bedolaga-cabinet" ;;
+    4) restore_only="bedolaga" ;;
+    5) restore_only="all,bedolaga" ;;
     *)
       paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"
       wait_for_enter
@@ -462,6 +493,8 @@ run_bedolaga_remote_migration_flow() {
     case "$restore_only" in
       all,bedolaga|bedolaga,all) fresh_backup_scope="all,bedolaga" ;;
       bedolaga) fresh_backup_scope="bedolaga" ;;
+      bedolaga-cabinet) fresh_backup_scope="bedolaga-cabinet" ;;
+      bedolaga-db,bedolaga-redis,bedolaga-bot) fresh_backup_scope="bedolaga-db,bedolaga-redis,bedolaga-bot" ;;
       *) fresh_backup_scope="bedolaga-bot,bedolaga-cabinet" ;;
     esac
 
