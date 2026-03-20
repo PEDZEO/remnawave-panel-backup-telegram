@@ -789,7 +789,15 @@ fi'
 if command -v git >/dev/null 2>&1; then
   if [ ! -d $(printf '%q' "$target_bot_dir")/.git ]; then
     if [ -e $(printf '%q' "$target_bot_dir") ] && [ ! -d $(printf '%q' "$target_bot_dir")/.git ]; then
-      echo 'skip bot repo: existing non-git directory $(printf '%q' "$target_bot_dir")'
+      echo 'populate bot repo into existing non-git directory $(printf '%q' "$target_bot_dir")'
+      tmp_repo_dir=\$(mktemp -d /tmp/bedolaga-bot-repo.XXXXXX 2>/dev/null || mktemp -d)
+      if git clone $(printf '%q' "$bot_repo_url") \"\$tmp_repo_dir\"; then
+        mkdir -p $(printf '%q' "$target_bot_dir")
+        cp -a \"\$tmp_repo_dir\"/. $(printf '%q' "$target_bot_dir")/ || echo 'warn: failed to copy bot repo contents into existing directory'
+      else
+        echo 'warn: failed to clone bot repo into temp directory'
+      fi
+      rm -rf \"\$tmp_repo_dir\" >/dev/null 2>&1 || true
     else
       rm -rf $(printf '%q' "$target_bot_dir") >/dev/null 2>&1 || true
       git clone $(printf '%q' "$bot_repo_url") $(printf '%q' "$target_bot_dir") || echo 'warn: failed to clone bot repo'
@@ -797,7 +805,15 @@ if command -v git >/dev/null 2>&1; then
   fi
   if [ ! -d $(printf '%q' "$target_cabinet_dir")/.git ]; then
     if [ -e $(printf '%q' "$target_cabinet_dir") ] && [ ! -d $(printf '%q' "$target_cabinet_dir")/.git ]; then
-      echo 'skip cabinet repo: existing non-git directory $(printf '%q' "$target_cabinet_dir")'
+      echo 'populate cabinet repo into existing non-git directory $(printf '%q' "$target_cabinet_dir")'
+      tmp_repo_dir=\$(mktemp -d /tmp/bedolaga-cabinet-repo.XXXXXX 2>/dev/null || mktemp -d)
+      if git clone $(printf '%q' "$cabinet_repo_url") \"\$tmp_repo_dir\"; then
+        mkdir -p $(printf '%q' "$target_cabinet_dir")
+        cp -a \"\$tmp_repo_dir\"/. $(printf '%q' "$target_cabinet_dir")/ || echo 'warn: failed to copy cabinet repo contents into existing directory'
+      else
+        echo 'warn: failed to clone cabinet repo into temp directory'
+      fi
+      rm -rf \"\$tmp_repo_dir\" >/dev/null 2>&1 || true
     else
       rm -rf $(printf '%q' "$target_cabinet_dir") >/dev/null 2>&1 || true
       git clone $(printf '%q' "$cabinet_repo_url") $(printf '%q' "$target_cabinet_dir") || echo 'warn: failed to clone cabinet repo'
