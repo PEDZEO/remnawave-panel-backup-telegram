@@ -294,13 +294,44 @@ bedolaga_resolve_migration_repo_url() {
   printf '%s' "${repo_url:-$fallback_url}"
 }
 
+archive_backup_info_value() {
+  local archive_path="$1"
+  local key="$2"
+  local archive_password="${3:-}"
+  local info_content=""
+
+  [[ -n "$archive_path" && -f "$archive_path" ]] || return 0
+
+  if [[ "$archive_path" == *.gpg ]]; then
+    [[ -n "$archive_password" ]] || return 0
+    info_content="$(gpg --batch --yes --pinentry-mode loopback --passphrase "$archive_password" --decrypt "$archive_path" 2>/dev/null | tar -xzOf - ./backup-info.txt 2>/dev/null || true)"
+    if [[ -z "$info_content" ]]; then
+      info_content="$(gpg --batch --yes --pinentry-mode loopback --passphrase "$archive_password" --decrypt "$archive_path" 2>/dev/null | tar -xzOf - backup-info.txt 2>/dev/null || true)"
+    fi
+  else
+    info_content="$(tar -xzOf "$archive_path" ./backup-info.txt 2>/dev/null || true)"
+    if [[ -z "$info_content" ]]; then
+      info_content="$(tar -xzOf "$archive_path" backup-info.txt 2>/dev/null || true)"
+    fi
+  fi
+
+  if [[ -n "$info_content" ]]; then
+    printf '%s\n' "$info_content" | awk -F= -v key="$key" '$1 == key { print substr($0, index($0, "=") + 1); exit }'
+  fi
+}
+
 bedolaga_prepare_local_repos_for_restore() {
   local bot_repo_url="$1"
   local cabinet_repo_url="$2"
-  local bot_dir="/root/remnawave-bedolaga-telegram-bot"
-  local cabinet_dir="/root/bedolaga-cabinet"
+  local bot_dir="$3"
+  local cabinet_dir="$4"
+
+  bot_dir="${bot_dir:-/root/remnawave-bedolaga-telegram-bot}"
+  cabinet_dir="${cabinet_dir:-/root/bedolaga-cabinet}"
 
   paint "$CLR_ACCENT" "$(tr_text "Подготавливаю репозитории Bedolaga перед восстановлением..." "Preparing Bedolaga repositories before restore...")"
+  paint "$CLR_MUTED" "  bot dir: ${bot_dir}"
+  paint "$CLR_MUTED" "  cabinet dir: ${cabinet_dir}"
   if ! ensure_git_available; then
     paint "$CLR_WARN" "$(tr_text "Git недоступен, продолжаю без автоклонирования репозиториев." "Git is unavailable, continuing without automatic repository cloning.")"
     return 1
@@ -317,16 +348,26 @@ bedolaga_prepare_local_repos_for_restore() {
 run_bedolaga_local_migration_restore_flow() {
   local bot_repo_url=""
   local cabinet_repo_url=""
+  local target_bot_dir=""
+  local target_cabinet_dir=""
 
   bot_repo_url="$(bedolaga_resolve_migration_repo_url "bot" "${BEDOLAGA_BOT_REPO_DEFAULT}")"
   cabinet_repo_url="$(bedolaga_resolve_migration_repo_url "cabinet" "${BEDOLAGA_CABINET_REPO_DEFAULT}")"
+  target_bot_dir="$(archive_backup_info_value "${BACKUP_FILE:-}" "bedolaga_bot_dir" "${BACKUP_PASSWORD:-}")"
+  target_cabinet_dir="$(archive_backup_info_value "${BACKUP_FILE:-}" "bedolaga_cabinet_dir" "${BACKUP_PASSWORD:-}")"
 
   draw_subheader "$(tr_text "Подготовка нового VPS к восстановлению" "Prepare new VPS for restore")"
   paint "$CLR_MUTED" "$(tr_text "Перед восстановлением можно автоматически подготовить исходники Bedolaga через Git." "Before restore, Bedolaga repositories can be prepared automatically via Git.")"
   paint "$CLR_MUTED" "  bot: ${bot_repo_url}"
   paint "$CLR_MUTED" "  cabinet: ${cabinet_repo_url}"
+  if [[ -n "$target_bot_dir" ]]; then
+    paint "$CLR_MUTED" "  bot target: ${target_bot_dir}"
+  fi
+  if [[ -n "$target_cabinet_dir" ]]; then
+    paint "$CLR_MUTED" "  cabinet target: ${target_cabinet_dir}"
+  fi
   if ask_yes_no "$(tr_text "Подготовить репозитории Bedolaga перед восстановлением?" "Prepare Bedolaga repositories before restore?")" "y"; then
-    bedolaga_prepare_local_repos_for_restore "$bot_repo_url" "$cabinet_repo_url" || true
+    bedolaga_prepare_local_repos_for_restore "$bot_repo_url" "$cabinet_repo_url" "$target_bot_dir" "$target_cabinet_dir" || true
   fi
 
   run_restore_wizard_flow "bedolaga" "1"
@@ -370,6 +411,8 @@ run_bedolaga_remote_migration_flow() {
   local bot_repo_url=""
   local cabinet_repo_url=""
   local remote_repo_prepare_cmd=""
+  local target_bot_dir=""
+  local target_cabinet_dir=""
 
   latest_archive="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/pb-*.tar.gz.gpg /var/backups/panel/panel-backup-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz.gpg 2>/dev/null | head -n1 || true)"
   archive_path="${BACKUP_FILE:-$latest_archive}"
@@ -557,6 +600,11 @@ run_bedolaga_remote_migration_flow() {
     }
   fi
 
+  target_bot_dir="$(archive_backup_info_value "$archive_path" "bedolaga_bot_dir" "$restore_password")"
+  target_cabinet_dir="$(archive_backup_info_value "$archive_path" "bedolaga_cabinet_dir" "$restore_password")"
+  target_bot_dir="${target_bot_dir:-/root/remnawave-bedolaga-telegram-bot}"
+  target_cabinet_dir="${target_cabinet_dir:-/root/bedolaga-cabinet}"
+
   command -v ssh >/dev/null 2>&1 || {
     paint "$CLR_DANGER" "$(tr_text "Не найдена команда ssh." "ssh command not found.")"
     wait_for_enter
@@ -693,20 +741,20 @@ fi'
 
     remote_repo_prepare_cmd="set +e
 if command -v git >/dev/null 2>&1; then
-  if [ ! -d /root/remnawave-bedolaga-telegram-bot/.git ]; then
-    if [ -e /root/remnawave-bedolaga-telegram-bot ] && [ ! -d /root/remnawave-bedolaga-telegram-bot/.git ]; then
-      echo 'skip bot repo: existing non-git directory /root/remnawave-bedolaga-telegram-bot'
+  if [ ! -d $(printf '%q' "$target_bot_dir")/.git ]; then
+    if [ -e $(printf '%q' "$target_bot_dir") ] && [ ! -d $(printf '%q' "$target_bot_dir")/.git ]; then
+      echo 'skip bot repo: existing non-git directory $(printf '%q' "$target_bot_dir")'
     else
-      rm -rf /root/remnawave-bedolaga-telegram-bot >/dev/null 2>&1 || true
-      git clone $(printf '%q' "$bot_repo_url") /root/remnawave-bedolaga-telegram-bot || echo 'warn: failed to clone bot repo'
+      rm -rf $(printf '%q' "$target_bot_dir") >/dev/null 2>&1 || true
+      git clone $(printf '%q' "$bot_repo_url") $(printf '%q' "$target_bot_dir") || echo 'warn: failed to clone bot repo'
     fi
   fi
-  if [ ! -d /root/bedolaga-cabinet/.git ]; then
-    if [ -e /root/bedolaga-cabinet ] && [ ! -d /root/bedolaga-cabinet/.git ]; then
-      echo 'skip cabinet repo: existing non-git directory /root/bedolaga-cabinet'
+  if [ ! -d $(printf '%q' "$target_cabinet_dir")/.git ]; then
+    if [ -e $(printf '%q' "$target_cabinet_dir") ] && [ ! -d $(printf '%q' "$target_cabinet_dir")/.git ]; then
+      echo 'skip cabinet repo: existing non-git directory $(printf '%q' "$target_cabinet_dir")'
     else
-      rm -rf /root/bedolaga-cabinet >/dev/null 2>&1 || true
-      git clone $(printf '%q' "$cabinet_repo_url") /root/bedolaga-cabinet || echo 'warn: failed to clone cabinet repo'
+      rm -rf $(printf '%q' "$target_cabinet_dir") >/dev/null 2>&1 || true
+      git clone $(printf '%q' "$cabinet_repo_url") $(printf '%q' "$target_cabinet_dir") || echo 'warn: failed to clone cabinet repo'
     fi
   fi
 else
