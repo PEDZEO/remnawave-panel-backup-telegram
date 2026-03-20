@@ -543,13 +543,19 @@ run_bedolaga_remote_migration_flow() {
     2) return 1 ;;
   esac
 
-  confirm_rc=0
-  ask_yes_no "$(tr_text "Запустить удалённое восстановление в тестовом режиме (--dry-run)?" "Run remote restore in test mode (--dry-run)?")" "y" || confirm_rc=$?
-  case "$confirm_rc" in
-    0) restore_dry_run=1 ;;
-    1) restore_dry_run=0 ;;
-    2) return 1 ;;
-  esac
+  if (( auto_prepare_remote == 1 )) && [[ "$restore_only" == "bedolaga-db,bedolaga-redis,bedolaga-bot" || "$restore_only" == "bedolaga" || "$restore_only" == "all,bedolaga" || "$restore_only" == "bedolaga,all" ]]; then
+    restore_dry_run=0
+    paint "$CLR_MUTED" "$(tr_text "Проверка шагов без применения (--dry-run) недоступна для этого сценария." "Step check without applying changes (--dry-run) is unavailable for this scenario.")"
+    paint "$CLR_MUTED" "$(tr_text "Причина: для переноса с Bedolaga DB/Redis на пустой VPS нужно реально поднять контейнеры перед восстановлением данных." "Reason: migrating Bedolaga DB/Redis to an empty VPS requires actually starting containers before restoring data.")"
+  else
+    confirm_rc=0
+    ask_yes_no "$(tr_text "Только проверить шаги без реального восстановления? (--dry-run)" "Only check steps without real restore? (--dry-run)")" "y" || confirm_rc=$?
+    case "$confirm_rc" in
+      0) restore_dry_run=1 ;;
+      1) restore_dry_run=0 ;;
+      2) return 1 ;;
+    esac
+  fi
 
   if (( restore_dry_run == 1 )); then
     restore_no_restart=1
