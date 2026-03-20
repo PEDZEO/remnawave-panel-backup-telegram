@@ -165,7 +165,7 @@ run_bedolaga_migration_wizard() {
         fi
         ;;
       3)
-        if run_restore_wizard_flow "bedolaga" "1"; then
+        if run_bedolaga_local_migration_restore_flow; then
           return 0
         fi
         ;;
@@ -264,6 +264,74 @@ menu_section_bedolaga_local_backup_restore() {
   done
 }
 
+bedolaga_resolve_migration_repo_url() {
+  local component="$1"
+  local fallback_url="$2"
+  local repo_dir=""
+  local repo_url=""
+
+  case "$component" in
+    bot)
+      if declare -F bedolaga_detect_bot_repo_dir >/dev/null 2>&1; then
+        repo_dir="$(bedolaga_detect_bot_repo_dir || true)"
+      elif declare -F detect_bedolaga_bot_dir >/dev/null 2>&1; then
+        repo_dir="$(detect_bedolaga_bot_dir || true)"
+      fi
+      ;;
+    cabinet)
+      if declare -F bedolaga_detect_cabinet_repo_dir >/dev/null 2>&1; then
+        repo_dir="$(bedolaga_detect_cabinet_repo_dir || true)"
+      elif declare -F detect_bedolaga_cabinet_dir >/dev/null 2>&1; then
+        repo_dir="$(detect_bedolaga_cabinet_dir || true)"
+      fi
+      ;;
+  esac
+
+  if [[ -n "$repo_dir" && -d "${repo_dir}/.git" ]] && command -v git >/dev/null 2>&1; then
+    repo_url="$(git -C "$repo_dir" remote get-url origin 2>/dev/null || true)"
+  fi
+
+  printf '%s' "${repo_url:-$fallback_url}"
+}
+
+bedolaga_prepare_local_repos_for_restore() {
+  local bot_repo_url="$1"
+  local cabinet_repo_url="$2"
+  local bot_dir="/root/remnawave-bedolaga-telegram-bot"
+  local cabinet_dir="/root/bedolaga-cabinet"
+
+  paint "$CLR_ACCENT" "$(tr_text "Подготавливаю репозитории Bedolaga перед восстановлением..." "Preparing Bedolaga repositories before restore...")"
+  if ! ensure_git_available; then
+    paint "$CLR_WARN" "$(tr_text "Git недоступен, продолжаю без автоклонирования репозиториев." "Git is unavailable, continuing without automatic repository cloning.")"
+    return 1
+  fi
+
+  if ! bedolaga_clone_or_update_repo "$bot_repo_url" "$bot_dir"; then
+    paint "$CLR_WARN" "$(tr_text "Не удалось подготовить репозиторий бота. Продолжаю восстановление по архиву." "Failed to prepare bot repository. Continuing restore from archive.")"
+  fi
+  if ! bedolaga_clone_or_update_repo "$cabinet_repo_url" "$cabinet_dir"; then
+    paint "$CLR_WARN" "$(tr_text "Не удалось подготовить репозиторий кабинета. Продолжаю восстановление по архиву." "Failed to prepare cabinet repository. Continuing restore from archive.")"
+  fi
+}
+
+run_bedolaga_local_migration_restore_flow() {
+  local bot_repo_url=""
+  local cabinet_repo_url=""
+
+  bot_repo_url="$(bedolaga_resolve_migration_repo_url "bot" "${BEDOLAGA_BOT_REPO_DEFAULT}")"
+  cabinet_repo_url="$(bedolaga_resolve_migration_repo_url "cabinet" "${BEDOLAGA_CABINET_REPO_DEFAULT}")"
+
+  draw_subheader "$(tr_text "Подготовка нового VPS к восстановлению" "Prepare new VPS for restore")"
+  paint "$CLR_MUTED" "$(tr_text "Перед восстановлением можно автоматически подготовить исходники Bedolaga через Git." "Before restore, Bedolaga repositories can be prepared automatically via Git.")"
+  paint "$CLR_MUTED" "  bot: ${bot_repo_url}"
+  paint "$CLR_MUTED" "  cabinet: ${cabinet_repo_url}"
+  if ask_yes_no "$(tr_text "Подготовить репозитории Bedolaga перед восстановлением?" "Prepare Bedolaga repositories before restore?")" "y"; then
+    bedolaga_prepare_local_repos_for_restore "$bot_repo_url" "$cabinet_repo_url" || true
+  fi
+
+  run_restore_wizard_flow "bedolaga" "1"
+}
+
 run_bedolaga_remote_migration_flow() {
   local archive_path=""
   local latest_archive=""
@@ -299,13 +367,21 @@ run_bedolaga_remote_migration_flow() {
   local caddy_parent=""
   local caddy_up_cmd=""
   local old_include="${BACKUP_INCLUDE-__PBM_UNSET__}"
+  local bot_repo_url=""
+  local cabinet_repo_url=""
+  local remote_repo_prepare_cmd=""
 
   latest_archive="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/pb-*.tar.gz.gpg /var/backups/panel/panel-backup-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz.gpg 2>/dev/null | head -n1 || true)"
   archive_path="${BACKUP_FILE:-$latest_archive}"
+  bot_repo_url="$(bedolaga_resolve_migration_repo_url "bot" "${BEDOLAGA_BOT_REPO_DEFAULT}")"
+  cabinet_repo_url="$(bedolaga_resolve_migration_repo_url "cabinet" "${BEDOLAGA_CABINET_REPO_DEFAULT}")"
 
   draw_subheader "$(tr_text "Миграция Bedolaga на новый VPS (SSH)" "Bedolaga migration to a new VPS (SSH)")"
   paint "$CLR_MUTED" "$(tr_text "Сценарий: копирование архива на удалённый сервер и запуск panel-restore.sh." "Flow: copy archive to remote server and run panel-restore.sh.")"
   paint "$CLR_MUTED" "$(tr_text "Можно включить автоподготовку пустого VPS: Docker + panel-restore.sh + подготовка контейнеров." "You can enable auto-prepare for an empty VPS: Docker + panel-restore.sh + container bootstrap.")"
+  paint "$CLR_MUTED" "$(tr_text "Для пустого VPS будут использованы репозитории:" "Repositories used for empty VPS bootstrap:")"
+  paint "$CLR_MUTED" "  bot: ${bot_repo_url}"
+  paint "$CLR_MUTED" "  cabinet: ${cabinet_repo_url}"
 
   archive_path="$(ask_value "$(tr_text "Путь к локальному архиву для переноса (Enter = последний)" "Local backup archive path for migration (Enter = latest)")" "$archive_path")"
   [[ "$archive_path" == "__PBM_BACK__" ]] && return 1
@@ -572,6 +648,12 @@ if ! command -v curl >/dev/null 2>&1; then
   if command -v yum >/dev/null 2>&1; then yum install -y curl >/dev/null 2>&1; fi
   if command -v apk >/dev/null 2>&1; then apk add --no-cache curl >/dev/null 2>&1; fi
 fi
+if ! command -v git >/dev/null 2>&1; then
+  if command -v apt-get >/dev/null 2>&1; then apt-get update -y >/dev/null 2>&1 && apt-get install -y git >/dev/null 2>&1; fi
+  if command -v dnf >/dev/null 2>&1; then dnf install -y git >/dev/null 2>&1; fi
+  if command -v yum >/dev/null 2>&1; then yum install -y git >/dev/null 2>&1; fi
+  if command -v apk >/dev/null 2>&1; then apk add --no-cache git >/dev/null 2>&1; fi
+fi
 if ! command -v docker >/dev/null 2>&1; then
   curl -fsSL https://get.docker.com | sh
 fi
@@ -603,6 +685,35 @@ fi'
     fi
     if ! "${ssh_cmd[@]}" "chmod 755 /usr/local/bin/panel-restore.sh /usr/local/bin/panel-backup.sh >/dev/null 2>&1 || true"; then
       paint "$CLR_WARN" "$(tr_text "Не удалось применить chmod для runtime-скриптов на новом VPS." "Failed to chmod runtime scripts on new VPS.")"
+    fi
+
+    remote_repo_prepare_cmd="set +e
+if command -v git >/dev/null 2>&1; then
+  if [ ! -d /root/remnawave-bedolaga-telegram-bot/.git ]; then
+    if [ -e /root/remnawave-bedolaga-telegram-bot ] && [ ! -d /root/remnawave-bedolaga-telegram-bot/.git ]; then
+      echo 'skip bot repo: existing non-git directory /root/remnawave-bedolaga-telegram-bot'
+    else
+      rm -rf /root/remnawave-bedolaga-telegram-bot >/dev/null 2>&1 || true
+      git clone $(printf '%q' "$bot_repo_url") /root/remnawave-bedolaga-telegram-bot || echo 'warn: failed to clone bot repo'
+    fi
+  fi
+  if [ ! -d /root/bedolaga-cabinet/.git ]; then
+    if [ -e /root/bedolaga-cabinet ] && [ ! -d /root/bedolaga-cabinet/.git ]; then
+      echo 'skip cabinet repo: existing non-git directory /root/bedolaga-cabinet'
+    else
+      rm -rf /root/bedolaga-cabinet >/dev/null 2>&1 || true
+      git clone $(printf '%q' "$cabinet_repo_url") /root/bedolaga-cabinet || echo 'warn: failed to clone cabinet repo'
+    fi
+  fi
+else
+  echo 'warn: git is unavailable on remote VPS, skipping repo bootstrap'
+fi
+true"
+    if [[ "$restore_only" == *bedolaga* ]]; then
+      paint "$CLR_ACCENT" "$(tr_text "Подготавливаю репозитории Bedolaga на новом VPS..." "Preparing Bedolaga repositories on the new VPS...")"
+      if ! "${ssh_cmd[@]}" "$remote_repo_prepare_cmd"; then
+        paint "$CLR_WARN" "$(tr_text "Не удалось полностью подготовить репозитории Bedolaga на новом VPS. Продолжаю по архиву." "Failed to fully prepare Bedolaga repositories on the new VPS. Continuing with archive-only restore.")"
+      fi
     fi
   fi
 
