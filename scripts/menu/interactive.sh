@@ -842,6 +842,34 @@ true"
     remote_cmd="BACKUP_PASSWORD=$(printf '%q' "$restore_password") ${remote_cmd}"
   fi
 
+  if (( restore_dry_run == 1 && auto_prepare_remote == 1 )) && [[ "$restore_only" == "bedolaga-db,bedolaga-redis,bedolaga-bot" || "$restore_only" == "bedolaga" || "$restore_only" == "all,bedolaga" || "$restore_only" == "bedolaga,all" ]]; then
+    paint "$CLR_WARN" "$(tr_text "Тестовый режим на пустом VPS не сможет проверить восстановление Bedolaga DB/Redis: контейнеры ещё не подняты." "Dry-run on an empty VPS cannot validate Bedolaga DB/Redis restore because the containers are not started yet.")"
+    paint "$CLR_MUTED" "$(tr_text "Используйте боевой режим с автоподготовкой или файловый сценарий без DB/Redis." "Use real mode with auto-prepare, or switch to a file-only scope without DB/Redis.")"
+    wait_for_enter
+    return 1
+  fi
+
+  if (( restore_dry_run == 0 && auto_prepare_remote == 1 )) && [[ "$restore_only" == "bedolaga-db,bedolaga-redis,bedolaga-bot" ]]; then
+    paint "$CLR_ACCENT" "$(tr_text "Пустой VPS: предварительно разворачиваю bot и поднимаю контейнеры перед восстановлением bot DB/Redis..." "Empty VPS: pre-seeding bot files and starting containers before bot DB/Redis restore...")"
+    preseed_cmd="/usr/local/bin/panel-restore.sh --from $(printf '%q' "$remote_archive") --only bedolaga-bot --no-restart"
+    if [[ -n "$remote_env_prefix" ]]; then
+      preseed_cmd="${remote_env_prefix} ${preseed_cmd}"
+    fi
+    if (( is_encrypted_archive == 1 )); then
+      preseed_cmd="BACKUP_PASSWORD=$(printf '%q' "$restore_password") ${preseed_cmd}"
+    fi
+    if ! "${ssh_cmd[@]}" "$preseed_cmd"; then
+      paint "$CLR_DANGER" "$(tr_text "Не удалось выполнить предварительное восстановление бота на новом VPS." "Failed to run bot pre-restore on the new VPS.")"
+      wait_for_enter
+      return 1
+    fi
+    if ! "${ssh_cmd[@]}" "set -e; cd $(printf '%q' "$target_bot_dir") && docker compose up -d"; then
+      paint "$CLR_DANGER" "$(tr_text "Не удалось поднять контейнеры Bedolaga бота на новом VPS." "Failed to start Bedolaga bot containers on the new VPS.")"
+      wait_for_enter
+      return 1
+    fi
+  fi
+
   if (( restore_dry_run == 0 && auto_prepare_remote == 1 )) && [[ "$restore_only" == "bedolaga" ]]; then
     paint "$CLR_ACCENT" "$(tr_text "Пустой VPS: предварительно разворачиваю bot+cabinet и поднимаю контейнеры перед полным restore..." "Empty VPS: pre-seeding bot+cabinet and starting containers before full restore...")"
     preseed_cmd="/usr/local/bin/panel-restore.sh --from $(printf '%q' "$remote_archive") --only bedolaga-bot --only bedolaga-cabinet --no-restart"
@@ -856,7 +884,7 @@ true"
       wait_for_enter
       return 1
     fi
-    if ! "${ssh_cmd[@]}" "set -e; cd /root/remnawave-bedolaga-telegram-bot && docker compose up -d; cabdir=''; for d in /root/cabinet-frontend /root/bedolaga-cabinet /opt/cabinet-frontend /opt/bedolaga-cabinet; do if [ -d \"\$d\" ]; then cabdir=\"\$d\"; break; fi; done; if [ -n \"\$cabdir\" ]; then if [ -f \"\$cabdir/docker-compose.yml\" ] || [ -f \"\$cabdir/docker-compose.caddy.yml\" ] || [ -f \"\$cabdir/compose.yaml\" ] || [ -f \"\$cabdir/compose.yml\" ]; then cd \"\$cabdir\" && docker compose up -d; fi; fi"; then
+    if ! "${ssh_cmd[@]}" "set -e; cd $(printf '%q' "$target_bot_dir") && docker compose up -d; cabdir=$(printf '%q' "$target_cabinet_dir"); if [ -d \"\$cabdir\" ]; then if [ -f \"\$cabdir/docker-compose.yml\" ] || [ -f \"\$cabdir/docker-compose.caddy.yml\" ] || [ -f \"\$cabdir/compose.yaml\" ] || [ -f \"\$cabdir/compose.yml\" ]; then cd \"\$cabdir\" && docker compose up -d; fi; fi"; then
       paint "$CLR_DANGER" "$(tr_text "Не удалось поднять контейнеры Bedolaga на новом VPS." "Failed to start Bedolaga containers on the new VPS.")"
       wait_for_enter
       return 1
@@ -877,7 +905,7 @@ true"
       wait_for_enter
       return 1
     fi
-    if ! "${ssh_cmd[@]}" "set -e; paneldir=''; for d in /opt/remnawave /srv/remnawave /root/remnawave /home/remnawave; do if [ -f \"\$d/.env\" ] && [ -f \"\$d/docker-compose.yml\" ]; then paneldir=\"\$d\"; break; fi; done; if [ -z \"\$paneldir\" ]; then paneldir=$(find /root /opt /srv /home -maxdepth 6 -type d -name remnawave 2>/dev/null | while read -r d; do [ -f \"\$d/.env\" ] && [ -f \"\$d/docker-compose.yml\" ] || continue; echo \"\$d\"; break; done); fi; if [ -n \"\$paneldir\" ]; then cd \"\$paneldir\" && docker compose up -d; fi; cd /root/remnawave-bedolaga-telegram-bot && docker compose up -d; cabdir=''; for d in /root/cabinet-frontend /root/bedolaga-cabinet /opt/cabinet-frontend /opt/bedolaga-cabinet; do if [ -d \"\$d\" ]; then cabdir=\"\$d\"; break; fi; done; if [ -n \"\$cabdir\" ]; then if [ -f \"\$cabdir/docker-compose.yml\" ] || [ -f \"\$cabdir/docker-compose.caddy.yml\" ] || [ -f \"\$cabdir/compose.yaml\" ] || [ -f \"\$cabdir/compose.yml\" ]; then cd \"\$cabdir\" && docker compose up -d; fi; fi"; then
+    if ! "${ssh_cmd[@]}" "set -e; paneldir=$(printf '%q' "$target_remnawave_dir"); if [ -z \"\$paneldir\" ] || { [ ! -d \"\$paneldir\" ] && [ ! -f \"\$paneldir/docker-compose.yml\" ] && [ ! -f \"\$paneldir/compose.yaml\" ] && [ ! -f \"\$paneldir/compose.yml\" ]; }; then paneldir=''; for d in /opt/remnawave /srv/remnawave /root/remnawave /home/remnawave; do if [ -f \"\$d/.env\" ] && [ -f \"\$d/docker-compose.yml\" ]; then paneldir=\"\$d\"; break; fi; done; if [ -z \"\$paneldir\" ]; then paneldir=$(find /root /opt /srv /home -maxdepth 6 -type d -name remnawave 2>/dev/null | while read -r d; do [ -f \"\$d/.env\" ] && [ -f \"\$d/docker-compose.yml\" ] || continue; echo \"\$d\"; break; done); fi; fi; if [ -n \"\$paneldir\" ]; then cd \"\$paneldir\" && docker compose up -d; fi; cd $(printf '%q' "$target_bot_dir") && docker compose up -d; cabdir=$(printf '%q' "$target_cabinet_dir"); if [ -d \"\$cabdir\" ]; then if [ -f \"\$cabdir/docker-compose.yml\" ] || [ -f \"\$cabdir/docker-compose.caddy.yml\" ] || [ -f \"\$cabdir/compose.yaml\" ] || [ -f \"\$cabdir/compose.yml\" ]; then cd \"\$cabdir\" && docker compose up -d; fi; fi"; then
       paint "$CLR_DANGER" "$(tr_text "Не удалось поднять контейнеры Remnawave+Bedolaga на новом VPS." "Failed to start Remnawave+Bedolaga containers on the new VPS.")"
       wait_for_enter
       return 1
