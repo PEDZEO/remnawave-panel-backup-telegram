@@ -142,36 +142,124 @@ run_bedolaga_migration_wizard() {
   while true; do
     draw_subheader "$(tr_text "Миграция Bedolaga на новый VPS" "Bedolaga migration to a new VPS")"
     show_back_hint
-    paint "$CLR_MUTED" "$(tr_text "Готовые сценарии переноса из архива резервной копии." "Ready-made migration scenarios from a backup archive.")"
-    paint "$CLR_MUTED" "$(tr_text "Файловый перенос не требует контейнеров БД/Redis на новом сервере." "File-only migration does not require DB/Redis containers on the new server.")"
-    paint "$CLR_MUTED" "$(tr_text "Полный перенос требует archive со всеми компонентами и контейнеры remnawave_bot_db/remnawave_bot_redis." "Full migration requires an archive with all components and remnawave_bot_db/remnawave_bot_redis containers.")"
-    menu_option "1" "$(tr_text "Перенести только бот + кабинет (рекомендуется для старта)" "Migrate bot + cabinet only (recommended to start)")"
-    menu_option "2" "$(tr_text "Полный перенос Bedolaga (DB + Redis + бот + кабинет)" "Full Bedolaga migration (DB + Redis + bot + cabinet)")"
-    menu_option "3" "$(tr_text "Перенести на новый VPS по SSH (автоматически)" "Migrate to a new VPS over SSH (automatic)")"
-    menu_option "4" "$(tr_text "Назад" "Back")"
+    paint "$CLR_MUTED" "$(tr_text "Миграция вынесена в отдельный поток: сначала архив, потом перенос и восстановление на новом VPS." "Migration is separated into its own flow: create archive first, then transfer and restore on the new VPS.")"
+    paint "$CLR_MUTED" "$(tr_text "Если скрипт уже запущен на новом VPS, используйте локальное восстановление из заранее перенесённого архива." "If the script is already running on the new VPS, use local restore from a pre-transferred archive.")"
+    menu_option "1" "$(tr_text "Создать полный архив Bedolaga для переноса" "Create full Bedolaga archive for transfer")"
+    menu_option "2" "$(tr_text "Перенести архив на новый VPS по SSH и восстановить" "Transfer archive to new VPS over SSH and restore")"
+    menu_option "3" "$(tr_text "Я уже на новом VPS: восстановить из локального архива" "I am already on the new VPS: restore from local archive")"
+    menu_option "4" "$(tr_text "Дополнительные режимы миграции" "Advanced migration modes")"
+    menu_option "5" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
     if is_back_command "$choice"; then
       return 1
     fi
     case "$choice" in
       1)
-        if run_restore_wizard_flow "bedolaga-bot,bedolaga-cabinet" "1"; then
-          return 0
-        fi
+        run_backup_with_scope "$(tr_text "Архив для миграции: полный Bedolaga" "Migration archive: full Bedolaga")" "bedolaga"
+        return 0
         ;;
       2)
-        if run_restore_wizard_flow "bedolaga" "1"; then
-          return 0
-        fi
-        ;;
-      3)
         if run_bedolaga_remote_migration_flow; then
           return 0
         fi
         ;;
-      4) return 1 ;;
-      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+      3)
+        if run_restore_wizard_flow "bedolaga" "1"; then
+          return 0
+        fi
+        ;;
+      4)
+        draw_subheader "$(tr_text "Дополнительные режимы миграции" "Advanced migration modes")"
+        show_back_hint
+        paint "$CLR_MUTED" "$(tr_text "Здесь оставлены частичные сценарии для ручной миграции или отладки." "Partial scenarios are kept here for manual migration or troubleshooting.")"
+        menu_option "1" "$(tr_text "Восстановить только бот + кабинет из локального архива" "Restore bot + cabinet only from local archive")"
+        menu_option "2" "$(tr_text "Восстановить только кабинет из локального архива" "Restore cabinet only from local archive")"
+        menu_option "3" "$(tr_text "Ручной выбор компонентов Bedolaga" "Manual Bedolaga component selection")"
+        menu_option "4" "$(tr_text "Назад" "Back")"
+        print_separator
+        read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
+        if is_back_command "$choice"; then
+          continue
+        fi
+        case "$choice" in
+          1)
+            if run_restore_wizard_flow "bedolaga-bot,bedolaga-cabinet" "1"; then
+              return 0
+            fi
+            ;;
+          2)
+            if run_restore_wizard_flow "bedolaga-cabinet" "1"; then
+              return 0
+            fi
+            ;;
+          3)
+            if run_restore_wizard_flow "bedolaga" "0"; then
+              return 0
+            fi
+            ;;
+          4) ;;
+          *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+        esac
+        ;;
+      5) return 1 ;;
+      *)
+        paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"
+        wait_for_enter
+        ;;
+    esac
+  done
+}
+
+menu_section_bedolaga_local_backup_restore() {
+  local choice=""
+  while true; do
+    draw_subheader "$(tr_text "Bedolaga: локальный backup/restore" "Bedolaga: local backup/restore")"
+    show_back_hint
+    paint "$CLR_MUTED" "$(tr_text "Этот раздел для работы на текущем VPS: создать архив и восстановить его здесь же." "This section is for the current VPS: create an archive and restore it on the same server.")"
+    menu_option "1" "$(tr_text "Создать полный backup Bedolaga" "Create full Bedolaga backup")"
+    menu_option "2" "$(tr_text "Восстановить полный Bedolaga из локального архива" "Restore full Bedolaga from local archive")"
+    menu_option "3" "$(tr_text "Дополнительные локальные режимы" "Advanced local modes")"
+    menu_option "4" "$(tr_text "Назад" "Back")"
+    print_separator
+    read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
+    if is_back_command "$choice"; then
+      break
+    fi
+    case "$choice" in
+      1)
+        run_backup_with_scope "$(tr_text "Резервная копия: полный Bedolaga" "Backup: full Bedolaga")" "bedolaga"
+        ;;
+      2)
+        run_restore_wizard_flow "bedolaga" "1" || true
+        ;;
+      3)
+        draw_subheader "$(tr_text "Дополнительные локальные режимы" "Advanced local modes")"
+        show_back_hint
+        menu_option "1" "$(tr_text "Создать backup: бот + кабинет" "Create backup: bot + cabinet")"
+        menu_option "2" "$(tr_text "Создать backup: только бот" "Create backup: bot only")"
+        menu_option "3" "$(tr_text "Создать backup: только кабинет" "Create backup: cabinet only")"
+        menu_option "4" "$(tr_text "Восстановление: выбрать состав" "Restore: choose scope")"
+        menu_option "5" "$(tr_text "Назад" "Back")"
+        print_separator
+        read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
+        if is_back_command "$choice"; then
+          continue
+        fi
+        case "$choice" in
+          1) run_backup_with_scope "$(tr_text "Резервная копия: бот + кабинет Bedolaga" "Backup: Bedolaga bot + cabinet")" "bedolaga-bot,bedolaga-cabinet" ;;
+          2) run_backup_with_scope "$(tr_text "Резервная копия: только бот Bedolaga" "Backup: Bedolaga bot only")" "bedolaga-db,bedolaga-redis,bedolaga-bot" ;;
+          3) run_backup_with_scope "$(tr_text "Резервная копия: только кабинет Bedolaga" "Backup: Bedolaga cabinet only")" "bedolaga-cabinet" ;;
+          4) run_restore_scope_selector "bedolaga" || true ;;
+          5) ;;
+          *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+        esac
+        ;;
+      4) break ;;
+      *)
+        paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"
+        wait_for_enter
+        ;;
     esac
   done
 }
@@ -923,27 +1011,23 @@ menu_section_bedolaga_backup_restore() {
   while true; do
     draw_subheader "$(tr_text "Bedolaga: backup и восстановление" "Bedolaga: backup and restore")"
     show_back_hint
-    paint "$CLR_MUTED" "$(tr_text "Операции резервной копии, восстановления и настроек backup Bedolaga." "Bedolaga backup, restore and backup settings.")"
-    menu_option "1" "$(tr_text "Создать резервную копию Bedolaga" "Create Bedolaga backup")"
-    menu_option "2" "$(tr_text "Восстановление: выбрать состав" "Restore: choose scope")"
-    menu_option "3" "$(tr_text "Миграция на новый VPS" "Migration to a new VPS")"
-    menu_option "4" "$(tr_text "Настройки backup Bedolaga" "Bedolaga backup settings")"
-    menu_option "5" "$(tr_text "Таймер и периодичность Bedolaga" "Bedolaga timer and schedule")"
-    menu_option "6" "$(tr_text "Назад" "Back")"
+    paint "$CLR_MUTED" "$(tr_text "Локальные backup/restore и отдельный поток миграции на новый VPS." "Local backup/restore and a separate migration flow to a new VPS.")"
+    menu_option "1" "$(tr_text "Локальный backup/restore" "Local backup/restore")"
+    menu_option "2" "$(tr_text "Миграция на новый VPS" "Migration to a new VPS")"
+    menu_option "3" "$(tr_text "Настройки backup Bedolaga" "Bedolaga backup settings")"
+    menu_option "4" "$(tr_text "Таймер и периодичность Bedolaga" "Bedolaga timer and schedule")"
+    menu_option "5" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
     case "$choice" in
-      1)
-        run_backup_scope_selector "bedolaga" || true
-        ;;
-      2) run_restore_scope_selector "bedolaga" || true ;;
-      3) run_bedolaga_migration_wizard || true ;;
-      4) menu_section_setup "bedolaga" ;;
-      5) menu_section_timer_scope "bedolaga" ;;
-      6) break ;;
+      1) menu_section_bedolaga_local_backup_restore ;;
+      2) run_bedolaga_migration_wizard || true ;;
+      3) menu_section_setup "bedolaga" ;;
+      4) menu_section_timer_scope "bedolaga" ;;
+      5) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
