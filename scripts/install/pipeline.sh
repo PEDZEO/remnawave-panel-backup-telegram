@@ -26,16 +26,17 @@ prompt_install_settings() {
   local previous_password=""
   local include_choice=""
   local setup_scope="${BACKUP_SETUP_SCOPE:-global}"
+  local delivery_mode=""
   load_existing_env_defaults
 
   draw_header "$(tr_text "Настройка резервного копирования" "Configure backup settings")"
   show_back_hint
   if [[ "$setup_scope" == "panel" ]]; then
-    paint "$CLR_MUTED" "$(tr_text "Сейчас вы настраиваете: Telegram-уведомления и путь панели." "You are configuring: Telegram notifications and panel path.")"
+    paint "$CLR_MUTED" "$(tr_text "Сейчас вы настраиваете: место сохранения backup, путь панели и дополнительные параметры." "You are configuring: backup destination, panel path, and additional settings.")"
   elif [[ "$setup_scope" == "bedolaga" ]]; then
-    paint "$CLR_MUTED" "$(tr_text "Сейчас вы настраиваете: Telegram-уведомления и пути Bedolaga (бот + кабинет)." "You are configuring: Telegram notifications and Bedolaga paths (bot + cabinet).")"
+    paint "$CLR_MUTED" "$(tr_text "Сейчас вы настраиваете: место сохранения backup, пути Bedolaga (бот + кабинет) и дополнительные параметры." "You are configuring: backup destination, Bedolaga paths (bot + cabinet), and additional settings.")"
   else
-    paint "$CLR_MUTED" "$(tr_text "Сейчас вы настраиваете: Telegram-уведомления и пути для панели, бота и кабинета." "You are configuring: Telegram notifications and paths for panel, bot and cabinet.")"
+    paint "$CLR_MUTED" "$(tr_text "Сейчас вы настраиваете: место сохранения backup, пути для панели, бота и кабинета, а также дополнительные параметры." "You are configuring: backup destination, paths for panel, bot and cabinet, and additional settings.")"
   fi
   paint "$CLR_MUTED" "$(tr_text "Также можно включить шифрование архива резервной копии." "You can also enable backup archive encryption.")"
   paint "$CLR_MUTED" "$(tr_text "Пустое значение оставляет текущее (если есть)." "Empty input keeps current value (if any).")"
@@ -81,38 +82,83 @@ prompt_install_settings() {
   fi
   echo
 
+  if [[ -n "${TELEGRAM_BOT_TOKEN:-}" || -n "${TELEGRAM_ADMIN_ID:-}" ]]; then
+    delivery_mode="telegram"
+  else
+    delivery_mode="local"
+  fi
+
+  draw_header "$(tr_text "Куда сохранять backup" "Backup destination")"
+  show_back_hint
+  paint "$CLR_MUTED" "$(tr_text "Локальный архив создается всегда. Telegram нужен только для дополнительной отправки архива в чат." "A local archive is always created. Telegram is only used for sending an extra copy to chat.")"
+  menu_option "1" "$(tr_text "Только локально" "Local only")"
+  menu_option "2" "$(tr_text "Локально + Telegram" "Local + Telegram")"
+  print_separator
   while true; do
-    val="$(ask_value "$(tr_text "Токен Telegram-бота (пример: 123456:ABCDEF...)" "Telegram bot token (example: 123456:ABCDEF...)")" "$TELEGRAM_BOT_TOKEN")"
-    [[ "$val" == "__PBM_BACK__" ]] && return 1
-    if [[ -n "$val" ]] && ! is_valid_telegram_token "$val"; then
-      paint "$CLR_WARN" "$(tr_text "Похоже на некорректный токен Telegram. Формат: digits:token" "Looks like an invalid Telegram token. Format: digits:token")"
-      continue
+    read -r -p "$(tr_text "Выбор [1-2]: " "Choice [1-2]: ")" val
+    if is_back_command "$val"; then
+      return 1
     fi
-    TELEGRAM_BOT_TOKEN="$val"
-    break
+    case "$val" in
+      1) delivery_mode="local"; break ;;
+      2) delivery_mode="telegram"; break ;;
+      *)
+        paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"
+        ;;
+    esac
   done
 
-  while true; do
-    val="$(ask_value "$(tr_text "ID чата/канала Telegram (пример: 123456789 или -1001234567890)" "Telegram chat/channel ID (example: 123456789 or -1001234567890)")" "$TELEGRAM_ADMIN_ID")"
-    [[ "$val" == "__PBM_BACK__" ]] && return 1
-    if [[ -n "$val" ]] && ! is_valid_telegram_id "$val"; then
-      paint "$CLR_WARN" "$(tr_text "ID чата должен быть числом (например 123456789 или -1001234567890)." "Chat ID must be numeric (for example 123456789 or -1001234567890).")"
-      continue
-    fi
-    TELEGRAM_ADMIN_ID="$val"
-    break
-  done
+  if [[ "$delivery_mode" == "telegram" ]]; then
+    TELEGRAM_DELIVERY_MODE="telegram"
+    while true; do
+      val="$(ask_value "$(tr_text "Токен Telegram-бота (обязательно, пример: 123456:ABCDEF...)" "Telegram bot token (required, example: 123456:ABCDEF...)")" "$TELEGRAM_BOT_TOKEN")"
+      [[ "$val" == "__PBM_BACK__" ]] && return 1
+      if [[ -z "$val" ]]; then
+        paint "$CLR_WARN" "$(tr_text "Токен обязателен, если выбран режим отправки в Telegram." "Token is required when Telegram delivery is enabled.")"
+        continue
+      fi
+      if ! is_valid_telegram_token "$val"; then
+        paint "$CLR_WARN" "$(tr_text "Похоже на некорректный токен Telegram. Формат: digits:token" "Looks like an invalid Telegram token. Format: digits:token")"
+        continue
+      fi
+      TELEGRAM_BOT_TOKEN="$val"
+      break
+    done
 
-  while true; do
-    val="$(ask_value "$(tr_text "ID темы (topic), если нужен (иначе оставьте пусто)" "Topic/thread ID if needed (otherwise leave empty)")" "$TELEGRAM_THREAD_ID")"
-    [[ "$val" == "__PBM_BACK__" ]] && return 1
-    if [[ -n "$val" ]] && ! is_valid_telegram_id "$val"; then
-      paint "$CLR_WARN" "$(tr_text "ID темы должен быть числом." "Thread ID must be numeric.")"
-      continue
-    fi
-    TELEGRAM_THREAD_ID="$val"
-    break
-  done
+    while true; do
+      val="$(ask_value "$(tr_text "ID чата/канала Telegram (обязательно, пример: 123456789 или -1001234567890)" "Telegram chat/channel ID (required, example: 123456789 or -1001234567890)")" "$TELEGRAM_ADMIN_ID")"
+      [[ "$val" == "__PBM_BACK__" ]] && return 1
+      if [[ -z "$val" ]]; then
+        paint "$CLR_WARN" "$(tr_text "ID чата обязателен, если выбран режим отправки в Telegram." "Chat ID is required when Telegram delivery is enabled.")"
+        continue
+      fi
+      if ! is_valid_telegram_id "$val"; then
+        paint "$CLR_WARN" "$(tr_text "ID чата должен быть числом (например 123456789 или -1001234567890)." "Chat ID must be numeric (for example 123456789 or -1001234567890).")"
+        continue
+      fi
+      TELEGRAM_ADMIN_ID="$val"
+      break
+    done
+
+    while true; do
+      val="$(ask_value "$(tr_text "ID темы (topic), если нужен (иначе оставьте пусто)" "Topic/thread ID if needed (otherwise leave empty)")" "$TELEGRAM_THREAD_ID")"
+      [[ "$val" == "__PBM_BACK__" ]] && return 1
+      if [[ -n "$val" ]] && ! is_valid_telegram_id "$val"; then
+        paint "$CLR_WARN" "$(tr_text "ID темы должен быть числом." "Thread ID must be numeric.")"
+        continue
+      fi
+      TELEGRAM_THREAD_ID="$val"
+      break
+    done
+  else
+    TELEGRAM_DELIVERY_MODE="local"
+    TELEGRAM_BOT_TOKEN=""
+    TELEGRAM_ADMIN_ID=""
+    TELEGRAM_THREAD_ID=""
+    TELEGRAM_THREAD_ID_PANEL=""
+    TELEGRAM_THREAD_ID_BEDOLAGA=""
+    paint "$CLR_MUTED" "$(tr_text "Режим Telegram отключен: архив будет сохраняться только локально." "Telegram delivery disabled: archive will be saved locally only.")"
+  fi
 
   if [[ "$setup_scope" != "bedolaga" ]]; then
     while true; do
@@ -138,17 +184,19 @@ prompt_install_settings() {
     done
   fi
 
-  while true; do
-    val="$(ask_value "$(tr_text "Язык описания резервной копии в Telegram (ru/en)" "Backup description language in Telegram (ru/en)")" "$BACKUP_LANG")"
-    [[ "$val" == "__PBM_BACK__" ]] && return 1
-    case "${val,,}" in
-      en|eu) BACKUP_LANG="en"; break ;;
-      ru|"") BACKUP_LANG="ru"; break ;;
-      *)
-        paint "$CLR_WARN" "$(tr_text "Допустимые значения: ru или en." "Allowed values: ru or en.")"
-        ;;
-    esac
-  done
+  if [[ "$delivery_mode" == "telegram" ]]; then
+    while true; do
+      val="$(ask_value "$(tr_text "Язык описания резервной копии в Telegram (ru/en)" "Backup description language in Telegram (ru/en)")" "$BACKUP_LANG")"
+      [[ "$val" == "__PBM_BACK__" ]] && return 1
+      case "${val,,}" in
+        en|eu) BACKUP_LANG="en"; break ;;
+        ru|"") BACKUP_LANG="ru"; break ;;
+        *)
+          paint "$CLR_WARN" "$(tr_text "Допустимые значения: ru или en." "Allowed values: ru or en.")"
+          ;;
+      esac
+    done
+  fi
 
   draw_header "$(tr_text "Режим шифрования резервной копии" "Backup encryption mode")"
   show_back_hint
@@ -305,6 +353,14 @@ write_env() {
   local escaped_backup_password=""
   local escaped_backup_include=""
   load_existing_env_defaults
+
+  if [[ "${TELEGRAM_DELIVERY_MODE:-}" == "local" ]]; then
+    TELEGRAM_BOT_TOKEN=""
+    TELEGRAM_ADMIN_ID=""
+    TELEGRAM_THREAD_ID=""
+    TELEGRAM_THREAD_ID_PANEL=""
+    TELEGRAM_THREAD_ID_BEDOLAGA=""
+  fi
 
   escaped_bot="$(escape_env_value "${TELEGRAM_BOT_TOKEN:-}")"
   escaped_admin="$(escape_env_value "${TELEGRAM_ADMIN_ID:-}")"

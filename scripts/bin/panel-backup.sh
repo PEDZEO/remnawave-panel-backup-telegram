@@ -34,6 +34,7 @@ LOCK_FILE="${LOCK_FILE:-/var/lock/panel-backup.lock}"
 TELEGRAM_ADMIN_ID_RESOLVED=""
 TELEGRAM_SEND_ERROR_DESC=""
 TELEGRAM_SEND_ERROR_HINT=""
+TELEGRAM_UPLOAD_ENABLED=0
 declare -a BACKUP_ITEMS=()
 WANT_DB=0
 WANT_REDIS=0
@@ -962,8 +963,12 @@ POSTGRES_DB=""
 BEDOLAGA_POSTGRES_USER=""
 BEDOLAGA_POSTGRES_DB=""
 
-[[ -n "${TELEGRAM_BOT_TOKEN:-}" ]] || fail "не найден TELEGRAM_BOT_TOKEN в ${BACKUP_ENV_PATH}"
-[[ -n "${TELEGRAM_ADMIN_ID:-}" ]] || fail "не найден TELEGRAM_ADMIN_ID в ${BACKUP_ENV_PATH}"
+if [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_ADMIN_ID:-}" ]]; then
+  TELEGRAM_UPLOAD_ENABLED=1
+elif [[ -n "${TELEGRAM_BOT_TOKEN:-}" || -n "${TELEGRAM_ADMIN_ID:-}" ]]; then
+  [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]] || fail "не найден TELEGRAM_BOT_TOKEN в ${BACKUP_ENV_PATH}"
+  [[ -n "${TELEGRAM_ADMIN_ID:-}" ]] || fail "не найден TELEGRAM_ADMIN_ID в ${BACKUP_ENV_PATH}"
+fi
 
 # If user provided stale paths in env, auto-fallback to detected valid dirs.
 if [[ -n "${REMNAWAVE_DIR:-}" ]] && [[ ! -d "${REMNAWAVE_DIR}" ]]; then
@@ -1175,7 +1180,9 @@ if ! find "$BACKUP_ROOT" -type f \( -name 'pb-*.tar.gz' -o -name 'pb-*.tar.gz.gp
   log "$(t "Предупреждение: не удалось удалить часть старых backup-файлов" "Warning: failed to remove some old backup files")"
 fi
 
-if (( ARCHIVE_SIZE_BYTES <= TG_SINGLE_LIMIT_BYTES )); then
+if (( TELEGRAM_UPLOAD_ENABLED == 0 )); then
+  log "$(t "Telegram не настроен, пропускаю отправку архива. Локальный backup создан:" "Telegram is not configured, skipping archive upload. Local backup created:") ${ARCHIVE_PATH}"
+elif (( ARCHIVE_SIZE_BYTES <= TG_SINGLE_LIMIT_BYTES )); then
   log "Отправляю архив одним файлом в Telegram"
   if ! send_telegram_file "$ARCHIVE_PATH" "$(build_caption "$(basename "$ARCHIVE_PATH")")" "$(backup_scope_profile)"; then
     if [[ -n "${TELEGRAM_SEND_ERROR_HINT:-}" ]]; then
