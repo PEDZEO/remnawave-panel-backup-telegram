@@ -568,9 +568,13 @@ run_bedolaga_remote_migration_flow() {
     return 1
   }
   if [[ -n "$ssh_password" ]] && ! command -v sshpass >/dev/null 2>&1; then
-    paint "$CLR_DANGER" "$(tr_text "Для входа по паролю нужен sshpass." "sshpass is required for password-based login.")"
-    wait_for_enter
-    return 1
+    paint "$CLR_WARN" "$(tr_text "Для входа по паролю нужен sshpass. Пробую установить автоматически..." "sshpass is required for password-based login. Trying to install it automatically...")"
+    if ! install_package "sshpass" >/dev/null 2>&1 || ! command -v sshpass >/dev/null 2>&1; then
+      paint "$CLR_DANGER" "$(tr_text "Не удалось установить sshpass автоматически. Установите его вручную или используйте SSH-ключи." "Failed to install sshpass automatically. Install it manually or use SSH keys.")"
+      wait_for_enter
+      return 1
+    fi
+    paint "$CLR_OK" "$(tr_text "sshpass установлен автоматически." "sshpass was installed automatically.")"
   fi
 
   if [[ -n "$ssh_password" ]]; then
