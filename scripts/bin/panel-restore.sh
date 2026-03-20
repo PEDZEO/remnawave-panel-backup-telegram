@@ -106,6 +106,12 @@ detect_bedolaga_bot_dir() {
   local guessed=""
   local compose_file=""
 
+  is_bedolaga_bot_dir() {
+    local d="$1"
+    [[ -f "$d/docker-compose.yml" ]] || return 1
+    return 0
+  }
+
   detect_compose_workdir_by_container_names() {
     local name=""
     local wd=""
@@ -120,38 +126,37 @@ detect_bedolaga_bot_dir() {
   }
   for guessed in "${BEDOLAGA_BOT_DIR}" "/root/remnawave-bedolaga-telegram-bot" "/opt/remnawave-bedolaga-telegram-bot"; do
     [[ -n "$guessed" ]] || continue
-    if [[ -f "$guessed/.env" && -f "$guessed/docker-compose.yml" ]]; then
+    if is_bedolaga_bot_dir "$guessed"; then
       echo "$guessed"
       return 0
     fi
   done
 
   guessed="$(detect_compose_workdir_by_container_names remnawave_bot remnawave-bot remnawave_bot_db remnawave_bot_redis || true)"
-  if [[ -n "$guessed" && -f "$guessed/.env" && -f "$guessed/docker-compose.yml" ]]; then
+  if [[ -n "$guessed" ]] && is_bedolaga_bot_dir "$guessed"; then
     echo "$guessed"
     return 0
   fi
 
-  guessed="$(find /home /opt /srv /root -maxdepth 6 -type d -name 'remnawave-bedolaga-telegram-bot' 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
+  guessed="$(find /home /opt /srv /root -maxdepth 6 -type d -name 'remnawave-bedolaga-telegram-bot' 2>/dev/null | while read -r d; do is_bedolaga_bot_dir "$d" || continue; echo "$d"; break; done)"
   if [[ -n "$guessed" ]]; then
     echo "$guessed"
     return 0
   fi
 
-  guessed="$(find /home /opt /srv /root -maxdepth 7 -type f -name 'docker-compose.yml' 2>/dev/null | while read -r compose_file; do d="$(dirname "$compose_file")"; grep -Eq 'container_name:[[:space:]]*(remnawave_bot|remnawave-bot|remnawave_bot_db|remnawave_bot_redis)([[:space:]]|$)' "$compose_file" || continue; [[ -f "$d/.env" ]] || continue; echo "$d"; break; done)"
+  guessed="$(find /home /opt /srv /root -maxdepth 7 -type f -name 'docker-compose.yml' 2>/dev/null | while read -r compose_file; do d="$(dirname "$compose_file")"; grep -Eq 'container_name:[[:space:]]*(remnawave_bot|remnawave-bot|remnawave_bot_db|remnawave_bot_redis)([[:space:]]|$)' "$compose_file" || continue; is_bedolaga_bot_dir "$d" || continue; echo "$d"; break; done)"
   if [[ -n "$guessed" ]]; then
     echo "$guessed"
     return 0
   fi
 
-  guessed="$(find / -xdev -type d -name 'remnawave-bedolaga-telegram-bot' 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
+  guessed="$(find / -xdev -type d -name 'remnawave-bedolaga-telegram-bot' 2>/dev/null | while read -r d; do is_bedolaga_bot_dir "$d" || continue; echo "$d"; break; done)"
   [[ -n "$guessed" ]] && echo "$guessed"
 }
 
 detect_bedolaga_cabinet_dir() {
   is_bedolaga_cabinet_dir() {
     local d="$1"
-    [[ -f "$d/.env" ]] || return 1
     [[ -f "$d/docker-compose.yml" || -f "$d/package.json" ]] || return 1
     return 0
   }
