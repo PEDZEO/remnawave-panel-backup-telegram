@@ -39,6 +39,57 @@ run_backup_with_scope() {
   wait_for_enter
 }
 
+run_backup_scope_selector() {
+  local profile="${1:-global}"
+  local choice=""
+  while true; do
+    draw_subheader "$(tr_text "Выбор состава резервной копии" "Backup scope selection")"
+    show_back_hint
+    paint "$CLR_MUTED" "$(tr_text "Выберите, что включать в резервную копию." "Choose what to include in the backup.")"
+    paint "$CLR_MUTED" "$(tr_text "Для Bedolaga можно сохранять бот и кабинет отдельно, если один из путей не найден." "For Bedolaga, bot and cabinet can be backed up separately if one of the paths is missing.")"
+
+    if [[ "$profile" == "bedolaga" ]]; then
+      menu_option "1" "$(tr_text "Бот + кабинет Bedolaga" "Bedolaga bot + cabinet")"
+      menu_option "2" "$(tr_text "Только бот Bedolaga" "Bedolaga bot only")"
+      menu_option "3" "$(tr_text "Только кабинет Bedolaga" "Bedolaga cabinet only")"
+      menu_option "4" "$(tr_text "Полный Bedolaga (DB + Redis + бот + кабинет)" "Full Bedolaga (DB + Redis + bot + cabinet)")"
+      menu_option "5" "$(tr_text "Ручной выбор компонентов Bedolaga" "Manual Bedolaga component selection")"
+      menu_option "6" "$(tr_text "Назад" "Back")"
+      print_separator
+      read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice
+      if is_back_command "$choice"; then
+        return 1
+      fi
+      case "$choice" in
+        1) run_backup_with_scope "$(tr_text "Резервная копия: бот + кабинет Bedolaga" "Backup: Bedolaga bot + cabinet")" "bedolaga-bot,bedolaga-cabinet"; return 0 ;;
+        2) run_backup_with_scope "$(tr_text "Резервная копия: только бот Bedolaga" "Backup: Bedolaga bot only")" "bedolaga-db,bedolaga-redis,bedolaga-bot"; return 0 ;;
+        3) run_backup_with_scope "$(tr_text "Резервная копия: только кабинет Bedolaga" "Backup: Bedolaga cabinet only")" "bedolaga-cabinet"; return 0 ;;
+        4) run_backup_with_scope "$(tr_text "Резервная копия: полный Bedolaga" "Backup: full Bedolaga")" "bedolaga"; return 0 ;;
+        5)
+          paint "$CLR_MUTED" "$(tr_text "Используйте настройки backup Bedolaga, чтобы задать свой состав компонентов." "Use Bedolaga backup settings to define a custom component list.")"
+          wait_for_enter
+          return 1
+          ;;
+        6) return 1 ;;
+        *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+      esac
+    else
+      menu_option "1" "$(tr_text "Только панель Remnawave" "Remnawave panel only")"
+      menu_option "2" "$(tr_text "Назад" "Back")"
+      print_separator
+      read -r -p "$(tr_text "Выбор [1-2]: " "Choice [1-2]: ")" choice
+      if is_back_command "$choice"; then
+        return 1
+      fi
+      case "$choice" in
+        1) run_backup_with_scope "$(tr_text "Резервная копия: только панель" "Backup: panel only")" "all"; return 0 ;;
+        2) return 1 ;;
+        *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+      esac
+    fi
+  done
+}
+
 run_restore_scope_selector() {
   local profile="${1:-global}"
   local choice=""
@@ -886,7 +937,7 @@ menu_section_bedolaga_backup_restore() {
     fi
     case "$choice" in
       1)
-        run_backup_with_scope "$(tr_text "Резервная копия: только Bedolaga" "Backup: Bedolaga only")" "bedolaga"
+        run_backup_scope_selector "bedolaga" || true
         ;;
       2) run_restore_scope_selector "bedolaga" || true ;;
       3) run_bedolaga_migration_wizard || true ;;
