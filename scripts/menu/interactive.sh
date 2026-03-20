@@ -411,6 +411,8 @@ run_bedolaga_remote_migration_flow() {
   local bot_repo_url=""
   local cabinet_repo_url=""
   local remote_repo_prepare_cmd=""
+  local remote_env_prefix=""
+  local target_remnawave_dir=""
   local target_bot_dir=""
   local target_cabinet_dir=""
 
@@ -600,10 +602,15 @@ run_bedolaga_remote_migration_flow() {
     }
   fi
 
+  target_remnawave_dir="$(archive_backup_info_value "$archive_path" "remnawave_dir" "$restore_password")"
   target_bot_dir="$(archive_backup_info_value "$archive_path" "bedolaga_bot_dir" "$restore_password")"
   target_cabinet_dir="$(archive_backup_info_value "$archive_path" "bedolaga_cabinet_dir" "$restore_password")"
   target_bot_dir="${target_bot_dir:-/root/remnawave-bedolaga-telegram-bot}"
   target_cabinet_dir="${target_cabinet_dir:-/root/bedolaga-cabinet}"
+  [[ -n "$target_remnawave_dir" ]] && remote_env_prefix="${remote_env_prefix} REMNAWAVE_DIR=$(printf '%q' "$target_remnawave_dir")"
+  [[ -n "$target_bot_dir" ]] && remote_env_prefix="${remote_env_prefix} BEDOLAGA_BOT_DIR=$(printf '%q' "$target_bot_dir")"
+  [[ -n "$target_cabinet_dir" ]] && remote_env_prefix="${remote_env_prefix} BEDOLAGA_CABINET_DIR=$(printf '%q' "$target_cabinet_dir")"
+  remote_env_prefix="${remote_env_prefix# }"
 
   command -v ssh >/dev/null 2>&1 || {
     paint "$CLR_DANGER" "$(tr_text "Не найдена команда ssh." "ssh command not found.")"
@@ -721,6 +728,12 @@ fi'
       return 1
     fi
 
+    if ! sync_runtime_scripts; then
+      paint "$CLR_DANGER" "$(tr_text "Не удалось обновить локальные runtime-скрипты перед отправкой на новый VPS." "Failed to refresh local runtime scripts before uploading them to the new VPS.")"
+      wait_for_enter
+      return 1
+    fi
+
     if [[ ! -x /usr/local/bin/panel-restore.sh ]]; then
       paint "$CLR_DANGER" "$(tr_text "Локально не найден /usr/local/bin/panel-restore.sh для копирования на новый VPS." "Local /usr/local/bin/panel-restore.sh not found for upload to new VPS.")"
       wait_for_enter
@@ -783,6 +796,9 @@ true"
   done
 
   remote_cmd="/usr/local/bin/panel-restore.sh --from $(printf '%q' "$remote_archive")${only_args}"
+  if [[ -n "$remote_env_prefix" ]]; then
+    remote_cmd="${remote_env_prefix} ${remote_cmd}"
+  fi
   if (( restore_dry_run == 1 )); then
     remote_cmd="${remote_cmd} --dry-run"
   fi
@@ -796,6 +812,9 @@ true"
   if (( restore_dry_run == 0 && auto_prepare_remote == 1 )) && [[ "$restore_only" == "bedolaga" ]]; then
     paint "$CLR_ACCENT" "$(tr_text "Пустой VPS: предварительно разворачиваю bot+cabinet и поднимаю контейнеры перед полным restore..." "Empty VPS: pre-seeding bot+cabinet and starting containers before full restore...")"
     preseed_cmd="/usr/local/bin/panel-restore.sh --from $(printf '%q' "$remote_archive") --only bedolaga-bot --only bedolaga-cabinet --no-restart"
+    if [[ -n "$remote_env_prefix" ]]; then
+      preseed_cmd="${remote_env_prefix} ${preseed_cmd}"
+    fi
     if (( is_encrypted_archive == 1 )); then
       preseed_cmd="BACKUP_PASSWORD=$(printf '%q' "$restore_password") ${preseed_cmd}"
     fi
@@ -814,6 +833,9 @@ true"
   if (( restore_dry_run == 0 && auto_prepare_remote == 1 )) && ([[ "$restore_only" == "all,bedolaga" ]] || [[ "$restore_only" == "bedolaga,all" ]]); then
     paint "$CLR_ACCENT" "$(tr_text "Пустой VPS: предварительно разворачиваю Remnawave+Bedolaga конфиги и поднимаю контейнеры перед полным restore..." "Empty VPS: pre-seeding Remnawave+Bedolaga configs and starting containers before full restore...")"
     preseed_cmd="/usr/local/bin/panel-restore.sh --from $(printf '%q' "$remote_archive") --only env --only compose --only caddy --only subscription --only bedolaga-bot --only bedolaga-cabinet --no-restart"
+    if [[ -n "$remote_env_prefix" ]]; then
+      preseed_cmd="${remote_env_prefix} ${preseed_cmd}"
+    fi
     if (( is_encrypted_archive == 1 )); then
       preseed_cmd="BACKUP_PASSWORD=$(printf '%q' "$restore_password") ${preseed_cmd}"
     fi
