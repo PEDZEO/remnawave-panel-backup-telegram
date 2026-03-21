@@ -593,6 +593,10 @@ if component_selected bedolaga-bot; then
   [[ -d "${SRC_BEDOLAGA_BOT}/data" ]] && run_cmd "mkdir -p \"${BEDOLAGA_BOT_DIR}/data\" && cp -a \"${SRC_BEDOLAGA_BOT}/data/.\" \"${BEDOLAGA_BOT_DIR}/data/\""
   [[ -d "${SRC_BEDOLAGA_BOT}/logs" ]] && run_cmd "rm -rf \"${BEDOLAGA_BOT_DIR}/logs\" && cp -a \"${SRC_BEDOLAGA_BOT}/logs\" \"${BEDOLAGA_BOT_DIR}/logs\""
   [[ -d "${SRC_BEDOLAGA_BOT}/locales" ]] && run_cmd "rm -rf \"${BEDOLAGA_BOT_DIR}/locales\" && cp -a \"${SRC_BEDOLAGA_BOT}/locales\" \"${BEDOLAGA_BOT_DIR}/locales\""
+  run_cmd "mkdir -p \"${BEDOLAGA_BOT_DIR}/logs\" \"${BEDOLAGA_BOT_DIR}/data\" \"${BEDOLAGA_BOT_DIR}/data/backups\" \"${BEDOLAGA_BOT_DIR}/data/referral_qr\""
+  run_cmd "touch \"${BEDOLAGA_BOT_DIR}/logs/bot.log\""
+  run_cmd "chown -R 1000:1000 \"${BEDOLAGA_BOT_DIR}/logs\" \"${BEDOLAGA_BOT_DIR}/data\" >/dev/null 2>&1 || true"
+  run_cmd "chmod -R 755 \"${BEDOLAGA_BOT_DIR}/logs\" \"${BEDOLAGA_BOT_DIR}/data\" >/dev/null 2>&1 || true"
 fi
 
 if component_selected bedolaga-cabinet; then
