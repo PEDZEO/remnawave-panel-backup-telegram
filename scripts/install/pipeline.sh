@@ -164,6 +164,9 @@ prompt_install_settings() {
     while true; do
       val="$(ask_value "$panel_path_prompt" "$REMNAWAVE_DIR")"
       [[ "$val" == "__PBM_BACK__" ]] && return 1
+      if ! validate_project_path_or_warn "REMNAWAVE_DIR" "$val"; then
+        continue
+      fi
       REMNAWAVE_DIR="$val"
       break
     done
@@ -173,12 +176,18 @@ prompt_install_settings() {
     while true; do
       val="$(ask_value "$bot_path_prompt" "${BEDOLAGA_BOT_DIR:-}")"
       [[ "$val" == "__PBM_BACK__" ]] && return 1
+      if ! validate_project_path_or_warn "BEDOLAGA_BOT_DIR" "$val"; then
+        continue
+      fi
       BEDOLAGA_BOT_DIR="$val"
       break
     done
     while true; do
       val="$(ask_value "$cabinet_path_prompt" "${BEDOLAGA_CABINET_DIR:-}")"
       [[ "$val" == "__PBM_BACK__" ]] && return 1
+      if ! validate_project_path_or_warn "BEDOLAGA_CABINET_DIR" "$val"; then
+        continue
+      fi
       BEDOLAGA_CABINET_DIR="$val"
       break
     done
@@ -277,8 +286,10 @@ prompt_install_settings() {
         2)
           val="$(ask_value "$(tr_text "Введите компоненты панели через запятую (all,db,redis,configs,env,compose,caddy,subscription)" "Enter panel components (all,db,redis,configs,env,compose,caddy,subscription)")" "$BACKUP_INCLUDE")"
           [[ "$val" == "__PBM_BACK__" ]] && continue
-          [[ -n "$val" ]] || { paint "$CLR_WARN" "$(tr_text "Список не может быть пустым." "List cannot be empty.")"; continue; }
-          BACKUP_INCLUDE="$val"
+          if ! validate_component_list_or_warn "panel" "$val"; then
+            continue
+          fi
+          BACKUP_INCLUDE="$(normalize_component_list "$val")"
           break
           ;;
         *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")" ;;
@@ -289,8 +300,10 @@ prompt_install_settings() {
         2)
           val="$(ask_value "$(tr_text "Введите компоненты Bedolaga через запятую (bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)" "Enter Bedolaga components (bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)")" "$BACKUP_INCLUDE")"
           [[ "$val" == "__PBM_BACK__" ]] && continue
-          [[ -n "$val" ]] || { paint "$CLR_WARN" "$(tr_text "Список не может быть пустым." "List cannot be empty.")"; continue; }
-          BACKUP_INCLUDE="$val"
+          if ! validate_component_list_or_warn "bedolaga" "$val"; then
+            continue
+          fi
+          BACKUP_INCLUDE="$(normalize_component_list "$val")"
           break
           ;;
         *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")" ;;
@@ -303,8 +316,10 @@ prompt_install_settings() {
         4)
           val="$(ask_value "$(tr_text "Введите компоненты через запятую (all,db,redis,configs,env,compose,caddy,subscription,bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)" "Enter comma-separated components (all,db,redis,configs,env,compose,caddy,subscription,bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)")" "$BACKUP_INCLUDE")"
           [[ "$val" == "__PBM_BACK__" ]] && continue
-          [[ -n "$val" ]] || { paint "$CLR_WARN" "$(tr_text "Список не может быть пустым." "List cannot be empty.")"; continue; }
-          BACKUP_INCLUDE="$val"
+          if ! validate_component_list_or_warn "global" "$val"; then
+            continue
+          fi
+          BACKUP_INCLUDE="$(normalize_component_list "$val")"
           break
           ;;
         *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")" ;;
@@ -422,6 +437,19 @@ write_timer_unit() {
   local calendar_default="${BACKUP_ON_CALENDAR:-*-*-* 03:40:00 UTC}"
   local calendar_panel="${BACKUP_ON_CALENDAR_PANEL:-$calendar_default}"
   local calendar_bedolaga="${BACKUP_ON_CALENDAR_BEDOLAGA:-$calendar_default}"
+
+  if ! is_safe_oncalendar_value "$calendar_default"; then
+    paint "$CLR_WARN" "$(tr_text "Некорректный BACKUP_ON_CALENDAR, применяю расписание по умолчанию." "Invalid BACKUP_ON_CALENDAR, using the default schedule.")"
+    calendar_default="*-*-* 03:40:00 UTC"
+  fi
+  if ! is_safe_oncalendar_value "$calendar_panel"; then
+    paint "$CLR_WARN" "$(tr_text "Некорректный BACKUP_ON_CALENDAR_PANEL, применяю расписание по умолчанию." "Invalid BACKUP_ON_CALENDAR_PANEL, using the default schedule.")"
+    calendar_panel="*-*-* 03:40:00 UTC"
+  fi
+  if ! is_safe_oncalendar_value "$calendar_bedolaga"; then
+    paint "$CLR_WARN" "$(tr_text "Некорректный BACKUP_ON_CALENDAR_BEDOLAGA, применяю расписание по умолчанию." "Invalid BACKUP_ON_CALENDAR_BEDOLAGA, using the default schedule.")"
+    calendar_bedolaga="*-*-* 03:40:00 UTC"
+  fi
 
   $SUDO bash -c "cat > /etc/systemd/system/panel-backup.timer <<TIMER
 [Unit]
@@ -549,6 +577,9 @@ configure_schedule_menu() {
       6) return 1 ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")" ;;
     esac
+    if ! validate_oncalendar_or_warn "$custom"; then
+      continue
+    fi
     case "$target" in
       panel)
         BACKUP_ON_CALENDAR_PANEL="$custom"

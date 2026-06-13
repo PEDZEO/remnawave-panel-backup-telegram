@@ -31,16 +31,13 @@ run_restore() {
   echo "[restore] Using archive: $from_path"
   restore_cmd=(/usr/local/bin/panel-restore.sh --from "$from_path" "${only_args[@]}")
 
-  if [[ "$RESTORE_DRY_RUN" == "1" ]]; then
-    restore_cmd+=(--dry-run)
-  fi
   if [[ "$RESTORE_NO_RESTART" == "1" ]]; then
     restore_cmd+=(--no-restart)
   fi
 
   if [[ -n "$SUDO" ]]; then
     if [[ -n "${BACKUP_PASSWORD:-}" ]]; then
-      restore_cmd=("$SUDO" "BACKUP_PASSWORD=${BACKUP_PASSWORD}" "${restore_cmd[@]}")
+      restore_cmd=("$SUDO" env "BACKUP_PASSWORD=${BACKUP_PASSWORD}" "${restore_cmd[@]}")
     else
       restore_cmd=("$SUDO" "${restore_cmd[@]}")
     fi
@@ -373,6 +370,136 @@ show_status() {
   print_separator
 }
 
+run_doctor_checks() {
+  local fail_count=0
+  local warn_count=0
+  local latest_backup=""
+  local checksum_path=""
+  local root_free_kb=0
+  local backup_root_free_kb=0
+  local include_raw=""
+  local normalized_include=""
+  local item=""
+  local include_ok=1
+  local -a include_items=()
+
+  doctor_ok() {
+    paint "$CLR_OK" "  [OK] $*"
+  }
+
+  doctor_warn() {
+    warn_count=$((warn_count + 1))
+    paint "$CLR_WARN" "  [WARN] $*"
+  }
+
+  doctor_fail() {
+    fail_count=$((fail_count + 1))
+    paint "$CLR_DANGER" "  [FAIL] $*"
+  }
+
+  draw_header "$(tr_text "Doctor: проверка backup-системы" "Doctor: backup system check")"
+  load_existing_env_defaults
+
+  paint "$CLR_TITLE" "$(tr_text "Файлы" "Files")"
+  [[ -x /usr/local/bin/panel-backup.sh ]] && doctor_ok "/usr/local/bin/panel-backup.sh" || doctor_fail "$(tr_text "Не найден executable backup-скрипт" "Backup script executable is missing")"
+  [[ -x /usr/local/bin/panel-restore.sh ]] && doctor_ok "/usr/local/bin/panel-restore.sh" || doctor_fail "$(tr_text "Не найден executable restore-скрипт" "Restore script executable is missing")"
+  [[ -f /etc/panel-backup.env ]] && doctor_ok "/etc/panel-backup.env" || doctor_warn "$(tr_text "Конфиг /etc/panel-backup.env не найден" "Config /etc/panel-backup.env was not found")"
+
+  print_separator
+  paint "$CLR_TITLE" "$(tr_text "Зависимости" "Dependencies")"
+  for item in docker tar curl split du stat find awk grep sed flock tail; do
+    command -v "$item" >/dev/null 2>&1 && doctor_ok "$item" || doctor_fail "$(tr_text "Не найдена команда" "Missing command"): $item"
+  done
+  if [[ "${BACKUP_ENCRYPT:-0}" == "1" ]]; then
+    command -v gpg >/dev/null 2>&1 && doctor_ok "gpg" || doctor_fail "$(tr_text "Шифрование включено, но gpg не найден" "Encryption is enabled, but gpg is missing")"
+  fi
+  command -v sha256sum >/dev/null 2>&1 && doctor_ok "sha256sum" || doctor_warn "$(tr_text "sha256sum не найден, checksum не будет создаваться/проверяться" "sha256sum is missing, checksums cannot be created/verified")"
+  if command -v docker >/dev/null 2>&1; then
+    $SUDO docker compose version >/dev/null 2>&1 && doctor_ok "docker compose" || doctor_fail "$(tr_text "docker compose недоступен" "docker compose is unavailable")"
+  fi
+
+  print_separator
+  paint "$CLR_TITLE" "$(tr_text "Конфигурация" "Configuration")"
+  if [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_ADMIN_ID:-}" ]]; then
+    doctor_ok "Telegram"
+  elif [[ -n "${TELEGRAM_BOT_TOKEN:-}" || -n "${TELEGRAM_ADMIN_ID:-}" ]]; then
+    doctor_fail "$(tr_text "Telegram настроен частично: нужен и токен, и chat_id" "Telegram is partially configured: both token and chat_id are required")"
+  else
+    doctor_warn "$(tr_text "Telegram не настроен, backup останется только локально" "Telegram is not configured, backup will remain local only")"
+  fi
+  if [[ "${BACKUP_ENCRYPT:-0}" == "1" ]]; then
+    [[ -n "${BACKUP_PASSWORD:-}" ]] && doctor_ok "$(tr_text "Шифрование включено" "Encryption enabled")" || doctor_fail "$(tr_text "Шифрование включено, но BACKUP_PASSWORD пустой" "Encryption is enabled, but BACKUP_PASSWORD is empty")"
+  else
+    doctor_warn "$(tr_text "Шифрование backup выключено" "Backup encryption is disabled")"
+  fi
+
+  include_raw="${BACKUP_INCLUDE:-all}"
+  normalized_include="$(normalize_component_list "$include_raw")"
+  if [[ -z "$normalized_include" ]]; then
+    doctor_fail "$(tr_text "BACKUP_INCLUDE пустой" "BACKUP_INCLUDE is empty")"
+  else
+    include_ok=1
+    IFS=',' read -r -a include_items <<< "$normalized_include"
+    for item in "${include_items[@]}"; do
+      if [[ -z "$item" ]] || ! is_allowed_component_for_scope "global" "$item"; then
+        doctor_fail "$(tr_text "Неизвестный компонент BACKUP_INCLUDE" "Unknown BACKUP_INCLUDE component"): ${item:-empty}"
+        include_ok=0
+      fi
+    done
+    (( include_ok == 1 )) && doctor_ok "BACKUP_INCLUDE=${normalized_include}"
+  fi
+
+  print_separator
+  paint "$CLR_TITLE" "$(tr_text "Проекты" "Projects")"
+  has_panel_project && doctor_ok "$(tr_text "Remnawave найден" "Remnawave detected"): ${REMNAWAVE_DIR:-n/a}" || doctor_warn "$(tr_text "Remnawave не найден" "Remnawave was not detected")"
+  has_bedolaga_project && doctor_ok "$(tr_text "Bedolaga найден" "Bedolaga detected"): ${BEDOLAGA_BOT_DIR:-n/a} / ${BEDOLAGA_CABINET_DIR:-n/a}" || doctor_warn "$(tr_text "Bedolaga не найден" "Bedolaga was not detected")"
+
+  print_separator
+  paint "$CLR_TITLE" "$(tr_text "Таймеры" "Timers")"
+  for item in panel-backup-panel.timer panel-backup-bedolaga.timer; do
+    if $SUDO systemctl list-unit-files "$item" >/dev/null 2>&1; then
+      doctor_ok "$item: $($SUDO systemctl is-active "$item" 2>/dev/null || echo inactive)"
+    else
+      doctor_warn "$(tr_text "Таймер не установлен" "Timer is not installed"): $item"
+    fi
+  done
+
+  print_separator
+  paint "$CLR_TITLE" "$(tr_text "Архивы и диск" "Backups and disk")"
+  latest_backup="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/pb-*.tar.gz.gpg /var/backups/panel/panel-backup-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz.gpg 2>/dev/null | head -n1 || true)"
+  if [[ -n "$latest_backup" && -f "$latest_backup" ]]; then
+    doctor_ok "$(tr_text "Последний архив" "Latest archive"): $(basename "$latest_backup")"
+    checksum_path="${latest_backup}.sha256"
+    if [[ -f "$checksum_path" ]]; then
+      if command -v sha256sum >/dev/null 2>&1 && (cd "$(dirname "$latest_backup")" && sha256sum -c "$(basename "$checksum_path")" >/dev/null 2>&1); then
+        doctor_ok "$(tr_text "Checksum последнего архива валиден" "Latest archive checksum is valid")"
+      else
+        doctor_fail "$(tr_text "Checksum последнего архива не прошёл проверку" "Latest archive checksum verification failed")"
+      fi
+    else
+      doctor_warn "$(tr_text "Для последнего архива нет .sha256" "Latest archive has no .sha256 file")"
+    fi
+  else
+    doctor_warn "$(tr_text "Архивы backup не найдены" "No backup archives found")"
+  fi
+  root_free_kb="$(df -Pk / 2>/dev/null | awk 'NR==2 {print $4+0}' || echo 0)"
+  backup_root_free_kb="$(df -Pk /var/backups 2>/dev/null | awk 'NR==2 {print $4+0}' || echo 0)"
+  (( root_free_kb > 1048576 )) && doctor_ok "$(tr_text "Свободно на / больше 1 GB" "Root filesystem has more than 1 GB free")" || doctor_warn "$(tr_text "На / меньше 1 GB свободного места" "Root filesystem has less than 1 GB free")"
+  (( backup_root_free_kb > 1048576 )) && doctor_ok "$(tr_text "Свободно в /var/backups больше 1 GB" "/var/backups has more than 1 GB free")" || doctor_warn "$(tr_text "В /var/backups меньше 1 GB свободного места" "/var/backups has less than 1 GB free")"
+
+  print_separator
+  if (( fail_count > 0 )); then
+    paint "$CLR_DANGER" "$(tr_text "Doctor завершён: есть ошибки" "Doctor finished: failures found") (${fail_count} fail, ${warn_count} warn)"
+    return 1
+  fi
+  if (( warn_count > 0 )); then
+    paint "$CLR_WARN" "$(tr_text "Doctor завершён: есть предупреждения" "Doctor finished: warnings found") (${warn_count} warn)"
+    return 0
+  fi
+  paint "$CLR_OK" "$(tr_text "Doctor завершён: всё в порядке" "Doctor finished: all checks passed")"
+  return 0
+}
+
 show_disk_usage_top() {
   local root_df=""
   local path=""
@@ -414,6 +541,7 @@ show_safe_cleanup_preview() {
   paint "$CLR_TITLE" "$(tr_text "Что можно чистить безопасно" "What can be cleaned safely")"
   paint "$CLR_MUTED" "  - $(tr_text "systemd journal старше 7 дней" "systemd journal older than 7 days")"
   paint "$CLR_MUTED" "  - $(tr_text "apt package cache (autoclean)" "apt package cache (autoclean)")"
+  paint "$CLR_MUTED" "  - $(tr_text "временные файлы panel-* во /tmp старше 1 часа" "panel-* temporary files in /tmp older than 1 hour")"
   paint "$CLR_MUTED" "  - $(tr_text "временные файлы в /tmp и /var/tmp старше 7 дней" "temporary files in /tmp and /var/tmp older than 7 days")"
   paint "$CLR_MUTED" "  - $(tr_text "docker dangling images + builder cache" "docker dangling images + builder cache")"
   paint "$CLR_WARN" "  $(tr_text "Тома Docker (volumes) не удаляются." "Docker volumes are not removed.")"
@@ -424,7 +552,7 @@ show_safe_cleanup_preview() {
   fi
   tmp_size="$(du -sh /tmp /var/tmp 2>/dev/null | awk '{print $2": "$1}' | paste -sd ', ' - || true)"
   [[ -z "$tmp_size" ]] && tmp_size="n/a"
-  panel_tmp_size="$(du -sh /tmp/panel-backup* /tmp/panel-restore* /tmp/panel-backup-install.* 2>/dev/null | awk '{print $2": "$1}' | paste -sd ', ' - || true)"
+  panel_tmp_size="$(find /tmp -maxdepth 1 \( -name 'panel-backup*' -o -name 'panel-restore*' -o -name 'panel-backup-install.*' \) -mmin +60 -exec du -sh {} + 2>/dev/null | awk '{print $2": "$1}' | paste -sd ', ' - || true)"
   [[ -z "$panel_tmp_size" ]] && panel_tmp_size="n/a"
   if command -v journalctl >/dev/null 2>&1; then
     journal_usage="$($SUDO journalctl --disk-usage 2>/dev/null | sed 's/^Archived and active journals take up //; s/ in the file system.$//' || true)"
@@ -479,7 +607,7 @@ run_safe_cleanup() {
 
   before_used_kb="$(disk_used_kb)"
   before_df="$(df -h / 2>/dev/null | awk 'NR==2 {print $3" / "$2" ("$5")"}' || true)"
-  panel_tmp_count="$(find /tmp -maxdepth 1 \( -name 'panel-backup*' -o -name 'panel-restore*' -o -name 'panel-backup-install.*' \) 2>/dev/null | wc -l | awk '{print $1}' || echo 0)"
+  panel_tmp_count="$(find /tmp -maxdepth 1 \( -name 'panel-backup*' -o -name 'panel-restore*' -o -name 'panel-backup-install.*' \) -mmin +60 2>/dev/null | wc -l | awk '{print $1}' || echo 0)"
   old_tmp_count="$(find /tmp /var/tmp -xdev -type f -mtime +7 2>/dev/null | wc -l | awk '{print $1}' || echo 0)"
 
   paint "$CLR_ACCENT" "$(tr_text "Запуск безопасной очистки..." "Running safe cleanup...")"
@@ -498,8 +626,8 @@ run_safe_cleanup() {
     fi
   fi
 
-  paint "$CLR_MUTED" "  - $(tr_text "Удаляю временные файлы panel-* в /tmp" "Removing panel-* temporary files in /tmp")"
-  if ! $SUDO rm -rf /tmp/panel-backup* /tmp/panel-restore* /tmp/panel-backup-install.* 2>/dev/null; then
+  paint "$CLR_MUTED" "  - $(tr_text "Удаляю временные файлы panel-* в /tmp старше 1 часа" "Removing panel-* temporary files in /tmp older than 1 hour")"
+  if ! $SUDO find /tmp -maxdepth 1 \( -name 'panel-backup*' -o -name 'panel-restore*' -o -name 'panel-backup-install.*' \) -mmin +60 -exec rm -rf -- {} + 2>/dev/null; then
     paint "$CLR_WARN" "    $(tr_text "Предупреждение: часть panel-* файлов не удалена" "Warning: some panel-* files were not removed")"
   fi
 
@@ -528,7 +656,7 @@ run_safe_cleanup() {
 
   print_separator
   paint "$CLR_TITLE" "$(tr_text "Отчет по очистке" "Cleanup report")"
-  paint "$CLR_MUTED" "  $(tr_text "Удалено panel-* во временных файлах:" "Removed panel-* temporary entries:") ${panel_tmp_count}"
+  paint "$CLR_MUTED" "  $(tr_text "Удалено устаревших panel-* во временных файлах:" "Removed stale panel-* temporary entries:") ${panel_tmp_count}"
   paint "$CLR_MUTED" "  $(tr_text "Удалено старых файлов (>7 дней) в /tmp и /var/tmp:" "Removed old files (>7 days) in /tmp and /var/tmp:") ${old_tmp_count}"
   paint "$CLR_MUTED" "  $(tr_text "Диск / до:" "Disk / before:") ${before_df:-n/a}"
   paint "$CLR_MUTED" "  $(tr_text "Диск / после:" "Disk / after:") ${after_df:-n/a}"

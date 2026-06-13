@@ -26,7 +26,7 @@ draw_subheader() {
   echo
 }
 
-draw_header() {
+draw_header_full() {
   local title="$1"
   local subtitle="${2:-}"
   local timer_state=""
@@ -259,5 +259,115 @@ draw_header() {
   paint "$CLR_TITLE" "============================================================"
   paint "$CLR_MUTED" "  $(tr_text "Контакт:" "Contact:") @pedzeo"
   paint "$CLR_MUTED" "$(tr_text "Выберите действие." "Select an action.")"
+  echo
+}
+
+format_duration_compact() {
+  local seconds="${1:-}"
+
+  if [[ ! "$seconds" =~ ^[0-9]+$ ]] || (( seconds < 0 )); then
+    echo "n/a"
+    return 0
+  fi
+
+  if (( seconds < 60 )); then
+    echo "$(tr_text "меньше минуты" "<1 min")"
+  elif (( seconds < 3600 )); then
+    echo "$((seconds / 60)) $(tr_text "мин" "min")"
+  elif (( seconds < 86400 )); then
+    echo "$((seconds / 3600)) $(tr_text "ч" "h") $(((seconds % 3600) / 60)) $(tr_text "мин" "min")"
+  else
+    echo "$((seconds / 86400)) $(tr_text "д" "d") $(((seconds % 86400) / 3600)) $(tr_text "ч" "h")"
+  fi
+}
+
+draw_header() {
+  local title="$1"
+  local subtitle="${2:-}"
+  local timer_panel_state="inactive"
+  local timer_bedolaga_state="inactive"
+  local timer_state="inactive"
+  local timer_color=""
+  local latest_backup=""
+  local latest_label=""
+  local backup_age_sec=-1
+  local backup_age_label="n/a"
+  local backup_age_color="$CLR_MUTED"
+  local ram_label=""
+  local disk_label=""
+  local ram_percent=""
+  local disk_percent=""
+  local env_token=""
+  local env_chat=""
+  local tg_state=""
+  local tg_color=""
+  local encrypt_state=""
+  local encrypt_color=""
+
+  clear
+
+  timer_panel_state="$($SUDO systemctl is-active panel-backup-panel.timer 2>/dev/null || echo "inactive")"
+  timer_bedolaga_state="$($SUDO systemctl is-active panel-backup-bedolaga.timer 2>/dev/null || echo "inactive")"
+  if [[ "$timer_panel_state" == "active" || "$timer_bedolaga_state" == "active" ]]; then
+    timer_state="active"
+  fi
+  timer_color="$(state_color "$timer_state")"
+
+  latest_backup="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/pb-*.tar.gz.gpg /var/backups/panel/panel-backup-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz.gpg 2>/dev/null | head -n1 || true)"
+  if [[ -n "$latest_backup" ]]; then
+    latest_label="$(short_backup_label "$(basename "$latest_backup")")"
+    backup_age_sec="$(( $(date +%s) - $(date -r "$latest_backup" +%s) ))"
+    backup_age_label="$(format_duration_compact "$backup_age_sec")"
+    if (( backup_age_sec <= 21600 )); then
+      backup_age_color="$CLR_OK"
+    elif (( backup_age_sec <= 86400 )); then
+      backup_age_color="$CLR_WARN"
+    else
+      backup_age_color="$CLR_DANGER"
+    fi
+  else
+    latest_label="$(tr_text "нет архивов" "no backups")"
+  fi
+
+  ram_label="$(memory_usage_label)"
+  disk_label="$(disk_usage_label)"
+  ram_percent="$(memory_usage_percent)"
+  disk_percent="$(disk_usage_percent)"
+
+  env_token="$(grep -E '^TELEGRAM_BOT_TOKEN=' /etc/panel-backup.env 2>/dev/null | head -n1 | cut -d= -f2- || true)"
+  env_chat="$(grep -E '^TELEGRAM_ADMIN_ID=' /etc/panel-backup.env 2>/dev/null | head -n1 | cut -d= -f2- || true)"
+  if [[ -n "$env_token" && -n "$env_chat" ]]; then
+    tg_state="$(tr_text "настроен" "configured")"
+    tg_color="$CLR_OK"
+  else
+    tg_state="$(tr_text "не настроен" "not configured")"
+    tg_color="$CLR_WARN"
+  fi
+
+  if [[ "$(grep -E '^BACKUP_ENCRYPT=' /etc/panel-backup.env 2>/dev/null | head -n1 | cut -d= -f2- | tr -d '\"' || true)" == "1" ]]; then
+    encrypt_state="$(tr_text "включено" "enabled")"
+    encrypt_color="$CLR_OK"
+  else
+    encrypt_state="$(tr_text "выключено" "disabled")"
+    encrypt_color="$CLR_WARN"
+  fi
+
+  paint "$CLR_TITLE" "============================================================"
+  paint "$CLR_ACCENT" "  ${title}"
+  if [[ -n "$subtitle" ]]; then
+    paint "$CLR_MUTED" "  ${subtitle}"
+  else
+    paint "$CLR_MUTED" "  $(tr_text "Быстрое меню без тяжёлой диагностики. Подробно: пункт 4." "Fast menu without heavy diagnostics. Details: option 4.")"
+  fi
+  print_separator
+  paint_labeled_value "RAM:" "$ram_label" "$(metric_color_ram "$ram_percent")"
+  paint_labeled_value "$(tr_text "Диск:" "Disk:")" "$disk_label" "$(metric_color_disk "$disk_percent")"
+  paint_labeled_value "$(tr_text "Таймеры:" "Timers:")" "panel:${timer_panel_state} / bedolaga:${timer_bedolaga_state}" "$timer_color"
+  paint_labeled_value "$(tr_text "Последний backup:" "Latest backup:")" "$latest_label" "$CLR_ACCENT"
+  paint_labeled_value "$(tr_text "Возраст backup:" "Backup age:")" "$backup_age_label" "$backup_age_color"
+  paint_labeled_value "Telegram:" "$tg_state" "$tg_color"
+  paint_labeled_value "$(tr_text "Шифрование:" "Encryption:")" "$encrypt_state" "$encrypt_color"
+  paint "$CLR_TITLE" "============================================================"
+  paint "$CLR_MUTED" "  $(tr_text "Навигация: цифра = открыть, b/back = назад, 0 = выход." "Navigation: number = open, b/back = back, 0 = exit.")"
   echo
 }

@@ -47,17 +47,13 @@ run_node_caddy_selfsteal_flow() {
   while true; do
     domain="$(ask_value "$(tr_text "Домен для self-steal (пример: node.example.com)" "Domain for self-steal (example: node.example.com)")" "")"
     [[ "$domain" == "__PBM_BACK__" ]] && return 1
-    [[ -n "$domain" ]] && break
-    paint "$CLR_WARN" "$(tr_text "Домен не может быть пустым." "Domain cannot be empty.")"
+    validate_domain_or_warn "SELF_STEAL_DOMAIN" "$domain" && break
   done
 
   while true; do
     monitor_port="$(ask_value "$(tr_text "Порт self-steal" "Self-steal port")" "8443")"
     [[ "$monitor_port" == "__PBM_BACK__" ]] && return 1
-    if [[ "$monitor_port" =~ ^[0-9]+$ ]]; then
-      break
-    fi
-    paint "$CLR_WARN" "$(tr_text "Порт должен быть числом." "Port must be numeric.")"
+    validate_tcp_port_or_warn "SELF_STEAL_PORT" "$monitor_port" && break
   done
 
   if ! ensure_remnanode_caddy_installed; then

@@ -208,6 +208,9 @@ menu_flow_quick_setup() {
               step=1
               continue 2
             fi
+            if ! validate_project_path_or_warn "REMNAWAVE_DIR" "$input"; then
+              continue
+            fi
             REMNAWAVE_DIR="$input"
             break
           done
@@ -221,6 +224,9 @@ menu_flow_quick_setup() {
               step=1
               continue 2
             fi
+            if ! validate_project_path_or_warn "BEDOLAGA_BOT_DIR" "$input"; then
+              continue
+            fi
             BEDOLAGA_BOT_DIR="$input"
             break
           done
@@ -231,6 +237,9 @@ menu_flow_quick_setup() {
             if [[ "$input" == "__PBM_PREV__" ]]; then
               step=1
               continue 2
+            fi
+            if ! validate_project_path_or_warn "BEDOLAGA_CABINET_DIR" "$input"; then
+              continue
             fi
             BEDOLAGA_CABINET_DIR="$input"
             break
@@ -326,7 +335,11 @@ menu_flow_quick_setup() {
               step=2
               continue
             fi
-            [[ -n "$input" ]] && BACKUP_ON_CALENDAR="$input"
+            [[ -n "$input" ]] || continue
+            if ! validate_oncalendar_or_warn "$input"; then
+              continue
+            fi
+            BACKUP_ON_CALENDAR="$input"
             ;;
           *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; continue ;;
         esac

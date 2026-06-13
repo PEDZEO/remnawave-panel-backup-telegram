@@ -49,9 +49,9 @@ run_backup_scope_selector() {
     paint "$CLR_MUTED" "$(tr_text "Для Bedolaga можно сохранять бот и кабинет отдельно, если один из путей не найден." "For Bedolaga, bot and cabinet can be backed up separately if one of the paths is missing.")"
 
     if [[ "$profile" == "bedolaga" ]]; then
-      menu_option "1" "$(tr_text "Бот + кабинет Bedolaga" "Bedolaga bot + cabinet")"
-      menu_option "2" "$(tr_text "Только бот Bedolaga" "Bedolaga bot only")"
-      menu_option "3" "$(tr_text "Только кабинет Bedolaga" "Bedolaga cabinet only")"
+      menu_option "1" "$(tr_text "Файлы бота + кабинета Bedolaga (без DB/Redis)" "Bedolaga bot + cabinet files (no DB/Redis)")"
+      menu_option "2" "$(tr_text "Бот Bedolaga полностью (DB + Redis + файлы)" "Full Bedolaga bot (DB + Redis + files)")"
+      menu_option "3" "$(tr_text "Файлы кабинета Bedolaga" "Bedolaga cabinet files")"
       menu_option "4" "$(tr_text "Полный Bedolaga (DB + Redis + бот + кабинет)" "Full Bedolaga (DB + Redis + bot + cabinet)")"
       menu_option "5" "$(tr_text "Ручной выбор компонентов Bedolaga" "Manual Bedolaga component selection")"
       menu_option "6" "$(tr_text "Назад" "Back")"
@@ -61,9 +61,9 @@ run_backup_scope_selector() {
         return 1
       fi
       case "$choice" in
-        1) run_backup_with_scope "$(tr_text "Резервная копия: бот + кабинет Bedolaga" "Backup: Bedolaga bot + cabinet")" "bedolaga-bot,bedolaga-cabinet"; return 0 ;;
-        2) run_backup_with_scope "$(tr_text "Резервная копия: только бот Bedolaga" "Backup: Bedolaga bot only")" "bedolaga-db,bedolaga-redis,bedolaga-bot"; return 0 ;;
-        3) run_backup_with_scope "$(tr_text "Резервная копия: только кабинет Bedolaga" "Backup: Bedolaga cabinet only")" "bedolaga-cabinet"; return 0 ;;
+        1) run_backup_with_scope "$(tr_text "Резервная копия: файлы бота + кабинета Bedolaga (без DB/Redis)" "Backup: Bedolaga bot + cabinet files (no DB/Redis)")" "bedolaga-bot,bedolaga-cabinet"; return 0 ;;
+        2) run_backup_with_scope "$(tr_text "Резервная копия: бот Bedolaga полностью" "Backup: full Bedolaga bot")" "bedolaga-db,bedolaga-redis,bedolaga-bot"; return 0 ;;
+        3) run_backup_with_scope "$(tr_text "Резервная копия: файлы кабинета Bedolaga" "Backup: Bedolaga cabinet files")" "bedolaga-cabinet"; return 0 ;;
         4) run_backup_with_scope "$(tr_text "Резервная копия: полный Bedolaga" "Backup: full Bedolaga")" "bedolaga"; return 0 ;;
         5)
           paint "$CLR_MUTED" "$(tr_text "Используйте настройки backup Bedolaga, чтобы задать свой состав компонентов." "Use Bedolaga backup settings to define a custom component list.")"
@@ -100,9 +100,9 @@ run_restore_scope_selector() {
     paint "$CLR_MUTED" "$(tr_text "Даже из общего архива можно восстановить только нужную часть." "Even from a full backup archive you can restore only the required part.")"
 
     if [[ "$profile" == "bedolaga" ]]; then
-      menu_option "1" "$(tr_text "Бот + кабинет Bedolaga" "Bedolaga bot + cabinet")"
-      menu_option "2" "$(tr_text "Только бот Bedolaga" "Bedolaga bot only")"
-      menu_option "3" "$(tr_text "Только кабинет Bedolaga" "Bedolaga cabinet only")"
+      menu_option "1" "$(tr_text "Файлы бота + кабинета Bedolaga (без DB/Redis)" "Bedolaga bot + cabinet files (no DB/Redis)")"
+      menu_option "2" "$(tr_text "Бот Bedolaga полностью (DB + Redis + файлы)" "Full Bedolaga bot (DB + Redis + files)")"
+      menu_option "3" "$(tr_text "Файлы кабинета Bedolaga" "Bedolaga cabinet files")"
       menu_option "4" "$(tr_text "Ручной выбор компонентов Bedolaga" "Manual Bedolaga component selection")"
       menu_option "5" "$(tr_text "Назад" "Back")"
       print_separator
@@ -247,9 +247,9 @@ menu_section_bedolaga_local_backup_restore() {
           continue
         fi
         case "$choice" in
-          1) run_backup_with_scope "$(tr_text "Резервная копия: бот + кабинет Bedolaga" "Backup: Bedolaga bot + cabinet")" "bedolaga-bot,bedolaga-cabinet" ;;
-          2) run_backup_with_scope "$(tr_text "Резервная копия: только бот Bedolaga" "Backup: Bedolaga bot only")" "bedolaga-db,bedolaga-redis,bedolaga-bot" ;;
-          3) run_backup_with_scope "$(tr_text "Резервная копия: только кабинет Bedolaga" "Backup: Bedolaga cabinet only")" "bedolaga-cabinet" ;;
+          1) run_backup_with_scope "$(tr_text "Резервная копия: файлы бота + кабинета Bedolaga (без DB/Redis)" "Backup: Bedolaga bot + cabinet files (no DB/Redis)")" "bedolaga-bot,bedolaga-cabinet" ;;
+          2) run_backup_with_scope "$(tr_text "Резервная копия: бот Bedolaga полностью" "Backup: full Bedolaga bot")" "bedolaga-db,bedolaga-redis,bedolaga-bot" ;;
+          3) run_backup_with_scope "$(tr_text "Резервная копия: файлы кабинета Bedolaga" "Backup: Bedolaga cabinet files")" "bedolaga-cabinet" ;;
           4) run_restore_scope_selector "bedolaga" || true ;;
           5) ;;
           *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
@@ -370,9 +370,9 @@ run_bedolaga_local_migration_restore_flow() {
   fi
 
   draw_subheader "$(tr_text "Выбор состава восстановления на новом VPS" "Select restore scope on the new VPS")"
-  menu_option "1" "$(tr_text "Только бот Bedolaga" "Bedolaga bot only")"
-  menu_option "2" "$(tr_text "Только кабинет Bedolaga" "Bedolaga cabinet only")"
-  menu_option "3" "$(tr_text "Бот + кабинет (без DB/Redis, рекомендовано для старта)" "Bot + cabinet (without DB/Redis, recommended to start)")"
+  menu_option "1" "$(tr_text "Бот Bedolaga полностью (DB + Redis + файлы)" "Full Bedolaga bot (DB + Redis + files)")"
+  menu_option "2" "$(tr_text "Файлы кабинета Bedolaga" "Bedolaga cabinet files")"
+  menu_option "3" "$(tr_text "Файлы бота + кабинета (без DB/Redis, рекомендовано для старта)" "Bot + cabinet files (without DB/Redis, recommended to start)")"
   menu_option "4" "$(tr_text "Полный Bedolaga (DB + Redis + бот + кабинет)" "Full Bedolaga (DB + Redis + bot + cabinet)")"
   menu_option "5" "$(tr_text "Полный перенос: Remnawave + Bedolaga (весь backup)" "Full migration: Remnawave + Bedolaga (entire backup)")"
   print_separator
@@ -413,7 +413,6 @@ run_bedolaga_remote_migration_flow() {
   local restore_only="bedolaga-bot,bedolaga-cabinet"
   local create_fresh_backup=0
   local fresh_backup_scope=""
-  local restore_dry_run=1
   local restore_no_restart=1
   local restore_password="${BACKUP_PASSWORD:-}"
   local is_encrypted_archive=0
@@ -459,9 +458,9 @@ run_bedolaga_remote_migration_flow() {
   [[ "$archive_path" == "__PBM_BACK__" ]] && return 1
 
   draw_subheader "$(tr_text "Выбор состава восстановления на новом VPS" "Select restore scope on the new VPS")"
-  menu_option "1" "$(tr_text "Только бот Bedolaga" "Bedolaga bot only")"
-  menu_option "2" "$(tr_text "Только кабинет Bedolaga" "Bedolaga cabinet only")"
-  menu_option "3" "$(tr_text "Бот + кабинет (без DB/Redis, рекомендовано для старта)" "Bot + cabinet (without DB/Redis, recommended to start)")"
+  menu_option "1" "$(tr_text "Бот Bedolaga полностью (DB + Redis + файлы)" "Full Bedolaga bot (DB + Redis + files)")"
+  menu_option "2" "$(tr_text "Файлы кабинета Bedolaga" "Bedolaga cabinet files")"
+  menu_option "3" "$(tr_text "Файлы бота + кабинета (без DB/Redis, рекомендовано для старта)" "Bot + cabinet files (without DB/Redis, recommended to start)")"
   menu_option "4" "$(tr_text "Полный Bedolaga (DB + Redis + бот + кабинет)" "Full Bedolaga (DB + Redis + bot + cabinet)")"
   menu_option "5" "$(tr_text "Полный перенос: Remnawave + Bedolaga (весь backup)" "Full migration: Remnawave + Bedolaga (entire backup)")"
   print_separator
@@ -543,31 +542,13 @@ run_bedolaga_remote_migration_flow() {
     2) return 1 ;;
   esac
 
-  if (( auto_prepare_remote == 1 )) && [[ "$restore_only" == "bedolaga-db,bedolaga-redis,bedolaga-bot" || "$restore_only" == "bedolaga" || "$restore_only" == "all,bedolaga" || "$restore_only" == "bedolaga,all" ]]; then
-    restore_dry_run=0
-    paint "$CLR_MUTED" "$(tr_text "Проверка шагов без применения (--dry-run) недоступна для этого сценария." "Step check without applying changes (--dry-run) is unavailable for this scenario.")"
-    paint "$CLR_MUTED" "$(tr_text "Причина: для переноса с Bedolaga DB/Redis на пустой VPS нужно реально поднять контейнеры перед восстановлением данных." "Reason: migrating Bedolaga DB/Redis to an empty VPS requires actually starting containers before restoring data.")"
-  else
-    confirm_rc=0
-    ask_yes_no "$(tr_text "Только проверить шаги без реального восстановления? (--dry-run)" "Only check steps without real restore? (--dry-run)")" "y" || confirm_rc=$?
-    case "$confirm_rc" in
-      0) restore_dry_run=1 ;;
-      1) restore_dry_run=0 ;;
-      2) return 1 ;;
-    esac
-  fi
-
-  if (( restore_dry_run == 1 )); then
-    restore_no_restart=1
-  else
-    confirm_rc=0
-    ask_yes_no "$(tr_text "Отключить автоперезапуск сервисов на новом VPS (--no-restart)?" "Disable service auto-restart on the new VPS (--no-restart)?")" "n" || confirm_rc=$?
-    case "$confirm_rc" in
-      0) restore_no_restart=1 ;;
-      1) restore_no_restart=0 ;;
-      2) return 1 ;;
-    esac
-  fi
+  confirm_rc=0
+  ask_yes_no "$(tr_text "Отключить автоперезапуск сервисов на новом VPS (--no-restart)?" "Disable service auto-restart on the new VPS (--no-restart)?")" "n" || confirm_rc=$?
+  case "$confirm_rc" in
+    0) restore_no_restart=1 ;;
+    1) restore_no_restart=0 ;;
+    2) return 1 ;;
+  esac
 
   ssh_host="$(ask_value "$(tr_text "IP/домен нового VPS" "New VPS IP/domain")" "$ssh_host")"
   [[ "$ssh_host" == "__PBM_BACK__" ]] && return 1
@@ -576,18 +557,25 @@ run_bedolaga_remote_migration_flow() {
     wait_for_enter
     return 1
   }
+  if ! validate_ssh_token_or_warn "SSH_HOST" "$ssh_host"; then
+    wait_for_enter
+    return 1
+  fi
 
   ssh_user="$(ask_value "$(tr_text "SSH пользователь" "SSH user")" "$ssh_user")"
   [[ "$ssh_user" == "__PBM_BACK__" ]] && return 1
   [[ -n "$ssh_user" ]] || ssh_user="root"
+  if ! validate_ssh_token_or_warn "SSH_USER" "$ssh_user"; then
+    wait_for_enter
+    return 1
+  fi
 
   ssh_port="$(ask_value "$(tr_text "SSH порт" "SSH port")" "$ssh_port")"
   [[ "$ssh_port" == "__PBM_BACK__" ]] && return 1
-  [[ "$ssh_port" =~ ^[0-9]+$ ]] || {
-    paint "$CLR_DANGER" "$(tr_text "SSH порт должен быть числом." "SSH port must be numeric.")"
+  if ! validate_tcp_port_or_warn "SSH_PORT" "$ssh_port"; then
     wait_for_enter
     return 1
-  }
+  fi
 
   ssh_password="$(ask_secret_value "$(tr_text "SSH пароль (опционально, Enter = использовать ключи)" "SSH password (optional, Enter = use SSH keys)")" "")"
   [[ "$ssh_password" == "__PBM_BACK__" ]] && return 1
@@ -595,6 +583,10 @@ run_bedolaga_remote_migration_flow() {
   remote_backup_dir="$(ask_value "$(tr_text "Папка архива на новом VPS" "Remote archive directory on new VPS")" "$remote_backup_dir")"
   [[ "$remote_backup_dir" == "__PBM_BACK__" ]] && return 1
   [[ -n "$remote_backup_dir" ]] || remote_backup_dir="/var/backups/panel"
+  if ! validate_project_path_or_warn "REMOTE_BACKUP_DIR" "$remote_backup_dir"; then
+    wait_for_enter
+    return 1
+  fi
   remote_archive="${remote_backup_dir}/$(basename "$archive_path")"
 
   detected_caddy_dir=""
@@ -627,6 +619,10 @@ run_bedolaga_remote_migration_flow() {
       remote_caddy_dir="$(ask_value "$(tr_text "Путь Caddy на новом VPS" "Caddy path on the new VPS")" "$remote_caddy_dir")"
       [[ "$remote_caddy_dir" == "__PBM_BACK__" ]] && return 1
       [[ -n "$remote_caddy_dir" ]] || remote_caddy_dir="/root/caddy"
+      if ! validate_project_path_or_warn "REMOTE_CADDY_DIR" "$remote_caddy_dir"; then
+        wait_for_enter
+        return 1
+      fi
     fi
   fi
 
@@ -646,6 +642,23 @@ run_bedolaga_remote_migration_flow() {
   target_cabinet_dir="$(archive_backup_info_value "$archive_path" "bedolaga_cabinet_dir" "$restore_password")"
   target_bot_dir="${target_bot_dir:-/root/remnawave-bedolaga-telegram-bot}"
   target_cabinet_dir="${target_cabinet_dir:-/root/bedolaga-cabinet}"
+  if [[ -n "$target_remnawave_dir" ]] && ! validate_project_path_or_warn "REMOTE_REMNAWAVE_DIR" "$target_remnawave_dir"; then
+    wait_for_enter
+    return 1
+  fi
+  if ! validate_project_path_or_warn "REMOTE_BEDOLAGA_BOT_DIR" "$target_bot_dir"; then
+    wait_for_enter
+    return 1
+  fi
+  if ! validate_project_path_or_warn "REMOTE_BEDOLAGA_CABINET_DIR" "$target_cabinet_dir"; then
+    wait_for_enter
+    return 1
+  fi
+  if [[ "$target_bot_dir" == "$target_cabinet_dir" || ( -n "$target_remnawave_dir" && ( "$target_bot_dir" == "$target_remnawave_dir" || "$target_cabinet_dir" == "$target_remnawave_dir" ) ) ]]; then
+    paint "$CLR_WARN" "$(tr_text "Каталоги восстановления на новом VPS должны быть разными." "Restore directories on the new VPS must be different.")"
+    wait_for_enter
+    return 1
+  fi
   [[ -n "$target_remnawave_dir" ]] && remote_env_prefix="${remote_env_prefix} REMNAWAVE_DIR=$(printf '%q' "$target_remnawave_dir")"
   [[ -n "$target_bot_dir" ]] && remote_env_prefix="${remote_env_prefix} BEDOLAGA_BOT_DIR=$(printf '%q' "$target_bot_dir")"
   [[ -n "$target_cabinet_dir" ]] && remote_env_prefix="${remote_env_prefix} BEDOLAGA_CABINET_DIR=$(printf '%q' "$target_cabinet_dir")"
@@ -690,7 +703,7 @@ run_bedolaga_remote_migration_flow() {
   else
     paint "$CLR_MUTED" "  $(tr_text "Caddy перенос:" "Caddy migration:") $(tr_text "пропущен" "skipped")"
   fi
-  paint "$CLR_MUTED" "  $(tr_text "Режим:" "Mode:") $([[ "$restore_dry_run" == "1" ]] && tr_text "тестовый (--dry-run)" "test (--dry-run)" || tr_text "боевой" "real")"
+  paint "$CLR_MUTED" "  $(tr_text "Режим:" "Mode:") $(tr_text "рабочее восстановление" "real restore")"
   paint "$CLR_MUTED" "  $(tr_text "Перезапуски:" "Restarts:") $([[ "$restore_no_restart" == "1" ]] && tr_text "отключены (--no-restart)" "disabled (--no-restart)" || tr_text "включены" "enabled")"
   if [[ -n "$ssh_password" ]]; then
     paint "$CLR_MUTED" "  $(tr_text "SSH аутентификация:" "SSH authentication:") $(tr_text "пароль" "password")"
@@ -854,9 +867,6 @@ true"
   if [[ -n "$remote_env_prefix" ]]; then
     remote_cmd="${remote_env_prefix} ${remote_cmd}"
   fi
-  if (( restore_dry_run == 1 )); then
-    remote_cmd="${remote_cmd} --dry-run"
-  fi
   if (( restore_no_restart == 1 )); then
     remote_cmd="${remote_cmd} --no-restart"
   fi
@@ -864,14 +874,7 @@ true"
     remote_cmd="BACKUP_PASSWORD=$(printf '%q' "$restore_password") ${remote_cmd}"
   fi
 
-  if (( restore_dry_run == 1 && auto_prepare_remote == 1 )) && [[ "$restore_only" == "bedolaga-db,bedolaga-redis,bedolaga-bot" || "$restore_only" == "bedolaga" || "$restore_only" == "all,bedolaga" || "$restore_only" == "bedolaga,all" ]]; then
-    paint "$CLR_WARN" "$(tr_text "Тестовый режим на пустом VPS не сможет проверить восстановление Bedolaga DB/Redis: контейнеры ещё не подняты." "Dry-run on an empty VPS cannot validate Bedolaga DB/Redis restore because the containers are not started yet.")"
-    paint "$CLR_MUTED" "$(tr_text "Используйте боевой режим с автоподготовкой или файловый сценарий без DB/Redis." "Use real mode with auto-prepare, or switch to a file-only scope without DB/Redis.")"
-    wait_for_enter
-    return 1
-  fi
-
-  if (( restore_dry_run == 0 && auto_prepare_remote == 1 )) && [[ "$restore_only" == "bedolaga-db,bedolaga-redis,bedolaga-bot" ]]; then
+  if (( auto_prepare_remote == 1 )) && [[ "$restore_only" == "bedolaga-db,bedolaga-redis,bedolaga-bot" ]]; then
     paint "$CLR_ACCENT" "$(tr_text "Пустой VPS: предварительно разворачиваю bot и поднимаю контейнеры перед восстановлением bot DB/Redis..." "Empty VPS: pre-seeding bot files and starting containers before bot DB/Redis restore...")"
     preseed_cmd="/usr/local/bin/panel-restore.sh --from $(printf '%q' "$remote_archive") --only bedolaga-bot --no-restart"
     if [[ -n "$remote_env_prefix" ]]; then
@@ -892,7 +895,7 @@ true"
     fi
   fi
 
-  if (( restore_dry_run == 0 && auto_prepare_remote == 1 )) && [[ "$restore_only" == "bedolaga" ]]; then
+  if (( auto_prepare_remote == 1 )) && [[ "$restore_only" == "bedolaga" ]]; then
     paint "$CLR_ACCENT" "$(tr_text "Пустой VPS: предварительно разворачиваю bot+cabinet и поднимаю контейнеры перед полным restore..." "Empty VPS: pre-seeding bot+cabinet and starting containers before full restore...")"
     preseed_cmd="/usr/local/bin/panel-restore.sh --from $(printf '%q' "$remote_archive") --only bedolaga-bot --only bedolaga-cabinet --no-restart"
     if [[ -n "$remote_env_prefix" ]]; then
@@ -913,7 +916,7 @@ true"
     fi
   fi
 
-  if (( restore_dry_run == 0 && auto_prepare_remote == 1 )) && ([[ "$restore_only" == "all,bedolaga" ]] || [[ "$restore_only" == "bedolaga,all" ]]); then
+  if (( auto_prepare_remote == 1 )) && ([[ "$restore_only" == "all,bedolaga" ]] || [[ "$restore_only" == "bedolaga,all" ]]); then
     paint "$CLR_ACCENT" "$(tr_text "Пустой VPS: предварительно разворачиваю Remnawave+Bedolaga конфиги и поднимаю контейнеры перед полным restore..." "Empty VPS: pre-seeding Remnawave+Bedolaga configs and starting containers before full restore...")"
     preseed_cmd="/usr/local/bin/panel-restore.sh --from $(printf '%q' "$remote_archive") --only env --only compose --only caddy --only subscription --only bedolaga-bot --only bedolaga-cabinet --no-restart"
     if [[ -n "$remote_env_prefix" ]]; then
@@ -941,7 +944,7 @@ true"
     return 1
   fi
 
-  if (( include_caddy == 1 && restore_dry_run == 0 )); then
+  if (( include_caddy == 1 )); then
     paint "$CLR_ACCENT" "$(tr_text "Поднимаю Caddy на новом VPS..." "Starting Caddy on the new VPS...")"
     caddy_up_cmd="set -e; docker network inspect remnawave-network >/dev/null 2>&1 || docker network create remnawave-network >/dev/null 2>&1 || true; cd $(printf '%q' "$remote_caddy_dir"); cfile=''; if [ -f docker-compose.yml ]; then cfile='docker-compose.yml'; elif [ -f docker-compose.caddy.yml ]; then cfile='docker-compose.caddy.yml'; elif [ -f compose.yaml ]; then cfile='compose.yaml'; elif [ -f compose.yml ]; then cfile='compose.yml'; fi; if [ -n \"\$cfile\" ]; then docker compose -f \"\$cfile\" up -d; else echo 'compose file not found in caddy dir'; exit 1; fi"
     if ! "${ssh_cmd[@]}" "$caddy_up_cmd"; then
@@ -949,12 +952,11 @@ true"
     fi
   fi
 
-  if (( restore_dry_run == 0 )); then
-    paint "$CLR_ACCENT" "$(tr_text "Проверяю состояние сервисов и последние логи на новом VPS..." "Checking service state and recent logs on the new VPS...")"
-    postcheck_cmd='
+  paint "$CLR_ACCENT" "$(tr_text "Проверяю состояние сервисов и последние логи на новом VPS..." "Checking service state and recent logs on the new VPS...")"
+  postcheck_cmd='
 set +e
 echo "============================================================"
-echo "  Post-check: Bedolaga stack"
+echo "  Service check: Bedolaga stack"
 echo "============================================================"
 for c in remnawave_bot_db remnawave_bot_redis remnawave_bot cabinet_frontend remnawave-caddy remnawave_caddy caddy; do
   st="$(docker inspect -f "{{.State.Status}}" "$c" 2>/dev/null || echo "not-found")"
@@ -984,9 +986,8 @@ for cc in remnawave-caddy remnawave_caddy caddy; do
   fi
 done
 '
-    if ! "${ssh_cmd[@]}" "$postcheck_cmd"; then
-      paint "$CLR_WARN" "$(tr_text "Постпроверка вернула ошибку. Проверьте SSH/логи вручную." "Post-check returned an error. Verify SSH/logs manually.")"
-    fi
+  if ! "${ssh_cmd[@]}" "$postcheck_cmd"; then
+    paint "$CLR_WARN" "$(tr_text "Проверка сервисов вернула ошибку. Проверьте SSH/логи вручную." "Service check returned an error. Verify SSH/logs manually.")"
   fi
 
   paint "$CLR_OK" "$(tr_text "Удалённая миграция завершена." "Remote migration completed.")"
@@ -1002,7 +1003,6 @@ run_restore_wizard_flow() {
 
   draw_restore_step "1" "4" "$(tr_text "Выбор источника архива" "Select backup source")"
   MODE="restore"
-  RESTORE_DRY_RUN=0
   RESTORE_NO_RESTART=0
   RESTORE_ONLY="$preset_restore_only"
   if ! select_restore_source; then
@@ -1016,8 +1016,8 @@ run_restore_wizard_flow() {
       bedolaga) preset_label="$(tr_text "полный Bedolaga (db + redis + бот + кабинет)" "full Bedolaga (db + redis + bot + cabinet)")" ;;
       all,bedolaga|bedolaga,all) preset_label="$(tr_text "полный (панель + бот + кабинет)" "full (panel + bot + cabinet)")" ;;
       bedolaga-bot,bedolaga-cabinet|bedolaga-cabinet,bedolaga-bot) preset_label="$(tr_text "миграция: бот + кабинет (без DB/Redis)" "migration: bot + cabinet (without DB/Redis)")" ;;
-      bedolaga-db,bedolaga-redis,bedolaga-bot|bedolaga-bot,bedolaga-db,bedolaga-redis) preset_label="$(tr_text "только бот Bedolaga (db + redis + bot)" "Bedolaga bot only (db + redis + bot)")" ;;
-      bedolaga-cabinet) preset_label="$(tr_text "только кабинет Bedolaga" "Bedolaga cabinet only")" ;;
+      bedolaga-db,bedolaga-redis,bedolaga-bot|bedolaga-bot,bedolaga-db,bedolaga-redis) preset_label="$(tr_text "бот Bedolaga полностью (db + redis + файлы)" "full Bedolaga bot (db + redis + files)")" ;;
+      bedolaga-cabinet) preset_label="$(tr_text "файлы кабинета Bedolaga" "Bedolaga cabinet files")" ;;
       *) preset_label="$preset_restore_only" ;;
     esac
     paint "$CLR_MUTED" "$(tr_text "Состав восстановления зафиксирован:" "Restore scope is locked:") ${preset_label}"
@@ -1031,23 +1031,9 @@ run_restore_wizard_flow() {
     return 1
   fi
 
-  draw_restore_step "3" "4" "$(tr_text "Параметры запуска" "Execution options")"
-  paint "$CLR_MUTED" "$(tr_text "Подсказка: тестовый режим только проверяет шаги, боевой режим реально применяет изменения." "Tip: test mode only validates steps, real mode actually applies changes.")"
+  draw_restore_step "3" "4" "$(tr_text "Перезапуски после восстановления" "Restarts after restore")"
+  paint "$CLR_MUTED" "$(tr_text "Меню восстановления запускает рабочее восстановление. Перед стартом будет отдельное подтверждение." "The restore menu runs a real restore. A separate confirmation is required before start.")"
   paint "$CLR_MUTED" "$(tr_text "Если отключить перезапуски, сервисы не будут автоматически перезапущены после восстановления." "If restarts are disabled, services will not be restarted automatically after restore.")"
-  while true; do
-    menu_option "1" "$(tr_text "Тестовый режим (без изменений, безопасно)" "Test mode (no changes, safe)")"
-    menu_option "2" "$(tr_text "Боевой режим (вносит изменения, риск)" "Real mode (applies changes, risk)")"
-    print_separator
-    read -r -p "$(tr_text "Выбор режима [1-2]: " "Select mode [1-2]: ")" choice
-    if is_back_command "$choice"; then
-      return 1
-    fi
-    case "$choice" in
-      1) RESTORE_DRY_RUN=1; break ;;
-      2) RESTORE_DRY_RUN=0; break ;;
-      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")" ;;
-    esac
-  done
 
   while true; do
     menu_option "1" "$(tr_text "Автоперезапуск после восстановления (быстрее)" "Auto-restart after restore (faster)")"
@@ -1073,12 +1059,10 @@ run_restore_wizard_flow() {
     wait_for_enter
     return 1
   fi
-  if [[ "$RESTORE_DRY_RUN" != "1" ]]; then
-    if ! confirm_restore_phrase; then
-      paint "$CLR_WARN" "$(tr_text "Подтверждение не пройдено. Восстановление отменено." "Confirmation failed. Restore cancelled.")"
-      wait_for_enter
-      return 1
-    fi
+  if ! confirm_restore_phrase; then
+    paint "$CLR_WARN" "$(tr_text "Подтверждение не пройдено. Восстановление отменено." "Confirmation failed. Restore cancelled.")"
+    wait_for_enter
+    return 1
   fi
   if [[ ! -x /usr/local/bin/panel-restore.sh ]]; then
     install_files
@@ -1461,6 +1445,10 @@ menu_section_timer_scope() {
             ;;
         esac
         [[ -n "$custom" ]] || continue
+        if ! validate_oncalendar_or_warn "$custom"; then
+          wait_for_enter
+          continue
+        fi
         if [[ "$scope" == "bedolaga" ]]; then
           BACKUP_ON_CALENDAR_BEDOLAGA="$custom"
         else
@@ -1489,25 +1477,27 @@ menu_section_status() {
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Проверка состояния скриптов, таймера и последних архивов." "Check scripts, timer and latest backup details.")"
     menu_option "1" "$(tr_text "Показать полный статус" "Show full status")"
-    menu_option "2" "$(tr_text "Анализ использования диска" "Analyze disk usage")"
-    menu_option "3" "$(tr_text "Безопасная очистка диска" "Safe disk cleanup")"
-    menu_option "4" "$(tr_text "Назад" "Back")"
+    menu_option "2" "$(tr_text "Doctor: быстрая проверка настроек" "Doctor: quick configuration check")"
+    menu_option "3" "$(tr_text "Анализ использования диска" "Analyze disk usage")"
+    menu_option "4" "$(tr_text "Безопасная очистка диска" "Safe disk cleanup")"
+    menu_option "5" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
     case "$choice" in
       1) show_status; wait_for_enter ;;
-      2) show_disk_usage_top; wait_for_enter ;;
-      3)
+      2) run_doctor_checks || true; wait_for_enter ;;
+      3) show_disk_usage_top; wait_for_enter ;;
+      4)
         show_safe_cleanup_preview
         if ask_yes_no "$(tr_text "Запустить безопасную очистку сейчас?" "Run safe cleanup now?")" "n"; then
           run_safe_cleanup
         fi
         wait_for_enter
         ;;
-      4) break ;;
+      5) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
@@ -1521,25 +1511,16 @@ interactive_menu() {
   choose_ui_lang
 
   while true; do
-    draw_header "$(tr_text "Главное меню" "Main menu")"
-    show_back_hint
-    paint "$CLR_TITLE" "============================================================"
-    paint "$CLR_ACCENT" "  $(tr_text "Раздел 1. Бот и кабинет" "Section 1. Bot and cabinet")"
-    paint "$CLR_TITLE" "------------------------------------------------------------"
-    menu_option "1" "$(tr_text "Меню Bedolaga: бот + кабинет" "Bedolaga menu: bot + cabinet")"
-    paint "$CLR_TITLE" "============================================================"
-    paint "$CLR_ACCENT" "  $(tr_text "Раздел 2. Панель и нода" "Section 2. Panel and node")"
-    paint "$CLR_TITLE" "------------------------------------------------------------"
-    menu_option "2" "$(tr_text "Панель Remnawave и подписки" "Remnawave panel and subscriptions")"
-    menu_option "3" "$(tr_text "Нода RemnaNode и сеть" "RemnaNode and network")"
-    paint "$CLR_TITLE" "============================================================"
-    paint "$CLR_ACCENT" "  $(tr_text "Сервисные инструменты" "Service tools")"
-    paint "$CLR_TITLE" "------------------------------------------------------------"
-    menu_option "4" "$(tr_text "Статус и диагностика" "Status and diagnostics")"
-    paint "$CLR_TITLE" "============================================================"
+    draw_header "$(tr_text "Panel Backup Manager" "Panel Backup Manager")"
+    paint "$CLR_ACCENT" "  $(tr_text "Основные разделы" "Main sections")"
+    print_separator
+    menu_option "1" "$(tr_text "Bedolaga: бот, кабинет, backup, миграция" "Bedolaga: bot, cabinet, backup, migration")"
+    menu_option "2" "$(tr_text "Remnawave: панель, подписки, backup" "Remnawave: panel, subscription page, backup")"
+    menu_option "3" "$(tr_text "RemnaNode: нода, Caddy, BBR, WARP" "RemnaNode: node, Caddy, BBR, WARP")"
+    menu_option "4" "$(tr_text "Статус, логи, диск, очистка" "Status, logs, disk, cleanup")"
     menu_option "0" "$(tr_text "Выход" "Exit")" "$CLR_DANGER"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-4/0]: " "Choice [1-4/0]: ")" action
+    read -r -p "$(tr_text "Выбор [1-4, 0 выход]: " "Choice [1-4, 0 exit]: ")" action
     if is_back_command "$action"; then
       echo "$(tr_text "Выход." "Cancelled.")"
       break
@@ -1555,7 +1536,8 @@ interactive_menu() {
         break
         ;;
       *)
-        echo "$(tr_text "Некорректный выбор." "Invalid choice.")"
+        paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"
+        wait_for_enter
         ;;
     esac
   done

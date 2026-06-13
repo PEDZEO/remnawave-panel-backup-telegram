@@ -6,10 +6,11 @@ REMNAWAVE_DIR="${REMNAWAVE_DIR:-}"
 BEDOLAGA_BOT_DIR="${BEDOLAGA_BOT_DIR:-}"
 BEDOLAGA_CABINET_DIR="${BEDOLAGA_CABINET_DIR:-}"
 PRE_RESTORE_BACKUP_ROOT="${PRE_RESTORE_BACKUP_ROOT:-/var/backups/panel-restore-pre}"
+RESTORE_ALLOW_NO_SNAPSHOT="${RESTORE_ALLOW_NO_SNAPSHOT:-0}"
 BACKUP_ENV_PATH="${BACKUP_ENV_PATH:-/etc/panel-backup.env}"
+PBM_DEEP_AUTODETECT="${PBM_DEEP_AUTODETECT:-0}"
 BACKUP_PASSWORD="${BACKUP_PASSWORD:-}"
 NO_RESTART=0
-DRY_RUN=0
 ARCHIVE_PATH=""
 declare -a ONLY_RAW=()
 declare -A WANT=()
@@ -17,7 +18,7 @@ declare -A WANT=()
 usage() {
   cat <<USAGE
 Usage:
-  panel-restore.sh --from /path/to/panel-backup-*.tar.gz|*.tar.gz.gpg [--only COMPONENT] [--dry-run] [--no-restart]
+  panel-restore.sh --from /path/to/panel-backup-*.tar.gz|*.tar.gz.gpg [--only COMPONENT] [--no-restart]
 
 Components:
   all               restore panel stack (db + redis + env + compose + caddy + subscription)
@@ -38,14 +39,224 @@ Components:
 Examples:
   sudo /usr/local/bin/panel-restore.sh --from /var/backups/panel/panel-backup-host-20260219T120000Z.tar.gz
   sudo /usr/local/bin/panel-restore.sh --from /var/backups/panel/panel-backup-host-20260219T120000Z.tar.gz.gpg --only db --only redis
-  sudo /usr/local/bin/panel-restore.sh --from /var/backups/panel/panel-backup-host-20260219T120000Z.tar.gz --only configs --dry-run
   sudo /usr/local/bin/panel-restore.sh --from /var/backups/panel/pb-0221-120000.tar.gz --only all,bedolaga
 USAGE
 }
 
 log() {
   echo "$*"
-  logger -t panel-restore "$*"
+  if command -v logger >/dev/null 2>&1; then
+    logger -t panel-restore "$*" || true
+  fi
+}
+
+run_cmd() {
+  "$@"
+}
+
+run_quiet_allow_fail() {
+  "$@" >/dev/null 2>&1 || true
+}
+
+run_compose_up() {
+  local dir="$1"
+  (cd "$dir" && docker compose up -d)
+}
+
+replace_dir() {
+  local source_dir="$1"
+  local target_dir="$2"
+  local target_parent=""
+  local target_base=""
+  local staged_dir=""
+  local old_dir=""
+
+  target_parent="$(dirname "$target_dir")"
+  target_base="$(basename "$target_dir")"
+  mkdir -p "$target_parent"
+
+  staged_dir="$(mktemp -d "${target_parent}/.${target_base}.restore.XXXXXX")"
+  if ! cp -a "${source_dir}/." "${staged_dir}/"; then
+    rm -rf "$staged_dir"
+    return 1
+  fi
+
+  if [[ -e "$target_dir" || -L "$target_dir" ]]; then
+    old_dir="$(mktemp -d "${target_parent}/.${target_base}.old.XXXXXX")"
+    rmdir "$old_dir"
+    if ! mv "$target_dir" "$old_dir"; then
+      rm -rf "$staged_dir"
+      return 1
+    fi
+  fi
+
+  if ! mv "$staged_dir" "$target_dir"; then
+    if [[ -n "$old_dir" && -e "$old_dir" ]]; then
+      mv "$old_dir" "$target_dir" >/dev/null 2>&1 || true
+    fi
+    rm -rf "$staged_dir"
+    return 1
+  fi
+
+  [[ -n "$old_dir" ]] && rm -rf "$old_dir"
+}
+
+abort_pre_restore_snapshot_failure() {
+  local label="$1"
+  local archive_path="$2"
+
+  if [[ "${RESTORE_ALLOW_NO_SNAPSHOT:-0}" == "1" ]]; then
+    log "WARNING: ${label} pre-restore snapshot failed, continuing because RESTORE_ALLOW_NO_SNAPSHOT=1"
+    return 0
+  fi
+
+  echo "ERROR: ${label} pre-restore snapshot failed: ${archive_path}" >&2
+  echo "Restore was stopped before changing data. Set RESTORE_ALLOW_NO_SNAPSHOT=1 to bypass this guard." >&2
+  exit 1
+}
+
+create_pre_restore_snapshot() {
+  local archive_path="$1"
+  local source_dir="$2"
+  shift 2
+  local entries=()
+  local entry=""
+
+  for entry in "$@"; do
+    [[ -e "${source_dir}/${entry}" ]] && entries+=("$entry")
+  done
+
+  if [[ ${#entries[@]} -eq 0 ]]; then
+    log "WARNING: pre-restore snapshot skipped, no files found in ${source_dir}"
+    return 0
+  fi
+
+  tar -czf "$archive_path" -C "$source_dir" "${entries[@]}"
+}
+
+restore_redis_dump() {
+  local dump_path="$1"
+  local container_name="$2"
+  local label="$3"
+
+  log "Stop ${label}"
+  docker stop "$container_name" >/dev/null 2>&1 || true
+  docker cp "$dump_path" "${container_name}:/data/dump.rdb"
+  docker start "$container_name" >/dev/null
+}
+
+validate_restore_target_dir() {
+  local path="$1"
+  local label="$2"
+  local trimmed=""
+
+  [[ -n "$path" ]] || return 0
+  case "$path" in
+    *[[:space:]]*|*"'"*|*'"'*|*'`'*|*'$'*|*\\*|*';'*|*'&'*|*'|'*|*'<'*|*'>'*)
+      echo "Unsafe ${label}: path contains whitespace or shell characters: $path" >&2
+      exit 1
+      ;;
+    *'/../'*|*'/..'|*'/./'*|*'/.')
+      echo "Unsafe ${label}: path contains . or .. segments: $path" >&2
+      exit 1
+      ;;
+  esac
+  if [[ "$path" != /* ]]; then
+    echo "Unsafe ${label}: path must be absolute: $path" >&2
+    exit 1
+  fi
+  trimmed="${path%/}"
+  [[ -n "$trimmed" ]] || trimmed="/"
+  case "$trimmed" in
+    /|/bin|/boot|/dev|/etc|/home|/lib|/lib64|/opt|/proc|/root|/run|/sbin|/srv|/sys|/tmp|/usr|/var)
+      echo "Unsafe ${label}: refusing to use system directory as restore target: $path" >&2
+      exit 1
+      ;;
+  esac
+  case "$path" in
+    *$'\n'*|*$'\r'*)
+      echo "Unsafe ${label}: path contains a newline" >&2
+      exit 1
+      ;;
+  esac
+}
+
+normalize_restore_target_dir() {
+  local path="$1"
+  path="${path%/}"
+  [[ -n "$path" ]] || path="/"
+  printf '%s' "$path"
+}
+
+validate_restore_target_pair_distinct() {
+  local label_a="$1"
+  local path_a="$2"
+  local label_b="$3"
+  local path_b="$4"
+  local norm_a=""
+  local norm_b=""
+
+  [[ -n "$path_a" && -n "$path_b" ]] || return 0
+  norm_a="$(normalize_restore_target_dir "$path_a")"
+  norm_b="$(normalize_restore_target_dir "$path_b")"
+
+  if [[ "$norm_a" == "$norm_b" || "$norm_a" == "$norm_b/"* || "$norm_b" == "$norm_a/"* ]]; then
+    echo "Unsafe restore targets: ${label_a} (${norm_a}) and ${label_b} (${norm_b}) overlap" >&2
+    exit 1
+  fi
+}
+
+validate_restore_target_collisions() {
+  if (( need_remnawave_dir == 1 && need_bedolaga_bot_dir == 1 )); then
+    validate_restore_target_pair_distinct "REMNAWAVE_DIR" "$REMNAWAVE_DIR" "BEDOLAGA_BOT_DIR" "$BEDOLAGA_BOT_DIR"
+  fi
+  if (( need_remnawave_dir == 1 && need_bedolaga_cabinet_dir == 1 )); then
+    validate_restore_target_pair_distinct "REMNAWAVE_DIR" "$REMNAWAVE_DIR" "BEDOLAGA_CABINET_DIR" "$BEDOLAGA_CABINET_DIR"
+  fi
+  if (( need_bedolaga_bot_dir == 1 && need_bedolaga_cabinet_dir == 1 )); then
+    validate_restore_target_pair_distinct "BEDOLAGA_BOT_DIR" "$BEDOLAGA_BOT_DIR" "BEDOLAGA_CABINET_DIR" "$BEDOLAGA_CABINET_DIR"
+  fi
+}
+
+validate_archive_members() {
+  local archive_path="$1"
+  local member=""
+  local listing_path="$TMP_DIR/archive-members.txt"
+
+  if ! tar -tzf "$archive_path" > "$listing_path"; then
+    echo "Cannot list archive members: ${archive_path}" >&2
+    exit 1
+  fi
+
+  while IFS= read -r member; do
+    case "$member" in
+      ""|/*|../*|*/../*|*/..|..)
+        echo "Unsafe archive member path: ${member}" >&2
+        exit 1
+        ;;
+    esac
+  done < "$listing_path"
+}
+
+verify_archive_checksum_if_present() {
+  local archive_path="$1"
+  local checksum_path="${archive_path}.sha256"
+  local archive_dir=""
+  local checksum_name=""
+
+  [[ -f "$checksum_path" ]] || return 0
+  command -v sha256sum >/dev/null 2>&1 || {
+    echo "Checksum file exists, but sha256sum command is missing: ${checksum_path}" >&2
+    exit 1
+  }
+
+  archive_dir="$(dirname "$archive_path")"
+  checksum_name="$(basename "$checksum_path")"
+  log "Verify checksum: ${checksum_path}"
+  if ! (cd "$archive_dir" && sha256sum -c "$checksum_name"); then
+    echo "Checksum verification failed: ${checksum_path}" >&2
+    exit 1
+  fi
 }
 
 detect_remnawave_dir() {
@@ -150,8 +361,10 @@ detect_bedolaga_bot_dir() {
     return 0
   fi
 
-  guessed="$(find / -xdev -type d -name 'remnawave-bedolaga-telegram-bot' 2>/dev/null | while read -r d; do is_bedolaga_bot_dir "$d" || continue; echo "$d"; break; done)"
-  [[ -n "$guessed" ]] && echo "$guessed"
+  if [[ "${PBM_DEEP_AUTODETECT:-0}" == "1" ]]; then
+    guessed="$(find / -xdev -type d -name 'remnawave-bedolaga-telegram-bot' 2>/dev/null | while read -r d; do is_bedolaga_bot_dir "$d" || continue; echo "$d"; break; done)"
+    [[ -n "$guessed" ]] && echo "$guessed"
+  fi
 }
 
 detect_bedolaga_cabinet_dir() {
@@ -201,15 +414,9 @@ detect_bedolaga_cabinet_dir() {
     return 0
   fi
 
-  guessed="$(find / -xdev -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' -o -name 'bedolaga-cabine' \) 2>/dev/null | while read -r d; do is_bedolaga_cabinet_dir "$d" || continue; echo "$d"; break; done)"
-  [[ -n "$guessed" ]] && echo "$guessed"
-}
-
-run_cmd() {
-  if (( DRY_RUN == 1 )); then
-    echo "[dry-run] $*"
-  else
-    eval "$*"
+  if [[ "${PBM_DEEP_AUTODETECT:-0}" == "1" ]]; then
+    guessed="$(find / -xdev -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' -o -name 'bedolaga-cabine' \) 2>/dev/null | while read -r d; do is_bedolaga_cabinet_dir "$d" || continue; echo "$d"; break; done)"
+    [[ -n "$guessed" ]] && echo "$guessed"
   fi
 }
 
@@ -223,11 +430,7 @@ backup_info_value() {
 ensure_dir() {
   local path="$1"
   [[ -n "$path" ]] || return 0
-  if (( DRY_RUN == 1 )); then
-    echo "[dry-run] mkdir -p \"$path\""
-  else
-    mkdir -p "$path"
-  fi
+  mkdir -p "$path"
 }
 
 container_exists() {
@@ -287,10 +490,6 @@ while [[ $# -gt 0 ]]; do
     --only)
       ONLY_RAW+=("${2:-}")
       shift 2
-      ;;
-    --dry-run)
-      DRY_RUN=1
-      shift
       ;;
     --no-restart)
       NO_RESTART=1
@@ -354,23 +553,20 @@ trap cleanup EXIT
 EXTRACT_DIR="$TMP_DIR/extracted"
 mkdir -p "$EXTRACT_DIR"
 
+verify_archive_checksum_if_present "$ARCHIVE_PATH"
+
 ARCHIVE_TO_EXTRACT="$ARCHIVE_PATH"
 if [[ "$ARCHIVE_PATH" == *.gpg ]]; then
   [[ -n "${BACKUP_PASSWORD:-}" ]] || { echo "BACKUP_PASSWORD is required for encrypted archive" >&2; exit 1; }
   command -v gpg >/dev/null 2>&1 || { echo "gpg command is required for encrypted archive" >&2; exit 1; }
   ARCHIVE_TO_EXTRACT="$TMP_DIR/decrypted.tar.gz"
   log "Decrypt archive: $ARCHIVE_PATH"
-  if (( DRY_RUN == 1 )); then
-    echo "[dry-run] gpg --batch --yes --pinentry-mode loopback --passphrase ***** --decrypt \"$ARCHIVE_PATH\" > \"$ARCHIVE_TO_EXTRACT\""
-  fi
   gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_PASSWORD" \
     --decrypt "$ARCHIVE_PATH" > "$ARCHIVE_TO_EXTRACT"
 fi
 
 log "Extract archive: $ARCHIVE_TO_EXTRACT"
-if (( DRY_RUN == 1 )); then
-  echo "[dry-run] tar -xzf \"$ARCHIVE_TO_EXTRACT\" -C \"$EXTRACT_DIR\""
-fi
+validate_archive_members "$ARCHIVE_TO_EXTRACT"
 tar -xzf "$ARCHIVE_TO_EXTRACT" -C "$EXTRACT_DIR"
 
 DB_DUMP="$EXTRACT_DIR/remnawave-db.dump"
@@ -414,6 +610,7 @@ if (( need_remnawave_dir == 1 )); then
   fi
   [[ -n "$REMNAWAVE_DIR" ]] || REMNAWAVE_DIR="$BACKUP_REMNAWAVE_DIR"
   [[ -n "$REMNAWAVE_DIR" ]] || { echo "Cannot detect remnawave dir. Set REMNAWAVE_DIR or restore archive with backup-info.txt" >&2; exit 1; }
+  validate_restore_target_dir "$REMNAWAVE_DIR" "REMNAWAVE_DIR"
   [[ -d "$REMNAWAVE_DIR" ]] && remnawave_dir_existed=1
   ensure_dir "$REMNAWAVE_DIR"
 fi
@@ -428,6 +625,7 @@ if (( need_bedolaga_bot_dir == 1 )); then
   fi
   [[ -n "$BEDOLAGA_BOT_DIR" ]] || BEDOLAGA_BOT_DIR="$BACKUP_BEDOLAGA_BOT_DIR"
   [[ -n "$BEDOLAGA_BOT_DIR" ]] || { echo "Cannot detect Bedolaga bot dir. Set BEDOLAGA_BOT_DIR or restore archive with backup-info.txt" >&2; exit 1; }
+  validate_restore_target_dir "$BEDOLAGA_BOT_DIR" "BEDOLAGA_BOT_DIR"
   [[ -d "$BEDOLAGA_BOT_DIR" ]] && bedolaga_bot_dir_existed=1
   ensure_dir "$BEDOLAGA_BOT_DIR"
 fi
@@ -442,9 +640,12 @@ if (( need_bedolaga_cabinet_dir == 1 )); then
   fi
   [[ -n "$BEDOLAGA_CABINET_DIR" ]] || BEDOLAGA_CABINET_DIR="$BACKUP_BEDOLAGA_CABINET_DIR"
   [[ -n "$BEDOLAGA_CABINET_DIR" ]] || { echo "Cannot detect Bedolaga cabinet dir. Set BEDOLAGA_CABINET_DIR or restore archive with backup-info.txt" >&2; exit 1; }
+  validate_restore_target_dir "$BEDOLAGA_CABINET_DIR" "BEDOLAGA_CABINET_DIR"
   [[ -d "$BEDOLAGA_CABINET_DIR" ]] && bedolaga_cabinet_dir_existed=1
   ensure_dir "$BEDOLAGA_CABINET_DIR"
 fi
+
+validate_restore_target_collisions
 
 if component_selected db && ! container_exists remnawave-db; then
   echo "Container remnawave-db not found, cannot restore PostgreSQL dump" >&2
@@ -463,9 +664,7 @@ if component_selected bedolaga-redis && ! container_exists remnawave_bot_redis; 
   exit 1
 fi
 
-if (( DRY_RUN == 0 )); then
-  mkdir -p "$PRE_RESTORE_BACKUP_ROOT"
-fi
+mkdir -p "$PRE_RESTORE_BACKUP_ROOT"
 
 PRESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 PRE_ARCHIVE_PANEL="${PRE_RESTORE_BACKUP_ROOT}/pre-restore-panel-${PRESTAMP}.tar.gz"
@@ -474,34 +673,22 @@ PRE_ARCHIVE_BEDOLAGA_CABINET="${PRE_RESTORE_BACKUP_ROOT}/pre-restore-bedolaga-ca
 
 if (( need_remnawave_dir == 1 && remnawave_dir_existed == 1 )); then
   log "Create pre-restore snapshot: $PRE_ARCHIVE_PANEL"
-  if (( DRY_RUN == 1 )); then
-    echo "[dry-run] tar -czf \"$PRE_ARCHIVE_PANEL\" -C \"$REMNAWAVE_DIR\" .env docker-compose.yml caddy subscription"
-  else
-    if ! tar -czf "$PRE_ARCHIVE_PANEL" -C "$REMNAWAVE_DIR" .env docker-compose.yml caddy subscription 2>/dev/null; then
-      log "WARNING: panel pre-restore snapshot failed, restore will continue"
-    fi
+  if ! create_pre_restore_snapshot "$PRE_ARCHIVE_PANEL" "$REMNAWAVE_DIR" .env docker-compose.yml caddy subscription; then
+    abort_pre_restore_snapshot_failure "panel" "$PRE_ARCHIVE_PANEL"
   fi
 fi
 
 if (( need_bedolaga_bot_dir == 1 && bedolaga_bot_dir_existed == 1 )); then
   log "Create pre-restore snapshot: $PRE_ARCHIVE_BEDOLAGA_BOT"
-  if (( DRY_RUN == 1 )); then
-    echo "[dry-run] tar -czf \"$PRE_ARCHIVE_BEDOLAGA_BOT\" -C \"$BEDOLAGA_BOT_DIR\" .env docker-compose.yml docker-compose.override.yml data logs locales vpn_logo.png"
-  else
-    if ! tar -czf "$PRE_ARCHIVE_BEDOLAGA_BOT" -C "$BEDOLAGA_BOT_DIR" .env docker-compose.yml docker-compose.override.yml data logs locales vpn_logo.png 2>/dev/null; then
-      log "WARNING: bedolaga bot pre-restore snapshot failed, restore will continue"
-    fi
+  if ! create_pre_restore_snapshot "$PRE_ARCHIVE_BEDOLAGA_BOT" "$BEDOLAGA_BOT_DIR" .env docker-compose.yml docker-compose.override.yml data logs locales vpn_logo.png; then
+    abort_pre_restore_snapshot_failure "bedolaga bot" "$PRE_ARCHIVE_BEDOLAGA_BOT"
   fi
 fi
 
 if (( need_bedolaga_cabinet_dir == 1 && bedolaga_cabinet_dir_existed == 1 )); then
   log "Create pre-restore snapshot: $PRE_ARCHIVE_BEDOLAGA_CABINET"
-  if (( DRY_RUN == 1 )); then
-    echo "[dry-run] tar -czf \"$PRE_ARCHIVE_BEDOLAGA_CABINET\" -C \"$BEDOLAGA_CABINET_DIR\" .env docker-compose.yml docker-compose.override.yml"
-  else
-    if ! tar -czf "$PRE_ARCHIVE_BEDOLAGA_CABINET" -C "$BEDOLAGA_CABINET_DIR" .env docker-compose.yml docker-compose.override.yml 2>/dev/null; then
-      log "WARNING: bedolaga cabinet pre-restore snapshot failed, restore will continue"
-    fi
+  if ! create_pre_restore_snapshot "$PRE_ARCHIVE_BEDOLAGA_CABINET" "$BEDOLAGA_CABINET_DIR" .env docker-compose.yml docker-compose.override.yml; then
+    abort_pre_restore_snapshot_failure "bedolaga cabinet" "$PRE_ARCHIVE_BEDOLAGA_CABINET"
   fi
 fi
 
@@ -542,147 +729,138 @@ fi
 if component_selected env; then
   [[ -f "${SRC_REMNAWAVE}/.env" ]] || { echo "Missing remnawave/.env in archive" >&2; exit 1; }
   log "Restore env -> ${REMNAWAVE_DIR}/.env"
-  run_cmd "cp -af \"${SRC_REMNAWAVE}/.env\" \"${REMNAWAVE_DIR}/.env\""
+  run_cmd cp -af "${SRC_REMNAWAVE}/.env" "${REMNAWAVE_DIR}/.env"
 fi
 
 if component_selected compose; then
   [[ -f "${SRC_REMNAWAVE}/docker-compose.yml" ]] || { echo "Missing remnawave/docker-compose.yml in archive" >&2; exit 1; }
   log "Restore compose -> ${REMNAWAVE_DIR}/docker-compose.yml"
-  run_cmd "cp -af \"${SRC_REMNAWAVE}/docker-compose.yml\" \"${REMNAWAVE_DIR}/docker-compose.yml\""
+  run_cmd cp -af "${SRC_REMNAWAVE}/docker-compose.yml" "${REMNAWAVE_DIR}/docker-compose.yml"
 fi
 
 if component_selected caddy; then
-  [[ -d "${SRC_REMNAWAVE}/caddy" ]] || { echo "Missing remnawave/caddy in archive" >&2; exit 1; }
-  log "Restore caddy dir -> ${REMNAWAVE_DIR}/caddy"
-  run_cmd "rm -rf \"${REMNAWAVE_DIR}/caddy\" && cp -a \"${SRC_REMNAWAVE}/caddy\" \"${REMNAWAVE_DIR}/caddy\""
+  if [[ -d "${SRC_REMNAWAVE}/caddy" ]]; then
+    log "Restore caddy dir -> ${REMNAWAVE_DIR}/caddy"
+    replace_dir "${SRC_REMNAWAVE}/caddy" "${REMNAWAVE_DIR}/caddy"
+  else
+    log "WARNING: remnawave/caddy is missing in archive, skipping caddy restore"
+  fi
 fi
 
 if component_selected subscription; then
-  [[ -d "${SRC_REMNAWAVE}/subscription" ]] || { echo "Missing remnawave/subscription in archive" >&2; exit 1; }
-  log "Restore subscription dir -> ${REMNAWAVE_DIR}/subscription"
-  run_cmd "rm -rf \"${REMNAWAVE_DIR}/subscription\" && cp -a \"${SRC_REMNAWAVE}/subscription\" \"${REMNAWAVE_DIR}/subscription\""
+  if [[ -d "${SRC_REMNAWAVE}/subscription" ]]; then
+    log "Restore subscription dir -> ${REMNAWAVE_DIR}/subscription"
+    replace_dir "${SRC_REMNAWAVE}/subscription" "${REMNAWAVE_DIR}/subscription"
+  else
+    log "WARNING: remnawave/subscription is missing in archive, skipping subscription restore"
+  fi
 fi
 
 if component_selected db; then
   [[ -f "$DB_DUMP" ]] || { echo "Missing remnawave-db.dump in archive" >&2; exit 1; }
   [[ -n "$POSTGRES_USER" && -n "$POSTGRES_DB" ]] || { echo "Cannot detect POSTGRES_USER/POSTGRES_DB" >&2; exit 1; }
   log "Restore PostgreSQL -> db=${POSTGRES_DB}, user=${POSTGRES_USER}"
-  if (( DRY_RUN == 1 )); then
-    echo "[dry-run] docker exec -i remnawave-db pg_restore -U $POSTGRES_USER -d $POSTGRES_DB --clean --if-exists --no-owner --no-privileges < $DB_DUMP"
-  else
-    docker exec -i remnawave-db pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner --no-privileges < "$DB_DUMP"
-  fi
+  docker exec -i remnawave-db pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner --no-privileges < "$DB_DUMP"
 fi
 
 if component_selected redis; then
   [[ -f "$REDIS_DUMP" ]] || { echo "Missing remnawave-redis.rdb in archive" >&2; exit 1; }
   log "Restore Redis dump"
-  run_cmd "docker cp \"$REDIS_DUMP\" remnawave-redis:/data/dump.rdb"
+  restore_redis_dump "$REDIS_DUMP" remnawave-redis "remnawave-redis"
 fi
 
 if component_selected bedolaga-bot; then
   [[ -d "$SRC_BEDOLAGA_BOT" ]] || { echo "Missing bedolaga/bot in archive" >&2; exit 1; }
   log "Restore Bedolaga bot files -> ${BEDOLAGA_BOT_DIR}"
-  run_cmd "mkdir -p \"${BEDOLAGA_BOT_DIR}\""
+  run_cmd mkdir -p "${BEDOLAGA_BOT_DIR}"
 
-  [[ -f "${SRC_BEDOLAGA_BOT}/.env" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_BOT}/.env\" \"${BEDOLAGA_BOT_DIR}/.env\""
-  [[ -f "${SRC_BEDOLAGA_BOT}/docker-compose.yml" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_BOT}/docker-compose.yml\" \"${BEDOLAGA_BOT_DIR}/docker-compose.yml\""
-  [[ -f "${SRC_BEDOLAGA_BOT}/docker-compose.override.yml" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_BOT}/docker-compose.override.yml\" \"${BEDOLAGA_BOT_DIR}/docker-compose.override.yml\""
-  [[ -f "${SRC_BEDOLAGA_BOT}/vpn_logo.png" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_BOT}/vpn_logo.png\" \"${BEDOLAGA_BOT_DIR}/vpn_logo.png\""
+  [[ -f "${SRC_BEDOLAGA_BOT}/.env" ]] && run_cmd cp -af "${SRC_BEDOLAGA_BOT}/.env" "${BEDOLAGA_BOT_DIR}/.env"
+  [[ -f "${SRC_BEDOLAGA_BOT}/docker-compose.yml" ]] && run_cmd cp -af "${SRC_BEDOLAGA_BOT}/docker-compose.yml" "${BEDOLAGA_BOT_DIR}/docker-compose.yml"
+  [[ -f "${SRC_BEDOLAGA_BOT}/docker-compose.override.yml" ]] && run_cmd cp -af "${SRC_BEDOLAGA_BOT}/docker-compose.override.yml" "${BEDOLAGA_BOT_DIR}/docker-compose.override.yml"
+  [[ -f "${SRC_BEDOLAGA_BOT}/vpn_logo.png" ]] && run_cmd cp -af "${SRC_BEDOLAGA_BOT}/vpn_logo.png" "${BEDOLAGA_BOT_DIR}/vpn_logo.png"
 
-  [[ -d "${SRC_BEDOLAGA_BOT}/data" ]] && run_cmd "mkdir -p \"${BEDOLAGA_BOT_DIR}/data\" && cp -a \"${SRC_BEDOLAGA_BOT}/data/.\" \"${BEDOLAGA_BOT_DIR}/data/\""
-  [[ -d "${SRC_BEDOLAGA_BOT}/logs" ]] && run_cmd "rm -rf \"${BEDOLAGA_BOT_DIR}/logs\" && cp -a \"${SRC_BEDOLAGA_BOT}/logs\" \"${BEDOLAGA_BOT_DIR}/logs\""
-  [[ -d "${SRC_BEDOLAGA_BOT}/locales" ]] && run_cmd "rm -rf \"${BEDOLAGA_BOT_DIR}/locales\" && cp -a \"${SRC_BEDOLAGA_BOT}/locales\" \"${BEDOLAGA_BOT_DIR}/locales\""
-  run_cmd "mkdir -p \"${BEDOLAGA_BOT_DIR}/logs\" \"${BEDOLAGA_BOT_DIR}/data\" \"${BEDOLAGA_BOT_DIR}/data/backups\" \"${BEDOLAGA_BOT_DIR}/data/referral_qr\""
-  run_cmd "touch \"${BEDOLAGA_BOT_DIR}/logs/bot.log\""
-  run_cmd "chown -R 1000:1000 \"${BEDOLAGA_BOT_DIR}/logs\" \"${BEDOLAGA_BOT_DIR}/data\" >/dev/null 2>&1 || true"
-  run_cmd "chmod -R 755 \"${BEDOLAGA_BOT_DIR}/logs\" \"${BEDOLAGA_BOT_DIR}/data\" >/dev/null 2>&1 || true"
+  if [[ -d "${SRC_BEDOLAGA_BOT}/data" ]]; then
+    run_cmd mkdir -p "${BEDOLAGA_BOT_DIR}/data"
+    run_cmd cp -a "${SRC_BEDOLAGA_BOT}/data/." "${BEDOLAGA_BOT_DIR}/data/"
+  fi
+  [[ -d "${SRC_BEDOLAGA_BOT}/logs" ]] && replace_dir "${SRC_BEDOLAGA_BOT}/logs" "${BEDOLAGA_BOT_DIR}/logs"
+  [[ -d "${SRC_BEDOLAGA_BOT}/locales" ]] && replace_dir "${SRC_BEDOLAGA_BOT}/locales" "${BEDOLAGA_BOT_DIR}/locales"
+  run_cmd mkdir -p "${BEDOLAGA_BOT_DIR}/logs" "${BEDOLAGA_BOT_DIR}/data" "${BEDOLAGA_BOT_DIR}/data/backups" "${BEDOLAGA_BOT_DIR}/data/referral_qr"
+  run_cmd touch "${BEDOLAGA_BOT_DIR}/logs/bot.log"
+  run_quiet_allow_fail chown -R 1000:1000 "${BEDOLAGA_BOT_DIR}/logs" "${BEDOLAGA_BOT_DIR}/data"
+  run_quiet_allow_fail chmod -R 755 "${BEDOLAGA_BOT_DIR}/logs" "${BEDOLAGA_BOT_DIR}/data"
 fi
 
 if component_selected bedolaga-cabinet; then
   [[ -d "$SRC_BEDOLAGA_CABINET" ]] || { echo "Missing bedolaga/cabinet in archive" >&2; exit 1; }
   log "Restore Bedolaga cabinet files -> ${BEDOLAGA_CABINET_DIR}"
-  run_cmd "mkdir -p \"${BEDOLAGA_CABINET_DIR}\""
+  run_cmd mkdir -p "${BEDOLAGA_CABINET_DIR}"
 
-  [[ -f "${SRC_BEDOLAGA_CABINET}/.env" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_CABINET}/.env\" \"${BEDOLAGA_CABINET_DIR}/.env\""
-  [[ -f "${SRC_BEDOLAGA_CABINET}/docker-compose.yml" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_CABINET}/docker-compose.yml\" \"${BEDOLAGA_CABINET_DIR}/docker-compose.yml\""
-  [[ -f "${SRC_BEDOLAGA_CABINET}/docker-compose.override.yml" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_CABINET}/docker-compose.override.yml\" \"${BEDOLAGA_CABINET_DIR}/docker-compose.override.yml\""
-  [[ -f "${SRC_BEDOLAGA_CABINET}/package.json" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_CABINET}/package.json\" \"${BEDOLAGA_CABINET_DIR}/package.json\""
-  [[ -f "${SRC_BEDOLAGA_CABINET}/package-lock.json" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_CABINET}/package-lock.json\" \"${BEDOLAGA_CABINET_DIR}/package-lock.json\""
-  [[ -f "${SRC_BEDOLAGA_CABINET}/yarn.lock" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_CABINET}/yarn.lock\" \"${BEDOLAGA_CABINET_DIR}/yarn.lock\""
-  [[ -f "${SRC_BEDOLAGA_CABINET}/pnpm-lock.yaml" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_CABINET}/pnpm-lock.yaml\" \"${BEDOLAGA_CABINET_DIR}/pnpm-lock.yaml\""
-  [[ -f "${SRC_BEDOLAGA_CABINET}/npm-shrinkwrap.json" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_CABINET}/npm-shrinkwrap.json\" \"${BEDOLAGA_CABINET_DIR}/npm-shrinkwrap.json\""
-  [[ -f "${SRC_BEDOLAGA_CABINET}/ecosystem.config.js" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_CABINET}/ecosystem.config.js\" \"${BEDOLAGA_CABINET_DIR}/ecosystem.config.js\""
-  [[ -f "${SRC_BEDOLAGA_CABINET}/ecosystem.config.cjs" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_CABINET}/ecosystem.config.cjs\" \"${BEDOLAGA_CABINET_DIR}/ecosystem.config.cjs\""
-  [[ -f "${SRC_BEDOLAGA_CABINET}/nginx.conf" ]] && run_cmd "cp -af \"${SRC_BEDOLAGA_CABINET}/nginx.conf\" \"${BEDOLAGA_CABINET_DIR}/nginx.conf\""
-  [[ -d "${SRC_BEDOLAGA_CABINET}/dist" ]] && run_cmd "rm -rf \"${BEDOLAGA_CABINET_DIR}/dist\" && cp -a \"${SRC_BEDOLAGA_CABINET}/dist\" \"${BEDOLAGA_CABINET_DIR}/dist\""
-  [[ -d "${SRC_BEDOLAGA_CABINET}/public" ]] && run_cmd "rm -rf \"${BEDOLAGA_CABINET_DIR}/public\" && cp -a \"${SRC_BEDOLAGA_CABINET}/public\" \"${BEDOLAGA_CABINET_DIR}/public\""
+  [[ -f "${SRC_BEDOLAGA_CABINET}/.env" ]] && run_cmd cp -af "${SRC_BEDOLAGA_CABINET}/.env" "${BEDOLAGA_CABINET_DIR}/.env"
+  [[ -f "${SRC_BEDOLAGA_CABINET}/docker-compose.yml" ]] && run_cmd cp -af "${SRC_BEDOLAGA_CABINET}/docker-compose.yml" "${BEDOLAGA_CABINET_DIR}/docker-compose.yml"
+  [[ -f "${SRC_BEDOLAGA_CABINET}/docker-compose.override.yml" ]] && run_cmd cp -af "${SRC_BEDOLAGA_CABINET}/docker-compose.override.yml" "${BEDOLAGA_CABINET_DIR}/docker-compose.override.yml"
+  [[ -f "${SRC_BEDOLAGA_CABINET}/package.json" ]] && run_cmd cp -af "${SRC_BEDOLAGA_CABINET}/package.json" "${BEDOLAGA_CABINET_DIR}/package.json"
+  [[ -f "${SRC_BEDOLAGA_CABINET}/package-lock.json" ]] && run_cmd cp -af "${SRC_BEDOLAGA_CABINET}/package-lock.json" "${BEDOLAGA_CABINET_DIR}/package-lock.json"
+  [[ -f "${SRC_BEDOLAGA_CABINET}/yarn.lock" ]] && run_cmd cp -af "${SRC_BEDOLAGA_CABINET}/yarn.lock" "${BEDOLAGA_CABINET_DIR}/yarn.lock"
+  [[ -f "${SRC_BEDOLAGA_CABINET}/pnpm-lock.yaml" ]] && run_cmd cp -af "${SRC_BEDOLAGA_CABINET}/pnpm-lock.yaml" "${BEDOLAGA_CABINET_DIR}/pnpm-lock.yaml"
+  [[ -f "${SRC_BEDOLAGA_CABINET}/npm-shrinkwrap.json" ]] && run_cmd cp -af "${SRC_BEDOLAGA_CABINET}/npm-shrinkwrap.json" "${BEDOLAGA_CABINET_DIR}/npm-shrinkwrap.json"
+  [[ -f "${SRC_BEDOLAGA_CABINET}/ecosystem.config.js" ]] && run_cmd cp -af "${SRC_BEDOLAGA_CABINET}/ecosystem.config.js" "${BEDOLAGA_CABINET_DIR}/ecosystem.config.js"
+  [[ -f "${SRC_BEDOLAGA_CABINET}/ecosystem.config.cjs" ]] && run_cmd cp -af "${SRC_BEDOLAGA_CABINET}/ecosystem.config.cjs" "${BEDOLAGA_CABINET_DIR}/ecosystem.config.cjs"
+  [[ -f "${SRC_BEDOLAGA_CABINET}/nginx.conf" ]] && run_cmd cp -af "${SRC_BEDOLAGA_CABINET}/nginx.conf" "${BEDOLAGA_CABINET_DIR}/nginx.conf"
+  [[ -d "${SRC_BEDOLAGA_CABINET}/dist" ]] && replace_dir "${SRC_BEDOLAGA_CABINET}/dist" "${BEDOLAGA_CABINET_DIR}/dist"
+  [[ -d "${SRC_BEDOLAGA_CABINET}/public" ]] && replace_dir "${SRC_BEDOLAGA_CABINET}/public" "${BEDOLAGA_CABINET_DIR}/public"
 fi
 
 if component_selected bedolaga-db; then
   [[ -f "$BEDOLAGA_DB_DUMP" ]] || { echo "Missing bedolaga-bot-db.dump in archive" >&2; exit 1; }
   [[ -n "$BEDOLAGA_POSTGRES_USER" && -n "$BEDOLAGA_POSTGRES_DB" ]] || { echo "Cannot detect Bedolaga POSTGRES_USER/POSTGRES_DB" >&2; exit 1; }
   log "Restore Bedolaga PostgreSQL -> db=${BEDOLAGA_POSTGRES_DB}, user=${BEDOLAGA_POSTGRES_USER}"
-  if (( DRY_RUN == 1 )); then
-    echo "[dry-run] docker exec -i remnawave_bot_db pg_restore -U $BEDOLAGA_POSTGRES_USER -d $BEDOLAGA_POSTGRES_DB --clean --if-exists --no-owner --no-privileges < $BEDOLAGA_DB_DUMP"
-  else
-    docker exec -i remnawave_bot_db pg_restore -U "$BEDOLAGA_POSTGRES_USER" -d "$BEDOLAGA_POSTGRES_DB" --clean --if-exists --no-owner --no-privileges < "$BEDOLAGA_DB_DUMP"
-  fi
+  docker exec -i remnawave_bot_db pg_restore -U "$BEDOLAGA_POSTGRES_USER" -d "$BEDOLAGA_POSTGRES_DB" --clean --if-exists --no-owner --no-privileges < "$BEDOLAGA_DB_DUMP"
 fi
 
 if component_selected bedolaga-redis; then
   [[ -f "$BEDOLAGA_REDIS_DUMP" ]] || { echo "Missing bedolaga-bot-redis.rdb in archive" >&2; exit 1; }
   log "Restore Bedolaga Redis dump"
-  run_cmd "docker cp \"$BEDOLAGA_REDIS_DUMP\" remnawave_bot_redis:/data/dump.rdb"
+  restore_redis_dump "$BEDOLAGA_REDIS_DUMP" remnawave_bot_redis "remnawave_bot_redis"
 fi
 
 if (( NO_RESTART == 0 )); then
-  if component_selected redis; then
-    log "Restart remnawave-redis"
-    run_cmd "docker restart remnawave-redis >/dev/null"
-  fi
-
   if component_selected db || component_selected env || component_selected compose; then
     log "Apply compose and restart remnawave stack"
-    run_cmd "cd \"$REMNAWAVE_DIR\" && docker compose up -d"
+    run_compose_up "$REMNAWAVE_DIR"
   fi
 
   if component_selected caddy; then
     log "Restart remnawave-caddy"
-    run_cmd "docker restart remnawave-caddy >/dev/null"
+    docker restart remnawave-caddy >/dev/null
   fi
 
   if component_selected subscription; then
     if docker ps -a --format '{{.Names}}' | grep -qx 'remnawave-subscription-page'; then
       log "Restart remnawave-subscription-page"
-      run_cmd "docker restart remnawave-subscription-page >/dev/null"
+      docker restart remnawave-subscription-page >/dev/null
     fi
-  fi
-
-  if component_selected bedolaga-redis; then
-    log "Restart remnawave_bot_redis"
-    run_cmd "docker restart remnawave_bot_redis >/dev/null"
   fi
 
   if component_selected bedolaga-db || component_selected bedolaga-bot; then
     log "Apply compose and restart Bedolaga bot stack"
-    run_cmd "cd \"$BEDOLAGA_BOT_DIR\" && docker compose up -d"
+    run_compose_up "$BEDOLAGA_BOT_DIR"
   fi
 
   if component_selected bedolaga-cabinet; then
     if [[ -f "${BEDOLAGA_CABINET_DIR}/docker-compose.yml" || -f "${BEDOLAGA_CABINET_DIR}/docker-compose.caddy.yml" || -f "${BEDOLAGA_CABINET_DIR}/compose.yaml" || -f "${BEDOLAGA_CABINET_DIR}/compose.yml" ]]; then
       log "Apply compose and restart Bedolaga cabinet stack"
-      run_cmd "cd \"$BEDOLAGA_CABINET_DIR\" && docker compose up -d"
+      run_compose_up "$BEDOLAGA_CABINET_DIR"
     elif systemctl list-unit-files 2>/dev/null | grep -Eq '^(cabinet-frontend|bedolaga-cabinet)\.service'; then
       log "Restart Bedolaga cabinet systemd service"
       if systemctl list-unit-files 2>/dev/null | grep -Eq '^cabinet-frontend\.service'; then
-        run_cmd "systemctl restart cabinet-frontend"
+        run_cmd systemctl restart cabinet-frontend
       else
-        run_cmd "systemctl restart bedolaga-cabinet"
+        run_cmd systemctl restart bedolaga-cabinet
       fi
     elif command -v pm2 >/dev/null 2>&1; then
       log "Restart Bedolaga cabinet via PM2 (if configured)"
-      run_cmd "pm2 restart cabinet-frontend >/dev/null 2>&1 || pm2 restart bedolaga-cabinet >/dev/null 2>&1 || true"
+      pm2 restart cabinet-frontend >/dev/null 2>&1 || pm2 restart bedolaga-cabinet >/dev/null 2>&1 || true
     else
       log "WARNING: Bedolaga cabinet restart skipped (no compose/systemd/pm2 target found)"
     fi
@@ -690,14 +868,12 @@ if (( NO_RESTART == 0 )); then
 fi
 
 log "Restore completed"
-if (( DRY_RUN == 0 )); then
-  if [[ -f "$PRE_ARCHIVE_PANEL" ]]; then
-    echo "Pre-restore snapshot (panel): $PRE_ARCHIVE_PANEL"
-  fi
-  if [[ -f "$PRE_ARCHIVE_BEDOLAGA_BOT" ]]; then
-    echo "Pre-restore snapshot (bedolaga bot): $PRE_ARCHIVE_BEDOLAGA_BOT"
-  fi
-  if [[ -f "$PRE_ARCHIVE_BEDOLAGA_CABINET" ]]; then
-    echo "Pre-restore snapshot (bedolaga cabinet): $PRE_ARCHIVE_BEDOLAGA_CABINET"
-  fi
+if [[ -f "$PRE_ARCHIVE_PANEL" ]]; then
+  echo "Pre-restore snapshot (panel): $PRE_ARCHIVE_PANEL"
+fi
+if [[ -f "$PRE_ARCHIVE_BEDOLAGA_BOT" ]]; then
+  echo "Pre-restore snapshot (bedolaga bot): $PRE_ARCHIVE_BEDOLAGA_BOT"
+fi
+if [[ -f "$PRE_ARCHIVE_BEDOLAGA_CABINET" ]]; then
+  echo "Pre-restore snapshot (bedolaga cabinet): $PRE_ARCHIVE_BEDOLAGA_CABINET"
 fi

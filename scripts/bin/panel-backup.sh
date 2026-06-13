@@ -10,6 +10,7 @@ REMNAWAVE_DIR="${REMNAWAVE_DIR:-}"
 BEDOLAGA_BOT_DIR="${BEDOLAGA_BOT_DIR:-}"
 BEDOLAGA_CABINET_DIR="${BEDOLAGA_CABINET_DIR:-}"
 BACKUP_ENV_PATH="${BACKUP_ENV_PATH:-/etc/panel-backup.env}"
+PBM_DEEP_AUTODETECT="${PBM_DEEP_AUTODETECT:-0}"
 BACKUP_LANG="${BACKUP_LANG:-ru}"
 BACKUP_ENCRYPT="${BACKUP_ENCRYPT:-0}"
 BACKUP_PASSWORD="${BACKUP_PASSWORD:-}"
@@ -29,6 +30,8 @@ HOSTNAME_FQDN="$(hostname -f 2>/dev/null || hostname)"
 WORKDIR="$(mktemp -d /tmp/panel-backup.XXXXXX)"
 ARCHIVE_BASE="pb-${TIMESTAMP_SHORT}"
 ARCHIVE_PATH="${BACKUP_ROOT}/${ARCHIVE_BASE}.tar.gz"
+ARCHIVE_TMP_PATH="${ARCHIVE_PATH}.tmp"
+CHECKSUM_PATH=""
 LOG_TAG="panel-backup"
 LOCK_FILE="${LOCK_FILE:-/var/lock/panel-backup.lock}"
 TELEGRAM_ADMIN_ID_RESOLVED=""
@@ -49,12 +52,15 @@ WANT_BEDOLAGA_CABINET=0
 
 cleanup() {
   rm -rf "$WORKDIR"
+  rm -f "$ARCHIVE_TMP_PATH" "${ARCHIVE_TMP_PATH}.gpg"
 }
 trap cleanup EXIT
 
 log() {
-  logger -t "$LOG_TAG" "$*"
   echo "$*"
+  if command -v logger >/dev/null 2>&1; then
+    logger -t "$LOG_TAG" "$*" || true
+  fi
 }
 
 normalize_backup_lang() {
@@ -284,8 +290,10 @@ detect_bedolaga_bot_dir() {
     return 0
   fi
 
-  guessed="$(find / -xdev -type d -name 'remnawave-bedolaga-telegram-bot' 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
-  [[ -n "$guessed" ]] && echo "$guessed"
+  if [[ "${PBM_DEEP_AUTODETECT:-0}" == "1" ]]; then
+    guessed="$(find / -xdev -type d -name 'remnawave-bedolaga-telegram-bot' 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
+    [[ -n "$guessed" ]] && echo "$guessed"
+  fi
 }
 
 detect_bedolaga_cabinet_dir() {
@@ -336,8 +344,10 @@ detect_bedolaga_cabinet_dir() {
     return 0
   fi
 
-  guessed="$(find / -xdev -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' -o -name 'bedolaga-cabine' \) 2>/dev/null | while read -r d; do is_bedolaga_cabinet_dir "$d" || continue; echo "$d"; break; done)"
-  [[ -n "$guessed" ]] && echo "$guessed"
+  if [[ "${PBM_DEEP_AUTODETECT:-0}" == "1" ]]; then
+    guessed="$(find / -xdev -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' -o -name 'bedolaga-cabine' \) 2>/dev/null | while read -r d; do is_bedolaga_cabinet_dir "$d" || continue; echo "$d"; break; done)"
+    [[ -n "$guessed" ]] && echo "$guessed"
+  fi
 }
 
 container_image_ref() {
@@ -541,6 +551,18 @@ copy_backup_entry() {
   if ! cp -a "$source_path" "$target_path" 2>/dev/null; then
     fail "$(t "не удалось добавить в backup" "failed to include in backup"): ${label}"
   fi
+}
+
+copy_optional_backup_entry() {
+  local source_path="$1"
+  local target_path="$2"
+  local label="$3"
+  if [[ ! -e "$source_path" ]]; then
+    BACKUP_ITEMS+=("- ${label}: $(t "пропущено, не найдено" "skipped, not found")")
+    log "$(t "Предупреждение: компонент не найден и будет пропущен" "Warning: component not found and will be skipped"): ${label}"
+    return 0
+  fi
+  copy_backup_entry "$source_path" "$target_path" "$label"
 }
 
 backup_bedolaga_logs() {
@@ -789,6 +811,30 @@ available_backup_root_bytes() {
   df -Pk "$BACKUP_ROOT" 2>/dev/null | awk 'NR==2 {print $4 * 1024}' || echo 0
 }
 
+create_checksum_file() {
+  local archive_path="$1"
+  local checksum_path="${archive_path}.sha256"
+  local archive_dir=""
+  local archive_name=""
+  local checksum_name=""
+
+  if ! command -v sha256sum >/dev/null 2>&1; then
+    log "$(t "Предупреждение: sha256sum не найден, checksum не создан" "Warning: sha256sum not found, checksum was not created")"
+    CHECKSUM_PATH=""
+    return 0
+  fi
+
+  archive_dir="$(dirname "$archive_path")"
+  archive_name="$(basename "$archive_path")"
+  checksum_name="$(basename "$checksum_path")"
+  (
+    cd "$archive_dir"
+    sha256sum "$archive_name" > "$checksum_name"
+  )
+  CHECKSUM_PATH="$checksum_path"
+  log "$(t "Checksum создан:" "Checksum created:") ${CHECKSUM_PATH}"
+}
+
 preflight_checks() {
   local need_bytes=0
   local free_bytes=0
@@ -934,6 +980,22 @@ $(t "Шифрование" "Encryption"): ${enc_label}
 $(t "Состав" "Contents"): $(backup_scope_text)"
 }
 
+build_checksum_caption() {
+  local file_label="$1"
+  local file_label_e=""
+  local host_e=""
+  local time_e=""
+
+  file_label_e="$(escape_html "$file_label")"
+  host_e="$(escape_html "$HOSTNAME_FQDN")"
+  time_e="$(escape_html "$TIMESTAMP_UTC_HUMAN")"
+
+  printf '%s' "<b>SHA256 checksum</b>
+$(t "Файл" "File"): <code>${file_label_e}</code>
+$(t "Хост" "Host"): <code>${host_e}</code>
+$(t "Время UTC" "UTC time"): <code>${time_e}</code>"
+}
+
 normalize_env_file_format
 if [[ -f "$BACKUP_ENV_PATH" ]]; then
   # shellcheck disable=SC1090
@@ -1064,12 +1126,12 @@ if (( WANT_COMPOSE == 1 || WANT_ENV == 1 || WANT_CADDY == 1 || WANT_SUBSCRIPTION
   log "Копирую конфиги Remnawave"
   (( WANT_COMPOSE == 1 )) && copy_backup_entry "${REMNAWAVE_DIR}/docker-compose.yml" "$WORKDIR/payload/remnawave/" "docker-compose.yml"
   (( WANT_ENV == 1 )) && copy_backup_entry "${REMNAWAVE_DIR}/.env" "$WORKDIR/payload/remnawave/" ".env"
-  (( WANT_CADDY == 1 )) && copy_backup_entry "${REMNAWAVE_DIR}/caddy" "$WORKDIR/payload/remnawave/" "caddy"
-  (( WANT_SUBSCRIPTION == 1 )) && copy_backup_entry "${REMNAWAVE_DIR}/subscription" "$WORKDIR/payload/remnawave/" "subscription"
+  (( WANT_CADDY == 1 )) && copy_optional_backup_entry "${REMNAWAVE_DIR}/caddy" "$WORKDIR/payload/remnawave/" "caddy"
+  (( WANT_SUBSCRIPTION == 1 )) && copy_optional_backup_entry "${REMNAWAVE_DIR}/subscription" "$WORKDIR/payload/remnawave/" "subscription"
   (( WANT_COMPOSE == 1 )) && add_backup_item "Docker Compose (remnawave/docker-compose.yml)" "$WORKDIR/payload/remnawave/docker-compose.yml"
   (( WANT_ENV == 1 )) && add_backup_item "ENV (remnawave/.env)" "$WORKDIR/payload/remnawave/.env"
-  (( WANT_CADDY == 1 )) && add_backup_item "Caddy config (remnawave/caddy)" "$WORKDIR/payload/remnawave/caddy"
-  (( WANT_SUBSCRIPTION == 1 )) && add_backup_item "Subscription page (remnawave/subscription)" "$WORKDIR/payload/remnawave/subscription"
+  (( WANT_CADDY == 1 )) && [[ -e "$WORKDIR/payload/remnawave/caddy" ]] && add_backup_item "Caddy config (remnawave/caddy)" "$WORKDIR/payload/remnawave/caddy"
+  (( WANT_SUBSCRIPTION == 1 )) && [[ -e "$WORKDIR/payload/remnawave/subscription" ]] && add_backup_item "Subscription page (remnawave/subscription)" "$WORKDIR/payload/remnawave/subscription"
 fi
 
 if (( WANT_BEDOLAGA_DB == 1 )); then
@@ -1160,23 +1222,29 @@ INFO
 } > "$WORKDIR/payload/backup-manifest.txt"
 
 log "Упаковываю архив"
-tar -C "$WORKDIR/payload" -czf "$ARCHIVE_PATH" . || fail "ошибка упаковки архива"
+rm -f "$ARCHIVE_TMP_PATH" "${ARCHIVE_TMP_PATH}.gpg"
+tar -C "$WORKDIR/payload" -czf "$ARCHIVE_TMP_PATH" . || fail "ошибка упаковки архива"
 
 if [[ "$BACKUP_ENCRYPT" == "1" ]]; then
   [[ -n "${BACKUP_PASSWORD:-}" ]] || fail "$(t "включено шифрование, но не задан BACKUP_PASSWORD" "encryption is enabled but BACKUP_PASSWORD is not set")"
   log "$(t "Шифрую архив (GPG symmetric)" "Encrypting archive (GPG symmetric)")"
   gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_PASSWORD" \
-    --cipher-algo AES256 --symmetric --output "${ARCHIVE_PATH}.gpg" "$ARCHIVE_PATH" \
+    --cipher-algo AES256 --symmetric --output "${ARCHIVE_TMP_PATH}.gpg" "$ARCHIVE_TMP_PATH" \
     || fail "$(t "ошибка шифрования архива" "archive encryption failed")"
-  rm -f "$ARCHIVE_PATH"
+  rm -f "$ARCHIVE_TMP_PATH"
+  mv -f "${ARCHIVE_TMP_PATH}.gpg" "${ARCHIVE_PATH}.gpg"
   ARCHIVE_PATH="${ARCHIVE_PATH}.gpg"
+else
+  mv -f "$ARCHIVE_TMP_PATH" "$ARCHIVE_PATH"
 fi
+
+create_checksum_file "$ARCHIVE_PATH"
 
 ARCHIVE_SIZE_BYTES="$(stat -c '%s' "$ARCHIVE_PATH")"
 ARCHIVE_SIZE_HUMAN="$(du -h "$ARCHIVE_PATH" | awk '{print $1}')"
 
 log "Удаляю старые бэкапы (>${KEEP_DAYS} дней)"
-if ! find "$BACKUP_ROOT" -type f \( -name 'pb-*.tar.gz' -o -name 'pb-*.tar.gz.gpg' -o -name 'pb-*.tar.gz.part.*' -o -name 'pb-*.tar.gz.gpg.part.*' -o -name 'panel-backup-*.tar.gz' -o -name 'panel-backup-*.tar.gz.gpg' -o -name 'panel-backup-*.tar.gz.part.*' -o -name 'panel-backup-*.tar.gz.gpg.part.*' \) -mtime +"$KEEP_DAYS" -delete; then
+if ! find "$BACKUP_ROOT" -type f \( -name 'pb-*.tar.gz' -o -name 'pb-*.tar.gz.gpg' -o -name 'pb-*.tar.gz.sha256' -o -name 'pb-*.tar.gz.gpg.sha256' -o -name 'pb-*.tar.gz.part.*' -o -name 'pb-*.tar.gz.gpg.part.*' -o -name 'panel-backup-*.tar.gz' -o -name 'panel-backup-*.tar.gz.gpg' -o -name 'panel-backup-*.tar.gz.sha256' -o -name 'panel-backup-*.tar.gz.gpg.sha256' -o -name 'panel-backup-*.tar.gz.part.*' -o -name 'panel-backup-*.tar.gz.gpg.part.*' \) -mtime +"$KEEP_DAYS" -delete; then
   log "$(t "Предупреждение: не удалось удалить часть старых backup-файлов" "Warning: failed to remove some old backup files")"
 fi
 
@@ -1201,6 +1269,13 @@ else
       fail "не удалось отправить часть $(basename "$part")"
     fi
   done
+fi
+
+if (( TELEGRAM_UPLOAD_ENABLED == 1 )) && [[ -n "${CHECKSUM_PATH:-}" && -f "$CHECKSUM_PATH" ]]; then
+  log "$(t "Отправляю SHA256 checksum в Telegram" "Sending SHA256 checksum to Telegram")"
+  if ! send_telegram_file "$CHECKSUM_PATH" "$(build_checksum_caption "$(basename "$CHECKSUM_PATH")")" "$(backup_scope_profile)"; then
+    log "$(t "Предупреждение: архив отправлен, но checksum не удалось отправить в Telegram" "Warning: archive was sent, but checksum upload to Telegram failed")"
+  fi
 fi
 
 log "Бэкап и отправка завершены: ${ARCHIVE_PATH} (${ARCHIVE_SIZE_HUMAN})"

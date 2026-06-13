@@ -33,7 +33,7 @@ is_prev_command() {
 }
 
 show_back_hint() {
-  :
+  paint "$CLR_MUTED" "  $(tr_text "Навигация: b/back = назад." "Navigation: b/back = back.")"
 }
 
 mask_secret() {
@@ -155,6 +155,182 @@ normalize_env_value_raw() {
   done
 
   printf '%s' "$value"
+}
+
+is_safe_project_path() {
+  local value="$1"
+  local trimmed=""
+
+  [[ -z "$value" ]] && return 0
+  case "$value" in
+    *[[:space:]]*|*"'"*|*'"'*|*'`'*|*'$'*|*\\*|*';'*|*'&'*|*'|'*|*'<'*|*'>'*) return 1 ;;
+    *'/../'*|*'/..'|*'/./'*|*'/.') return 1 ;;
+  esac
+  [[ "$value" == /* ]] || return 1
+
+  trimmed="${value%/}"
+  [[ -n "$trimmed" ]] || trimmed="/"
+  case "$trimmed" in
+    /|/bin|/boot|/dev|/etc|/home|/lib|/lib64|/opt|/proc|/root|/run|/sbin|/srv|/sys|/tmp|/usr|/var)
+      return 1
+      ;;
+  esac
+
+  return 0
+}
+
+validate_project_path_or_warn() {
+  local label="$1"
+  local value="$2"
+
+  if is_safe_project_path "$value"; then
+    return 0
+  fi
+
+  paint "$CLR_WARN" "$(tr_text "Некорректный путь" "Invalid path"): ${label}. $(tr_text "Укажите абсолютный путь к папке проекта без пробелов/служебных символов, не системный корень." "Use an absolute project directory path without spaces/shell characters, not a system root.")"
+  return 1
+}
+
+is_valid_domain_name() {
+  local value="$1"
+
+  [[ ${#value} -le 253 ]] || return 1
+  [[ "$value" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$ ]]
+}
+
+validate_domain_or_warn() {
+  local label="$1"
+  local value="$2"
+
+  if is_valid_domain_name "$value"; then
+    return 0
+  fi
+
+  paint "$CLR_WARN" "$(tr_text "Некорректный домен" "Invalid domain"): ${label}. $(tr_text "Введите домен без http://, https://, пробелов и пути." "Enter a domain without http://, https://, spaces or path.")"
+  return 1
+}
+
+is_valid_tcp_port() {
+  local value="$1"
+
+  [[ "$value" =~ ^[0-9]+$ ]] || return 1
+  (( value >= 1 && value <= 65535 ))
+}
+
+validate_tcp_port_or_warn() {
+  local label="$1"
+  local value="$2"
+
+  if is_valid_tcp_port "$value"; then
+    return 0
+  fi
+
+  paint "$CLR_WARN" "$(tr_text "Некорректный порт" "Invalid port"): ${label}. $(tr_text "Введите число от 1 до 65535." "Enter a number from 1 to 65535.")"
+  return 1
+}
+
+is_safe_ssh_token() {
+  local value="$1"
+
+  [[ -n "$value" ]] || return 1
+  [[ "$value" != -* ]] || return 1
+  case "$value" in
+    *[[:space:]]*|*'/'*|*\\*|*"'"*|*'"'*|*'`'*|*'$'*|*';'*|*'&'*|*'|'*|*'<'*|*'>'*)
+      return 1
+      ;;
+  esac
+
+  return 0
+}
+
+validate_ssh_token_or_warn() {
+  local label="$1"
+  local value="$2"
+
+  if is_safe_ssh_token "$value"; then
+    return 0
+  fi
+
+  paint "$CLR_WARN" "$(tr_text "Некорректное SSH-значение" "Invalid SSH value"): ${label}. $(tr_text "Не используйте пробелы, /, shell-символы или значение с начальным '-'." "Do not use spaces, /, shell characters, or a value starting with '-'.")"
+  return 1
+}
+
+is_safe_oncalendar_value() {
+  local value="$1"
+
+  [[ -n "$value" ]] || return 1
+  case "$value" in
+    *$'\n'*|*$'\r'*|*';'*|*'&'*|*'|'*|*'<'*|*'>'*|*'`'*|*'$'*)
+      return 1
+      ;;
+  esac
+
+  return 0
+}
+
+validate_oncalendar_or_warn() {
+  local value="$1"
+
+  if is_safe_oncalendar_value "$value"; then
+    return 0
+  fi
+
+  paint "$CLR_WARN" "$(tr_text "Некорректное расписание OnCalendar." "Invalid OnCalendar value.")"
+  return 1
+}
+
+is_allowed_component_for_scope() {
+  local scope="$1"
+  local component="$2"
+
+  case "$scope" in
+    panel)
+      case "$component" in
+        all|db|redis|configs|env|compose|caddy|subscription) return 0 ;;
+      esac
+      ;;
+    bedolaga)
+      case "$component" in
+        bedolaga|bedolaga-db|bedolaga-redis|bedolaga-bot|bedolaga-cabinet|bedolaga-configs) return 0 ;;
+      esac
+      ;;
+    *)
+      case "$component" in
+        all|db|redis|configs|env|compose|caddy|subscription|bedolaga|bedolaga-db|bedolaga-redis|bedolaga-bot|bedolaga-cabinet|bedolaga-configs) return 0 ;;
+      esac
+      ;;
+  esac
+
+  return 1
+}
+
+normalize_component_list() {
+  local raw="$1"
+  printf '%s' "${raw,,}" | tr -d '[:space:]'
+}
+
+validate_component_list_or_warn() {
+  local scope="$1"
+  local raw="$2"
+  local normalized=""
+  local item=""
+  local -a component_items=()
+
+  normalized="$(normalize_component_list "$raw")"
+  [[ -n "$normalized" ]] || {
+    paint "$CLR_WARN" "$(tr_text "Список компонентов не может быть пустым." "Component list cannot be empty.")"
+    return 1
+  }
+
+  IFS=',' read -r -a component_items <<< "$normalized"
+  for item in "${component_items[@]}"; do
+    if [[ -z "$item" ]] || ! is_allowed_component_for_scope "$scope" "$item"; then
+      paint "$CLR_WARN" "$(tr_text "Неизвестный компонент" "Unknown component"): ${item:-empty}"
+      return 1
+    fi
+  done
+
+  return 0
 }
 
 normalize_backup_encrypt_raw() {
@@ -335,8 +511,10 @@ detect_bedolaga_bot_dir() {
     return 0
   fi
 
-  guessed="$(find / -xdev -type d -name 'remnawave-bedolaga-telegram-bot' 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
-  [[ -n "$guessed" ]] && echo "$guessed"
+  if [[ "${PBM_DEEP_AUTODETECT:-0}" == "1" ]]; then
+    guessed="$(find / -xdev -type d -name 'remnawave-bedolaga-telegram-bot' 2>/dev/null | while read -r d; do [[ -f "$d/.env" && -f "$d/docker-compose.yml" ]] || continue; echo "$d"; break; done)"
+    [[ -n "$guessed" ]] && echo "$guessed"
+  fi
 }
 
 detect_bedolaga_cabinet_dir() {
@@ -388,8 +566,10 @@ detect_bedolaga_cabinet_dir() {
     return 0
   fi
 
-  guessed="$(find / -xdev -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' -o -name 'bedolaga-cabine' \) 2>/dev/null | while read -r d; do is_bedolaga_cabinet_dir "$d" || continue; echo "$d"; break; done)"
-  [[ -n "$guessed" ]] && echo "$guessed"
+  if [[ "${PBM_DEEP_AUTODETECT:-0}" == "1" ]]; then
+    guessed="$(find / -xdev -type d \( -name 'cabinet-frontend' -o -name 'bedolaga-cabinet' -o -name 'bedolaga-cabine' \) 2>/dev/null | while read -r d; do is_bedolaga_cabinet_dir "$d" || continue; echo "$d"; break; done)"
+    [[ -n "$guessed" ]] && echo "$guessed"
+  fi
 }
 
 get_current_timer_calendar() {

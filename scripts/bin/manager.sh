@@ -16,7 +16,6 @@ BACKUP_INCLUDE="${BACKUP_INCLUDE:-}"
 BACKUP_FILE="${BACKUP_FILE:-}"
 BACKUP_URL="${BACKUP_URL:-}"
 RESTORE_ONLY="${RESTORE_ONLY:-all}"
-RESTORE_DRY_RUN="${RESTORE_DRY_RUN:-0}"
 RESTORE_NO_RESTART="${RESTORE_NO_RESTART:-0}"
 TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
 TELEGRAM_ADMIN_ID="${TELEGRAM_ADMIN_ID:-}"
@@ -60,6 +59,7 @@ Modes:
   MODE=restore   restore backup (all or selected components)
   MODE=backup    run backup now
   MODE=status    show install/timer/backup status
+  MODE=doctor    validate config, dependencies, timers and latest backup
 
 INTERACTIVE:
   INTERACTIVE=auto  show menu in terminal if MODE is not set explicitly (default)
@@ -86,7 +86,7 @@ Examples:
   bash <(curl -fsSL ${RAW_BASE}/install.sh)
 
   MODE=restore BACKUP_URL='https://example.com/panel-backup.tar.gz' \
-  RESTORE_ONLY='db,configs' RESTORE_DRY_RUN=1 \
+  RESTORE_ONLY='db,configs' \
   bash <(curl -fsSL ${RAW_BASE}/install.sh)
 USAGE
 }
@@ -559,6 +559,9 @@ case "$MODE" in
     ;;
   status)
     show_status
+    ;;
+  doctor)
+    run_doctor_checks
     ;;
   -h|--help|help)
     usage

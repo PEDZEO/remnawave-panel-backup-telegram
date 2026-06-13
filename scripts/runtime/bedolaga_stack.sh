@@ -501,7 +501,8 @@ bedolaga_prepare_bot_dirs() {
   local bot_dir="$1"
   mkdir -p "${bot_dir}/logs" "${bot_dir}/data" "${bot_dir}/data/backups" "${bot_dir}/data/referral_qr"
   # Bot container user must be able to write runtime files/logs on host-mounted volumes.
-  chmod -R 777 "${bot_dir}/logs" "${bot_dir}/data"
+  chown -R 1000:1000 "${bot_dir}/logs" "${bot_dir}/data" >/dev/null 2>&1 || true
+  chmod -R 755 "${bot_dir}/logs" "${bot_dir}/data"
 }
 
 bedolaga_write_bot_compose_override() {
@@ -794,7 +795,7 @@ bedolaga_repair_shared_network_if_needed() {
   return 0
 }
 
-bedolaga_probe_cabinet_ws_route() {
+bedolaga_check_cabinet_ws_route() {
   local cabinet_domain="$1"
   local header_dump=""
   local status_line=""
@@ -828,16 +829,16 @@ bedolaga_verify_cabinet_ws_route() {
   local cabinet_domain="$1"
   local attempts=6
   local i=1
-  local probe_result=0
+  local check_result=0
 
   while (( i <= attempts )); do
-    bedolaga_probe_cabinet_ws_route "$cabinet_domain"
-    probe_result=$?
-    if [[ $probe_result -eq 0 ]]; then
+    bedolaga_check_cabinet_ws_route "$cabinet_domain"
+    check_result=$?
+    if [[ $check_result -eq 0 ]]; then
       paint "$CLR_OK" "$(tr_text "WebSocket маршрут кабинета проверен: /cabinet/ws доступен." "Cabinet WebSocket route verified: /cabinet/ws is reachable.")"
       return 0
     fi
-    if [[ $probe_result -eq 1 ]]; then
+    if [[ $check_result -eq 1 ]]; then
       break
     fi
     sleep 2
@@ -848,9 +849,9 @@ bedolaga_verify_cabinet_ws_route() {
   $SUDO docker restart remnawave-caddy >/dev/null 2>&1 || true
   sleep 3
 
-  bedolaga_probe_cabinet_ws_route "$cabinet_domain"
-  probe_result=$?
-  if [[ $probe_result -eq 0 ]]; then
+  bedolaga_check_cabinet_ws_route "$cabinet_domain"
+  check_result=$?
+  if [[ $check_result -eq 0 ]]; then
     paint "$CLR_OK" "$(tr_text "После перезапуска Caddy маршрут /cabinet/ws восстановлен." "After Caddy restart, /cabinet/ws route recovered.")"
     return 0
   fi
@@ -1033,8 +1034,7 @@ run_bedolaga_stack_install_with_repos() {
 
   cabinet_port="$(ask_value "$(tr_text "Локальный порт cabinet (для Caddy reverse proxy)" "Local cabinet port (for Caddy reverse proxy)")" "3020")"
   [[ "$cabinet_port" == "__PBM_BACK__" ]] && return 1
-  if [[ ! "$cabinet_port" =~ ^[0-9]+$ ]]; then
-    paint "$CLR_DANGER" "$(tr_text "Порт cabinet должен быть числом." "Cabinet port must be numeric.")"
+  if ! validate_tcp_port_or_warn "CABINET_PORT" "$cabinet_port"; then
     return 1
   fi
 
@@ -1174,8 +1174,7 @@ run_bedolaga_stack_update_with_repos() {
 
   cabinet_port="$(ask_value "$(tr_text "Локальный порт cabinet (для Caddy reverse proxy)" "Local cabinet port (for Caddy reverse proxy)")" "3020")"
   [[ "$cabinet_port" == "__PBM_BACK__" ]] && return 1
-  if [[ ! "$cabinet_port" =~ ^[0-9]+$ ]]; then
-    paint "$CLR_DANGER" "$(tr_text "Порт cabinet должен быть числом." "Cabinet port must be numeric.")"
+  if ! validate_tcp_port_or_warn "CABINET_PORT" "$cabinet_port"; then
     return 1
   fi
 

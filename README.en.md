@@ -17,10 +17,11 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backu
 - Scheduled automatic backups via systemd timer.
 - Full Bedolaga stack backup/restore (bot + cabinet): PostgreSQL, Redis, `.env`, compose files, and runtime data.
 - Restore from local archive file or direct URL.
-- `dry-run` restore mode to validate flow before real changes.
+- SHA256 checksum for new archives and checksum verification before restore when a `.sha256` file is present.
 - Encrypted backup archives (GPG symmetric) for safer storage and transfer.
 - Telegram topic split support: separate topics for panel backups and Bedolaga backups (bot + cabinet).
 - Status and diagnostics: timer, service, latest backup, container state, and key runtime signals.
+- Read-only Doctor check: `MODE=doctor bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)`.
 - Disk usage analysis and safe cleanup without removing active containers or volumes.
 - Dedicated install/update actions for Remnawave panel.
 - Dedicated install/update actions for RemnaNode.

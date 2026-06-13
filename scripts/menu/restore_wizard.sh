@@ -123,8 +123,8 @@ select_restore_components() {
       5)
         custom="$(ask_value "$(tr_text "Компоненты через запятую (all,db,redis,configs,env,compose,caddy,subscription,bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)" "Comma-separated components (all,db,redis,configs,env,compose,caddy,subscription,bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)")" "$RESTORE_ONLY")"
         [[ "$custom" == "__PBM_BACK__" ]] && continue
-        if [[ -n "$custom" ]]; then
-          RESTORE_ONLY="$custom"
+        if validate_component_list_or_warn "global" "$custom"; then
+          RESTORE_ONLY="$(normalize_component_list "$custom")"
           return 0
         fi
         ;;
@@ -193,9 +193,9 @@ show_restore_summary() {
     all,bedolaga|bedolaga,all) components_label="$(tr_text "полный (панель + бот + кабинет)" "full (panel + bot + cabinet)")" ;;
     all) components_label="$(tr_text "всё (панель: база + redis + конфиги)" "everything (panel: db + redis + configs)")" ;;
     bedolaga) components_label="$(tr_text "полный Bedolaga (db + redis + бот + кабинет)" "full Bedolaga (db + redis + bot + cabinet)")" ;;
-    bedolaga-bot,bedolaga-cabinet|bedolaga-cabinet,bedolaga-bot) components_label="$(tr_text "бот + кабинет Bedolaga" "Bedolaga bot + cabinet")" ;;
-    bedolaga-db,bedolaga-redis,bedolaga-bot|bedolaga-bot,bedolaga-db,bedolaga-redis) components_label="$(tr_text "только бот Bedolaga (db + redis + bot)" "Bedolaga bot only (db + redis + bot)")" ;;
-    bedolaga-cabinet) components_label="$(tr_text "только кабинет Bedolaga" "Bedolaga cabinet only")" ;;
+    bedolaga-bot,bedolaga-cabinet|bedolaga-cabinet,bedolaga-bot) components_label="$(tr_text "файлы бота + кабинета Bedolaga (без DB/Redis)" "Bedolaga bot + cabinet files (no DB/Redis)")" ;;
+    bedolaga-db,bedolaga-redis,bedolaga-bot|bedolaga-bot,bedolaga-db,bedolaga-redis) components_label="$(tr_text "бот Bedolaga полностью (db + redis + файлы)" "full Bedolaga bot (db + redis + files)")" ;;
+    bedolaga-cabinet) components_label="$(tr_text "файлы кабинета Bedolaga" "Bedolaga cabinet files")" ;;
     db) components_label="$(tr_text "только база PostgreSQL" "PostgreSQL database only")" ;;
     redis) components_label="$(tr_text "только Redis" "Redis only")" ;;
     configs,bedolaga-configs|bedolaga-configs,configs) components_label="$(tr_text "конфиги (панель + бот + кабинет)" "configs (panel + bot + cabinet)")" ;;
@@ -203,11 +203,7 @@ show_restore_summary() {
     *) components_label="$(tr_text "кастом: " "custom: ")${RESTORE_ONLY}" ;;
   esac
 
-  if [[ "${RESTORE_DRY_RUN:-0}" == "1" ]]; then
-    mode_label="$(tr_text "тестовый запуск (без изменений)" "test run (no changes)")"
-  else
-    mode_label="$(tr_text "боевой запуск (изменения будут применены)" "real run (changes will be applied)")"
-  fi
+  mode_label="$(tr_text "рабочий запуск (изменения будут применены)" "real run (changes will be applied)")"
 
   if [[ "${RESTORE_NO_RESTART:-0}" == "1" ]]; then
     restart_label="$(tr_text "перезапуски сервисов отключены" "service restarts are disabled")"
@@ -233,7 +229,6 @@ show_restore_safety_checklist() {
   local source_label=""
   local latest_local=""
   local latest_age_h="n/a"
-  local db_snapshot=""
 
   if [[ -n "${BACKUP_FILE:-}" && -f "${BACKUP_FILE:-}" ]]; then
     source_ok=1
@@ -250,8 +245,6 @@ show_restore_safety_checklist() {
     latest_age_h="$(( ( $(date +%s) - $(date -r "$latest_local" +%s) ) / 3600 ))"
   fi
 
-  db_snapshot="$(ls -1t /var/backups/panel/manual-db-snapshots/remnawave-db-pretest-*.dump 2>/dev/null | head -n1 || true)"
-
   paint "$CLR_TITLE" "$(tr_text "Чеклист перед запуском" "Pre-run checklist")"
   if (( source_ok == 1 )); then
     paint "$CLR_OK" "  [OK] $(tr_text "Источник:" "Source:") ${source_label}"
@@ -263,15 +256,11 @@ show_restore_safety_checklist() {
   else
     paint "$CLR_WARN" "  [WARN] $(tr_text "Локальные архивы не найдены." "No local backup files found.")"
   fi
-  if [[ -n "$db_snapshot" ]]; then
-    paint "$CLR_MUTED" "  [OK] $(tr_text "Ручной snapshot БД:" "Manual DB snapshot:") $(basename "$db_snapshot")"
+  paint "$CLR_WARN" "  [WARN] $(tr_text "Восстановление изменит текущие данные выбранных компонентов." "Restore will modify current data for selected components.")"
+  if [[ "${RESTORE_NO_RESTART:-0}" == "1" ]]; then
+    paint "$CLR_MUTED" "  [OK] $(tr_text "Автоперезапуски отключены: сервисы нужно будет перезапустить вручную." "Auto-restarts are disabled: restart services manually afterward.")"
   else
-    paint "$CLR_WARN" "  [WARN] $(tr_text "Нет ручного снимка БД в /var/backups/panel/manual-db-snapshots." "No manual DB snapshot in /var/backups/panel/manual-db-snapshots.")"
-  fi
-  if [[ "${RESTORE_DRY_RUN:-0}" == "1" ]]; then
-    paint "$CLR_OK" "  [SAFE] $(tr_text "Выбран тестовый режим (без изменений)." "Test mode selected (no changes).")"
-  else
-    paint "$CLR_WARN" "  [RISK] $(tr_text "Выбран боевой режим (изменения будут применены)." "Real mode selected (changes will be applied).")"
+    paint "$CLR_MUTED" "  [OK] $(tr_text "После восстановления скрипт перезапустит выбранные сервисы." "The script will restart selected services after restore.")"
   fi
 }
 

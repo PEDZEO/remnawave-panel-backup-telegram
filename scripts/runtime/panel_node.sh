@@ -60,7 +60,8 @@ generate_alpha_login() {
 setup_remnanode_logs() {
   paint "$CLR_ACCENT" "$(tr_text "Подготавливаю логи RemnaNode" "Preparing RemnaNode logs")"
   $SUDO mkdir -p /var/log/remnanode
-  $SUDO chmod 777 /var/log/remnanode
+  $SUDO chown 1000:1000 /var/log/remnanode >/dev/null 2>&1 || true
+  $SUDO chmod 775 /var/log/remnanode
 
   if ! command -v logrotate >/dev/null 2>&1; then
     if ! install_package "logrotate" >/dev/null 2>&1; then
@@ -361,6 +362,9 @@ run_panel_install_flow() {
   draw_header "$(tr_text "Установка панели Remnawave" "Install Remnawave panel")"
   panel_dir="$(ask_value "$(tr_text "Путь установки панели" "Panel installation path")" "/opt/remnawave")"
   [[ "$panel_dir" == "__PBM_BACK__" ]] && return 1
+  if ! validate_project_path_or_warn "REMNAWAVE_DIR" "$panel_dir"; then
+    return 1
+  fi
   REMNAWAVE_DIR="$panel_dir"
 
   if [[ -f "${panel_dir}/.env" ]]; then
@@ -395,24 +399,19 @@ run_panel_install_flow() {
   while true; do
     panel_domain="$(ask_value "$(tr_text "Домен панели (без http/https)" "Panel domain (without http/https)")" "${REMNAWAVE_LAST_PANEL_DOMAIN}")"
     [[ "$panel_domain" == "__PBM_BACK__" ]] && return 1
-    [[ -n "$panel_domain" ]] && break
-    paint "$CLR_WARN" "$(tr_text "Домен панели не может быть пустым." "Panel domain cannot be empty.")"
+    validate_domain_or_warn "FRONT_END_DOMAIN" "$panel_domain" && break
   done
 
   while true; do
     sub_domain="$(ask_value "$(tr_text "Домен подписки (без http/https)" "Subscription domain (without http/https)")" "")"
     [[ "$sub_domain" == "__PBM_BACK__" ]] && return 1
-    [[ -n "$sub_domain" ]] && break
-    paint "$CLR_WARN" "$(tr_text "Домен подписки не может быть пустым." "Subscription domain cannot be empty.")"
+    validate_domain_or_warn "SUB_PUBLIC_DOMAIN" "$sub_domain" && break
   done
 
   while true; do
     panel_port="$(ask_value "$(tr_text "Порт панели" "Panel port")" "3000")"
     [[ "$panel_port" == "__PBM_BACK__" ]] && return 1
-    if [[ "$panel_port" =~ ^[0-9]+$ ]]; then
-      break
-    fi
-    paint "$CLR_WARN" "$(tr_text "Порт должен быть числом." "Port must be numeric.")"
+    validate_tcp_port_or_warn "APP_PORT" "$panel_port" && break
   done
 
   if ! ensure_docker_available; then
@@ -478,6 +477,9 @@ run_panel_update_flow() {
   draw_header "$(tr_text "Обновление панели Remnawave" "Update Remnawave panel")"
   panel_dir="$(ask_value "$(tr_text "Путь к панели" "Panel path")" "/opt/remnawave")"
   [[ "$panel_dir" == "__PBM_BACK__" ]] && return 1
+  if ! validate_project_path_or_warn "REMNAWAVE_DIR" "$panel_dir"; then
+    return 1
+  fi
 
   REMNAWAVE_DIR="$panel_dir"
   env_file="${panel_dir}/.env"
@@ -550,12 +552,22 @@ run_panel_caddy_install_flow() {
     [[ "$sub_port" == "__PBM_BACK__" ]] && return 1
   fi
 
-  if ! [[ "$panel_port" =~ ^[0-9]+$ && "$sub_port" =~ ^[0-9]+$ ]]; then
-    paint "$CLR_DANGER" "$(tr_text "Порты должны быть числовыми." "Ports must be numeric.")"
+  if ! validate_project_path_or_warn "REMNAWAVE_DIR" "$panel_dir"; then
     return 1
   fi
-  if [[ -z "$panel_domain" || -z "$sub_domain" ]]; then
-    paint "$CLR_DANGER" "$(tr_text "Домены не могут быть пустыми." "Domains cannot be empty.")"
+  if ! validate_project_path_or_warn "PANEL_CADDY_DIR" "$caddy_dir"; then
+    return 1
+  fi
+  if ! validate_domain_or_warn "FRONT_END_DOMAIN" "$panel_domain"; then
+    return 1
+  fi
+  if ! validate_domain_or_warn "SUB_PUBLIC_DOMAIN" "$sub_domain"; then
+    return 1
+  fi
+  if ! validate_tcp_port_or_warn "APP_PORT" "$panel_port"; then
+    return 1
+  fi
+  if ! validate_tcp_port_or_warn "SUBSCRIPTION_PORT" "$sub_port"; then
     return 1
   fi
 
@@ -598,6 +610,12 @@ run_panel_caddy_update_flow() {
     caddy_dir="$(ask_value "$(tr_text "Путь к Caddy панели" "Panel Caddy path")" "${panel_dir}/caddy")"
     [[ "$caddy_dir" == "__PBM_BACK__" ]] && return 1
   fi
+  if ! validate_project_path_or_warn "REMNAWAVE_DIR" "$panel_dir"; then
+    return 1
+  fi
+  if ! validate_project_path_or_warn "PANEL_CADDY_DIR" "$caddy_dir"; then
+    return 1
+  fi
 
   if [[ ! -f "${caddy_dir}/docker-compose.yml" ]]; then
     paint "$CLR_WARN" "$(tr_text "Caddy для панели не найден, запускаю установку." "Panel Caddy not found, starting install flow.")"
@@ -630,14 +648,14 @@ run_node_install_flow() {
   draw_header "$(tr_text "Установка ноды RemnaNode" "Install RemnaNode")"
   node_dir="$(ask_value "$(tr_text "Путь установки ноды" "Node installation path")" "/opt/remnanode")"
   [[ "$node_dir" == "__PBM_BACK__" ]] && return 1
+  if ! validate_project_path_or_warn "REMNANODE_DIR" "$node_dir"; then
+    return 1
+  fi
 
   while true; do
     node_port="$(ask_value "$(tr_text "Порт ноды" "Node port")" "3001")"
     [[ "$node_port" == "__PBM_BACK__" ]] && return 1
-    if [[ "$node_port" =~ ^[0-9]+$ ]]; then
-      break
-    fi
-    paint "$CLR_WARN" "$(tr_text "Порт должен быть числом." "Port must be numeric.")"
+    validate_tcp_port_or_warn "NODE_PORT" "$node_port" && break
   done
 
   while true; do
@@ -671,6 +689,9 @@ run_node_update_flow() {
   draw_header "$(tr_text "Обновление ноды RemnaNode" "Update RemnaNode")"
   node_dir="$(ask_value "$(tr_text "Путь к ноде" "Node path")" "/opt/remnanode")"
   [[ "$node_dir" == "__PBM_BACK__" ]] && return 1
+  if ! validate_project_path_or_warn "REMNANODE_DIR" "$node_dir"; then
+    return 1
+  fi
 
   if ! ensure_docker_available; then
     return 1
@@ -790,11 +811,17 @@ run_subscription_caddy_install_flow() {
     caddy_dir="$(ask_value "$(tr_text "Путь установки Caddy для подписок" "Subscription Caddy installation path")" "${REMNAWAVE_DIR:-/opt/remnawave}/subscription-caddy")"
     [[ "$caddy_dir" == "__PBM_BACK__" ]] && return 1
   fi
+  if ! validate_project_path_or_warn "SUBSCRIPTION_CADDY_DIR" "$caddy_dir"; then
+    return 1
+  fi
 
-  while [[ -z "$sub_domain" ]]; do
-    sub_domain="$(ask_value "$(tr_text "Домен подписок (без http/https)" "Subscription domain (without http/https)")" "${REMNAWAVE_LAST_SUB_DOMAIN}")"
-    [[ "$sub_domain" == "__PBM_BACK__" ]] && return 1
-    [[ -n "$sub_domain" ]] || paint "$CLR_WARN" "$(tr_text "Домен подписок не может быть пустым." "Subscription domain cannot be empty.")"
+  while true; do
+    if [[ -z "$sub_domain" ]]; then
+      sub_domain="$(ask_value "$(tr_text "Домен подписок (без http/https)" "Subscription domain (without http/https)")" "${REMNAWAVE_LAST_SUB_DOMAIN}")"
+      [[ "$sub_domain" == "__PBM_BACK__" ]] && return 1
+    fi
+    validate_domain_or_warn "PBM_SUBSCRIPTION_DOMAIN" "$sub_domain" && break
+    sub_domain=""
   done
 
   while true; do
@@ -802,10 +829,7 @@ run_subscription_caddy_install_flow() {
       sub_port="$(ask_value "$(tr_text "Локальный порт subscription" "Subscription local port")" "${REMNAWAVE_LAST_SUB_PORT:-3010}")"
       [[ "$sub_port" == "__PBM_BACK__" ]] && return 1
     fi
-    if [[ "$sub_port" =~ ^[0-9]+$ ]]; then
-      break
-    fi
-    paint "$CLR_WARN" "$(tr_text "Порт должен быть числом." "Port must be numeric.")"
+    validate_tcp_port_or_warn "SUBSCRIPTION_PORT" "$sub_port" && break
     sub_port=""
   done
 
@@ -852,6 +876,12 @@ run_subscription_install_flow() {
   draw_header "$(tr_text "Установка страницы подписок" "Install subscription page")"
   sub_dir="$(ask_value "$(tr_text "Путь установки subscription" "Subscription installation path")" "${REMNAWAVE_DIR:-/opt/remnawave}/subscription")"
   [[ "$sub_dir" == "__PBM_BACK__" ]] && return 1
+  if ! validate_project_path_or_warn "SUBSCRIPTION_DIR" "$sub_dir"; then
+    return 1
+  fi
+  if ! validate_project_path_or_warn "REMNAWAVE_DIR" "$panel_dir"; then
+    return 1
+  fi
 
   if [[ ! -f "${panel_dir}/.env" && ! -f "${panel_dir}/docker-compose.yml" ]]; then
     default_same_server="n"
@@ -879,28 +909,27 @@ run_subscription_install_flow() {
   while true; do
     panel_domain="$(ask_value "$(tr_text "Домен панели (без http/https)" "Panel domain (without http/https)")" "${REMNAWAVE_LAST_PANEL_DOMAIN}")"
     [[ "$panel_domain" == "__PBM_BACK__" ]] && return 1
-    [[ -n "$panel_domain" ]] && break
-    paint "$CLR_WARN" "$(tr_text "Домен панели не может быть пустым." "Panel domain cannot be empty.")"
+    validate_domain_or_warn "FRONT_END_DOMAIN" "$panel_domain" && break
   done
 
   if [[ "$install_with_panel" == "0" ]]; then
     while true; do
       sub_domain="$(ask_value "$(tr_text "Домен подписок (без http/https)" "Subscription domain (without http/https)")" "${REMNAWAVE_LAST_SUB_DOMAIN}")"
       [[ "$sub_domain" == "__PBM_BACK__" ]] && return 1
-      [[ -n "$sub_domain" ]] && break
-      paint "$CLR_WARN" "$(tr_text "Домен подписок не может быть пустым." "Subscription domain cannot be empty.")"
+      validate_domain_or_warn "PBM_SUBSCRIPTION_DOMAIN" "$sub_domain" && break
     done
   else
     sub_domain="${REMNAWAVE_LAST_SUB_DOMAIN}"
+    while [[ -z "$sub_domain" ]] || ! validate_domain_or_warn "SUB_PUBLIC_DOMAIN" "$sub_domain"; do
+      sub_domain="$(ask_value "$(tr_text "Домен подписок (без http/https)" "Subscription domain (without http/https)")" "${REMNAWAVE_LAST_SUB_DOMAIN}")"
+      [[ "$sub_domain" == "__PBM_BACK__" ]] && return 1
+    done
   fi
 
   while true; do
     sub_port="$(ask_value "$(tr_text "Порт subscription" "Subscription port")" "3010")"
     [[ "$sub_port" == "__PBM_BACK__" ]] && return 1
-    if [[ "$sub_port" =~ ^[0-9]+$ ]]; then
-      break
-    fi
-    paint "$CLR_WARN" "$(tr_text "Порт должен быть числом." "Port must be numeric.")"
+    validate_tcp_port_or_warn "SUBSCRIPTION_PORT" "$sub_port" && break
   done
 
   while true; do
@@ -979,6 +1008,9 @@ run_subscription_update_flow() {
   draw_header "$(tr_text "Обновление страницы подписок" "Update subscription page")"
   sub_dir="$(ask_value "$(tr_text "Путь к subscription" "Subscription path")" "${REMNAWAVE_DIR:-/opt/remnawave}/subscription")"
   [[ "$sub_dir" == "__PBM_BACK__" ]] && return 1
+  if ! validate_project_path_or_warn "SUBSCRIPTION_DIR" "$sub_dir"; then
+    return 1
+  fi
 
   env_file="${sub_dir}/.env"
   if [[ -f "$env_file" ]]; then
