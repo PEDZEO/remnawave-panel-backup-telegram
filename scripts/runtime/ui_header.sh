@@ -81,8 +81,8 @@ draw_header_full() {
   local show_bedolaga_header="0"
 
   clear
-  timer_panel_state="$($SUDO systemctl is-active panel-backup-panel.timer 2>/dev/null || echo "inactive")"
-  timer_bedolaga_state="$($SUDO systemctl is-active panel-backup-bedolaga.timer 2>/dev/null || echo "inactive")"
+  timer_panel_state="$(systemctl_active_state panel-backup-panel.timer)"
+  timer_bedolaga_state="$(systemctl_active_state panel-backup-bedolaga.timer)"
   if [[ "$timer_panel_state" == "active" || "$timer_bedolaga_state" == "active" ]]; then
     timer_state="active"
   else
@@ -306,8 +306,8 @@ draw_header() {
 
   clear
 
-  timer_panel_state="$($SUDO systemctl is-active panel-backup-panel.timer 2>/dev/null || echo "inactive")"
-  timer_bedolaga_state="$($SUDO systemctl is-active panel-backup-bedolaga.timer 2>/dev/null || echo "inactive")"
+  timer_panel_state="$(systemctl_active_state panel-backup-panel.timer)"
+  timer_bedolaga_state="$(systemctl_active_state panel-backup-bedolaga.timer)"
   if [[ "$timer_panel_state" == "active" || "$timer_bedolaga_state" == "active" ]]; then
     timer_state="active"
   fi

@@ -458,7 +458,7 @@ run_doctor_checks() {
   paint "$CLR_TITLE" "$(tr_text "Таймеры" "Timers")"
   for item in panel-backup-panel.timer panel-backup-bedolaga.timer; do
     if $SUDO systemctl list-unit-files "$item" >/dev/null 2>&1; then
-      doctor_ok "$item: $($SUDO systemctl is-active "$item" 2>/dev/null || echo inactive)"
+      doctor_ok "$item: $(systemctl_active_state "$item")"
     else
       doctor_warn "$(tr_text "Таймер не установлен" "Timer is not installed"): $item"
     fi

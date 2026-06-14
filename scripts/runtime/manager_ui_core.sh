@@ -36,6 +36,24 @@ show_back_hint() {
   paint "$CLR_MUTED" "  $(tr_text "Навигация: b/back = назад." "Navigation: b/back = back.")"
 }
 
+systemctl_value_or_default() {
+  local fallback="$1"
+  shift
+  local value=""
+
+  value="$($SUDO systemctl "$@" 2>/dev/null || true)"
+  value="$(printf '%s\n' "$value" | sed -n '1p')"
+  printf '%s' "${value:-$fallback}"
+}
+
+systemctl_active_state() {
+  systemctl_value_or_default "inactive" is-active "$1"
+}
+
+systemctl_enabled_state() {
+  systemctl_value_or_default "disabled" is-enabled "$1"
+}
+
 mask_secret() {
   local value="$1"
   local len=0
@@ -839,6 +857,40 @@ ask_value_nav() {
   fi
 
   if [[ -n "$input" ]]; then
+    echo "$input"
+  else
+    echo "$current"
+  fi
+}
+
+ask_value_clearable() {
+  local prompt="$1"
+  local current="${2:-}"
+  local input=""
+
+  if [[ -n "$current" ]]; then
+    if [[ "$COLOR" == "1" ]]; then
+      printf "%b%s [%s] (- = %s)%b\n" "$CLR_MUTED" "$prompt" "$current" "$(tr_text "очистить" "clear")" "$CLR_RESET" >&2
+    else
+      printf "%s [%s] (- = %s)\n" "$prompt" "$current" "$(tr_text "очистить" "clear")" >&2
+    fi
+  else
+    if [[ "$COLOR" == "1" ]]; then
+      printf "%b%s (- = %s)%b\n" "$CLR_MUTED" "$prompt" "$(tr_text "очистить" "clear")" "$CLR_RESET" >&2
+    else
+      printf "%s (- = %s)\n" "$prompt" "$(tr_text "очистить" "clear")" >&2
+    fi
+  fi
+  read -r -p "> " input
+
+  if is_back_command "$input"; then
+    echo "__PBM_BACK__"
+    return 0
+  fi
+
+  if [[ "$input" == "-" ]]; then
+    echo ""
+  elif [[ -n "$input" ]]; then
     echo "$input"
   else
     echo "$current"

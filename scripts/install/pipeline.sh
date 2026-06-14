@@ -150,6 +150,32 @@ prompt_install_settings() {
       TELEGRAM_THREAD_ID="$val"
       break
     done
+
+    if ask_yes_no "$(tr_text "Проверить отправку в Telegram сейчас?" "Test Telegram delivery now?")" "y"; then
+      while ! test_telegram_delivery "$setup_scope"; do
+        paint "$CLR_WARN" "$(tr_text "Telegram не прошел проверку. Можно исправить данные без выхода из скрипта." "Telegram check failed. You can fix values without leaving the script.")"
+        menu_option "1" "$(tr_text "Исправить токен/chat_id/topic" "Fix token/chat_id/topic")"
+        menu_option "2" "$(tr_text "Продолжить без проверки" "Continue without verification")"
+        menu_option "3" "$(tr_text "Отключить Telegram и сохранять только локально" "Disable Telegram and keep local only")"
+        print_separator
+        read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" val
+        case "$val" in
+          1) menu_flow_telegram_settings "$setup_scope" ;;
+          2) break ;;
+          3)
+            delivery_mode="local"
+            TELEGRAM_DELIVERY_MODE="local"
+            TELEGRAM_BOT_TOKEN=""
+            TELEGRAM_ADMIN_ID=""
+            TELEGRAM_THREAD_ID=""
+            TELEGRAM_THREAD_ID_PANEL=""
+            TELEGRAM_THREAD_ID_BEDOLAGA=""
+            break
+            ;;
+          *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")" ;;
+        esac
+      done
+    fi
   else
     TELEGRAM_DELIVERY_MODE="local"
     TELEGRAM_BOT_TOKEN=""
@@ -369,12 +395,19 @@ write_env() {
   local escaped_backup_include=""
   load_existing_env_defaults
 
+  [[ "${TELEGRAM_THREAD_ID:-}" == "__PBM_CLEAR__" ]] && TELEGRAM_THREAD_ID=""
+  [[ "${TELEGRAM_THREAD_ID_PANEL:-}" == "__PBM_CLEAR__" ]] && TELEGRAM_THREAD_ID_PANEL=""
+  [[ "${TELEGRAM_THREAD_ID_BEDOLAGA:-}" == "__PBM_CLEAR__" ]] && TELEGRAM_THREAD_ID_BEDOLAGA=""
+
   if [[ "${TELEGRAM_DELIVERY_MODE:-}" == "local" ]]; then
     TELEGRAM_BOT_TOKEN=""
     TELEGRAM_ADMIN_ID=""
     TELEGRAM_THREAD_ID=""
     TELEGRAM_THREAD_ID_PANEL=""
     TELEGRAM_THREAD_ID_BEDOLAGA=""
+  fi
+  if [[ "$(normalize_backup_encrypt_raw "${BACKUP_ENCRYPT:-0}")" != "1" ]]; then
+    BACKUP_PASSWORD=""
   fi
 
   escaped_bot="$(escape_env_value "${TELEGRAM_BOT_TOKEN:-}")"
@@ -672,10 +705,8 @@ enable_timer() {
   paint "$CLR_OK" "[5/5] $(tr_text "Готово" "Done")"
   local panel_timer_state=""
   local bedolaga_timer_state=""
-  panel_timer_state="$($SUDO systemctl is-active panel-backup-panel.timer 2>/dev/null || true)"
-  bedolaga_timer_state="$($SUDO systemctl is-active panel-backup-bedolaga.timer 2>/dev/null || true)"
-  [[ -n "$panel_timer_state" ]] || panel_timer_state="inactive"
-  [[ -n "$bedolaga_timer_state" ]] || bedolaga_timer_state="inactive"
+  panel_timer_state="$(systemctl_active_state panel-backup-panel.timer)"
+  bedolaga_timer_state="$(systemctl_active_state panel-backup-bedolaga.timer)"
   if [[ "$INSTALL_PANEL_TIMER_ENABLED" == "1" ]]; then
     paint "$CLR_MUTED" "panel-backup-panel.timer: ${panel_timer_state}"
   fi
@@ -690,10 +721,8 @@ post_install_health_check() {
   local panel_service_loaded="unknown"
   local bedolaga_service_loaded="unknown"
 
-  panel_timer_active="$($SUDO systemctl is-active panel-backup-panel.timer 2>/dev/null || true)"
-  bedolaga_timer_active="$($SUDO systemctl is-active panel-backup-bedolaga.timer 2>/dev/null || true)"
-  [[ -n "$panel_timer_active" ]] || panel_timer_active="inactive"
-  [[ -n "$bedolaga_timer_active" ]] || bedolaga_timer_active="inactive"
+  panel_timer_active="$(systemctl_active_state panel-backup-panel.timer)"
+  bedolaga_timer_active="$(systemctl_active_state panel-backup-bedolaga.timer)"
   if $SUDO systemctl cat panel-backup-panel.service >/dev/null 2>&1; then
     panel_service_loaded="ok"
   else

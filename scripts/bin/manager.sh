@@ -526,6 +526,7 @@ load_manager_modules() {
   load_manager_module "scripts/runtime/ui_header.sh"
   load_manager_module "scripts/menu/restore_wizard.sh"
   load_manager_module "scripts/menu/setup_section.sh"
+  load_manager_module "scripts/menu/reshala_section.sh"
   load_manager_module "scripts/menu/interactive.sh"
 }
 

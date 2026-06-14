@@ -200,6 +200,33 @@ menu_flow_quick_setup() {
           break
         done
 
+        if [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_ADMIN_ID:-}" ]]; then
+          if ask_yes_no "$(tr_text "Проверить отправку в Telegram сейчас?" "Test Telegram delivery now?")" "y"; then
+            while ! test_telegram_delivery "$setup_scope"; do
+              paint "$CLR_WARN" "$(tr_text "Telegram не прошел проверку. Исправьте токен/chat_id/topic или продолжите без проверки." "Telegram check failed. Fix token/chat_id/topic or continue without verification.")"
+              menu_option "1" "$(tr_text "Исправить Telegram" "Fix Telegram")"
+              menu_option "2" "$(tr_text "Продолжить без проверки" "Continue without verification")"
+              menu_option "3" "$(tr_text "Отключить Telegram" "Disable Telegram")"
+              print_separator
+              read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" input
+              case "$input" in
+                1) menu_flow_telegram_settings "$setup_scope" ;;
+                2) break ;;
+                3)
+                  TELEGRAM_DELIVERY_MODE="local"
+                  TELEGRAM_BOT_TOKEN=""
+                  TELEGRAM_ADMIN_ID=""
+                  TELEGRAM_THREAD_ID=""
+                  TELEGRAM_THREAD_ID_PANEL=""
+                  TELEGRAM_THREAD_ID_BEDOLAGA=""
+                  break
+                  ;;
+                *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")" ;;
+              esac
+            done
+          fi
+        fi
+
         if [[ "$setup_scope" != "bedolaga" ]]; then
           while true; do
             input="$(ask_value_nav "$(tr_text "Путь к Remnawave (панель)" "Remnawave path (panel)")" "$REMNAWAVE_DIR")"
@@ -508,6 +535,335 @@ format_backup_scope_label() {
   esac
 }
 
+telegram_thread_for_scope() {
+  local scope="${1:-panel}"
+
+  case "$scope" in
+    bedolaga)
+      if [[ -n "${TELEGRAM_THREAD_ID_BEDOLAGA:-}" ]]; then
+        printf '%s' "$TELEGRAM_THREAD_ID_BEDOLAGA"
+        return 0
+      fi
+      ;;
+    panel)
+      if [[ -n "${TELEGRAM_THREAD_ID_PANEL:-}" ]]; then
+        printf '%s' "$TELEGRAM_THREAD_ID_PANEL"
+        return 0
+      fi
+      ;;
+  esac
+
+  printf '%s' "${TELEGRAM_THREAD_ID:-}"
+}
+
+telegram_chat_id_for_send() {
+  local raw="${TELEGRAM_ADMIN_ID:-}"
+  local thread_id="${1:-}"
+
+  [[ -n "$raw" ]] || return 0
+  if [[ "$raw" =~ ^-100[0-9]+$ ]]; then
+    printf '%s' "$raw"
+  elif [[ "$raw" =~ ^[0-9]+$ && -n "$thread_id" ]]; then
+    printf '%s' "-100${raw}"
+  else
+    printf '%s' "$raw"
+  fi
+}
+
+test_telegram_delivery() {
+  local scope="${1:-panel}"
+  local thread_id=""
+  local chat_id=""
+  local response=""
+  local response_desc=""
+  local test_text=""
+  local -a thread_args=()
+
+  if [[ -z "${TELEGRAM_BOT_TOKEN:-}" || -z "${TELEGRAM_ADMIN_ID:-}" ]]; then
+    paint "$CLR_WARN" "$(tr_text "Сначала укажите токен бота и chat_id." "Set bot token and chat_id first.")"
+    return 1
+  fi
+  if ! is_valid_telegram_token "$TELEGRAM_BOT_TOKEN"; then
+    paint "$CLR_WARN" "$(tr_text "Токен выглядит неверно. Откройте пункт редактирования токена." "Token format looks invalid. Open token edit first.")"
+    return 1
+  fi
+  if ! is_valid_telegram_id "$TELEGRAM_ADMIN_ID"; then
+    paint "$CLR_WARN" "$(tr_text "chat_id должен быть числом." "chat_id must be numeric.")"
+    return 1
+  fi
+
+  thread_id="$(telegram_thread_for_scope "$scope")"
+  if [[ -n "$thread_id" ]]; then
+    if ! is_valid_telegram_id "$thread_id"; then
+      paint "$CLR_WARN" "$(tr_text "ID темы должен быть числом." "Thread ID must be numeric.")"
+      return 1
+    fi
+    thread_args+=(-d "message_thread_id=${thread_id}")
+  fi
+  chat_id="$(telegram_chat_id_for_send "$thread_id")"
+  test_text="$(tr_text "Проверка Telegram для backup. Если видите это сообщение, токен и chat_id работают." "Telegram backup test. If you see this message, token and chat_id work.")"
+
+  response="$(curl -sS --max-time 20 \
+    -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+    -d "chat_id=${chat_id}" \
+    "${thread_args[@]}" \
+    --data-urlencode "text=${test_text}")" || {
+      paint "$CLR_WARN" "$(tr_text "Не удалось подключиться к Telegram API." "Could not reach Telegram API.")"
+      return 1
+    }
+
+  if echo "$response" | grep -q '"ok":true'; then
+    paint "$CLR_OK" "$(tr_text "Telegram проверен: сообщение отправлено." "Telegram verified: message sent.")"
+    return 0
+  fi
+
+  response_desc="$(echo "$response" | sed -n 's/.*"description":"\([^"]*\)".*/\1/p')"
+  [[ -n "$response_desc" ]] || response_desc="$response"
+  paint "$CLR_WARN" "$(tr_text "Telegram не принял сообщение:" "Telegram rejected the message:") ${response_desc}"
+  case "${response_desc,,}" in
+    *"unauthorized"*|*"not found"*)
+      paint "$CLR_MUTED" "$(tr_text "Проверьте токен бота: чаще всего ошибка именно в нем." "Check the bot token: this is the most common cause.")"
+      ;;
+    *"chat not found"*|*"forbidden"*|*"not enough rights"*|*"have no rights"*)
+      paint "$CLR_MUTED" "$(tr_text "Проверьте chat_id и добавьте бота в чат/канал с правом отправки." "Check chat_id and add the bot to the chat/channel with send permission.")"
+      ;;
+    *"message thread not found"*)
+      paint "$CLR_MUTED" "$(tr_text "Проверьте ID темы или очистите поле topic." "Check the topic ID or clear the topic field.")"
+      ;;
+  esac
+  return 1
+}
+
+menu_flow_telegram_settings() {
+  local scope="${1:-global}"
+  local choice=""
+  local val=""
+  local token_state=""
+  local chat_state=""
+  local thread_state=""
+  local thread_label=""
+  local title=""
+
+  while true; do
+    load_existing_env_defaults
+    if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
+      token_state="$(mask_secret "$TELEGRAM_BOT_TOKEN")"
+    else
+      token_state="$(tr_text "не задан" "not set")"
+    fi
+    chat_state="${TELEGRAM_ADMIN_ID:-$(tr_text "не задан" "not set")}"
+    thread_state="$(telegram_thread_for_scope "$scope")"
+    thread_state="${thread_state:-$(tr_text "не задан" "not set")}"
+    case "$scope" in
+      panel)
+        title="$(tr_text "Telegram для backup панели" "Telegram for panel backup")"
+        thread_label="$(tr_text "Topic панели" "Panel topic")"
+        ;;
+      bedolaga)
+        title="$(tr_text "Telegram для backup Bedolaga" "Telegram for Bedolaga backup")"
+        thread_label="$(tr_text "Topic Bedolaga" "Bedolaga topic")"
+        ;;
+      *)
+        title="$(tr_text "Telegram для backup" "Telegram for backup")"
+        thread_label="$(tr_text "Topic по умолчанию" "Default topic")"
+        ;;
+    esac
+
+    draw_subheader "$title"
+    show_back_hint
+    paint "$CLR_MUTED" "$(tr_text "Локальный архив создается всегда. Telegram нужен только для отправки копии в чат." "A local archive is always created. Telegram only sends an extra copy to chat.")"
+    paint "$CLR_TITLE" "$(tr_text "Текущие значения" "Current values")"
+    paint "$CLR_MUTED" "  TELEGRAM_BOT_TOKEN: ${token_state}"
+    paint "$CLR_MUTED" "  TELEGRAM_ADMIN_ID: ${chat_state}"
+    paint "$CLR_MUTED" "  ${thread_label}: ${thread_state}"
+    print_separator
+    menu_option "1" "$(tr_text "Изменить токен бота" "Edit bot token")"
+    menu_option "2" "$(tr_text "Изменить chat_id" "Edit chat_id")"
+    menu_option "3" "$(tr_text "Изменить topic/thread_id (необязательно)" "Edit topic/thread_id (optional)")"
+    menu_option "4" "$(tr_text "Отправить тестовое сообщение" "Send test message")"
+    menu_option "5" "$(tr_text "Отключить Telegram-отправку" "Disable Telegram delivery")"
+    menu_option "6" "$(tr_text "Назад" "Back")"
+    print_separator
+    read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice
+    if is_back_command "$choice"; then
+      break
+    fi
+
+    case "$choice" in
+      1)
+        while true; do
+          val="$(ask_value "$(tr_text "Токен Telegram-бота" "Telegram bot token")" "$TELEGRAM_BOT_TOKEN")"
+          [[ "$val" == "__PBM_BACK__" ]] && break
+          if [[ -z "$val" ]] || ! is_valid_telegram_token "$val"; then
+            paint "$CLR_WARN" "$(tr_text "Некорректный токен. Формат должен быть вида 123456:ABCDEF..." "Invalid token. Format must look like 123456:ABCDEF...")"
+            continue
+          fi
+          TELEGRAM_BOT_TOKEN="$val"
+          TELEGRAM_DELIVERY_MODE="telegram"
+          write_env
+          paint "$CLR_OK" "$(tr_text "Токен сохранен." "Token saved.")"
+          wait_for_enter
+          break
+        done
+        ;;
+      2)
+        while true; do
+          val="$(ask_value "$(tr_text "ID чата/канала Telegram" "Telegram chat/channel ID")" "$TELEGRAM_ADMIN_ID")"
+          [[ "$val" == "__PBM_BACK__" ]] && break
+          if [[ -z "$val" ]] || ! is_valid_telegram_id "$val"; then
+            paint "$CLR_WARN" "$(tr_text "chat_id должен быть числом, например 123456789 или -1001234567890." "chat_id must be numeric, for example 123456789 or -1001234567890.")"
+            continue
+          fi
+          TELEGRAM_ADMIN_ID="$val"
+          TELEGRAM_DELIVERY_MODE="telegram"
+          write_env
+          paint "$CLR_OK" "$(tr_text "chat_id сохранен." "chat_id saved.")"
+          wait_for_enter
+          break
+        done
+        ;;
+      3)
+        while true; do
+          val="$(ask_value_clearable "$(tr_text "ID темы/topic (- очистить)" "Topic/thread ID (- to clear)")" "$(telegram_thread_for_scope "$scope")")"
+          [[ "$val" == "__PBM_BACK__" ]] && break
+          if [[ -n "$val" ]] && ! is_valid_telegram_id "$val"; then
+            paint "$CLR_WARN" "$(tr_text "ID темы должен быть числом." "Thread ID must be numeric.")"
+            continue
+          fi
+          case "$scope" in
+            panel) TELEGRAM_THREAD_ID_PANEL="${val:-__PBM_CLEAR__}" ;;
+            bedolaga) TELEGRAM_THREAD_ID_BEDOLAGA="${val:-__PBM_CLEAR__}" ;;
+            *) TELEGRAM_THREAD_ID="${val:-__PBM_CLEAR__}" ;;
+          esac
+          TELEGRAM_DELIVERY_MODE="telegram"
+          write_env
+          paint "$CLR_OK" "$(tr_text "Topic сохранен." "Topic saved.")"
+          wait_for_enter
+          break
+        done
+        ;;
+      4)
+        test_telegram_delivery "$scope" || true
+        wait_for_enter
+        ;;
+      5)
+        if ask_yes_no "$(tr_text "Отключить Telegram и удалить токен/chat_id из конфига?" "Disable Telegram and remove token/chat_id from config?")" "n"; then
+          TELEGRAM_DELIVERY_MODE="local"
+          TELEGRAM_BOT_TOKEN=""
+          TELEGRAM_ADMIN_ID=""
+          TELEGRAM_THREAD_ID=""
+          TELEGRAM_THREAD_ID_PANEL=""
+          TELEGRAM_THREAD_ID_BEDOLAGA=""
+          write_env
+          paint "$CLR_OK" "$(tr_text "Telegram отключен. Backup останется локальным." "Telegram disabled. Backup will remain local.")"
+        fi
+        wait_for_enter
+        ;;
+      6) break ;;
+      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+    esac
+  done
+}
+
+menu_flow_backup_scope_settings() {
+  local scope="${1:-global}"
+  local choice=""
+  local val=""
+  local include_state=""
+  local title=""
+  local scope_hint=""
+
+  while true; do
+    load_existing_env_defaults
+    include_state="$(format_backup_scope_label "${BACKUP_INCLUDE:-all}")"
+    case "$scope" in
+      panel)
+        title="$(tr_text "Состав backup панели" "Panel backup scope")"
+        scope_hint="$(tr_text "Быстрая кнопка backup панели всегда делает полный backup панели. Эта настройка нужна для общего MODE=backup и кастомного запуска." "The quick panel backup button always runs a full panel backup. This setting is for generic MODE=backup and custom runs.")"
+        ;;
+      bedolaga)
+        title="$(tr_text "Состав backup Bedolaga" "Bedolaga backup scope")"
+        scope_hint="$(tr_text "Быстрая кнопка полного Bedolaga делает полный backup. Эта настройка нужна для общего MODE=backup и кастомного запуска." "The quick full Bedolaga button runs a full backup. This setting is for generic MODE=backup and custom runs.")"
+        ;;
+      *)
+        title="$(tr_text "Состав backup" "Backup scope")"
+        scope_hint="$(tr_text "Это влияет на общий MODE=backup и кастомный запуск backup." "This affects generic MODE=backup and custom backup runs.")"
+        ;;
+    esac
+
+    draw_subheader "$title"
+    show_back_hint
+    paint "$CLR_MUTED" "$scope_hint"
+    paint "$CLR_MUTED" "$(tr_text "Текущий состав:" "Current scope:") ${include_state} (${BACKUP_INCLUDE:-all})"
+    print_separator
+    if [[ "$scope" == "panel" ]]; then
+      menu_option "1" "$(tr_text "Полная панель: DB + Redis + .env + compose + Caddy + subscription" "Full panel: DB + Redis + .env + compose + Caddy + subscription")"
+      menu_option "2" "$(tr_text "Только DB + Redis панели" "Panel DB + Redis only")"
+      menu_option "3" "$(tr_text "Только конфиги панели" "Panel configs only")"
+      menu_option "4" "$(tr_text "Свой список компонентов панели" "Custom panel component list")"
+      menu_option "5" "$(tr_text "Назад" "Back")"
+      print_separator
+      read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
+    elif [[ "$scope" == "bedolaga" ]]; then
+      menu_option "1" "$(tr_text "Полный Bedolaga: DB + Redis + бот + кабинет" "Full Bedolaga: DB + Redis + bot + cabinet")"
+      menu_option "2" "$(tr_text "Файлы бота + кабинета без DB/Redis" "Bot + cabinet files without DB/Redis")"
+      menu_option "3" "$(tr_text "Только конфиги Bedolaga" "Bedolaga configs only")"
+      menu_option "4" "$(tr_text "Свой список компонентов Bedolaga" "Custom Bedolaga component list")"
+      menu_option "5" "$(tr_text "Назад" "Back")"
+      print_separator
+      read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
+    else
+      menu_option "1" "$(tr_text "Только панель Remnawave" "Remnawave panel only")"
+      menu_option "2" "$(tr_text "Только Bedolaga" "Bedolaga only")"
+      menu_option "3" "$(tr_text "Панель + Bedolaga" "Panel + Bedolaga")"
+      menu_option "4" "$(tr_text "Свой список компонентов" "Custom component list")"
+      menu_option "5" "$(tr_text "Назад" "Back")"
+      print_separator
+      read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
+    fi
+
+    if is_back_command "$choice"; then
+      break
+    fi
+
+    case "$scope:$choice" in
+      panel:1) BACKUP_INCLUDE="all" ;;
+      panel:2) BACKUP_INCLUDE="db,redis" ;;
+      panel:3) BACKUP_INCLUDE="configs" ;;
+      panel:4)
+        val="$(ask_value "$(tr_text "Компоненты панели через запятую: all,db,redis,configs,env,compose,caddy,subscription" "Panel components: all,db,redis,configs,env,compose,caddy,subscription")" "$BACKUP_INCLUDE")"
+        [[ "$val" == "__PBM_BACK__" ]] && continue
+        validate_component_list_or_warn "panel" "$val" || { wait_for_enter; continue; }
+        BACKUP_INCLUDE="$(normalize_component_list "$val")"
+        ;;
+      bedolaga:1) BACKUP_INCLUDE="bedolaga" ;;
+      bedolaga:2) BACKUP_INCLUDE="bedolaga-bot,bedolaga-cabinet" ;;
+      bedolaga:3) BACKUP_INCLUDE="bedolaga-configs" ;;
+      bedolaga:4)
+        val="$(ask_value "$(tr_text "Компоненты Bedolaga через запятую: bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs" "Bedolaga components: bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs")" "$BACKUP_INCLUDE")"
+        [[ "$val" == "__PBM_BACK__" ]] && continue
+        validate_component_list_or_warn "bedolaga" "$val" || { wait_for_enter; continue; }
+        BACKUP_INCLUDE="$(normalize_component_list "$val")"
+        ;;
+      global:1) BACKUP_INCLUDE="all" ;;
+      global:2) BACKUP_INCLUDE="bedolaga" ;;
+      global:3) BACKUP_INCLUDE="all,bedolaga" ;;
+      global:4)
+        val="$(ask_value "$(tr_text "Компоненты через запятую" "Comma-separated components")" "$BACKUP_INCLUDE")"
+        [[ "$val" == "__PBM_BACK__" ]] && continue
+        validate_component_list_or_warn "global" "$val" || { wait_for_enter; continue; }
+        BACKUP_INCLUDE="$(normalize_component_list "$val")"
+        ;;
+      *:5) break ;;
+      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter; continue ;;
+    esac
+
+    write_env
+    paint "$CLR_OK" "$(tr_text "Состав backup сохранен." "Backup scope saved.")"
+    wait_for_enter
+  done
+}
+
 menu_section_setup() {
   local choice=""
   local setup_scope="${1:-global}"
@@ -550,20 +906,24 @@ menu_section_setup() {
     paint "$CLR_MUTED" "  Telegram: ${tg_state}"
     paint "$CLR_MUTED" "  $(tr_text "Шифрование резервной копии:" "Backup encryption:") ${enc_state}"
     paint "$CLR_MUTED" "  $(tr_text "Состав резервной копии:" "Backup scope:") ${include_state}"
-    menu_option "1" "$(tr_text "Установка/обновление" "Install/update")"
-    menu_option "2" "$(tr_text "Быстрая настройка" "Quick setup")"
+    menu_option "1" "$(tr_text "Telegram: токен, chat_id, тест отправки" "Telegram: token, chat_id, test send")"
+    menu_option "2" "$(tr_text "Состав backup" "Backup scope")"
     menu_option "3" "$(tr_text "Шифрование" "Encryption")"
-    menu_option "4" "$(tr_text "Назад" "Back")"
+    menu_option "4" "$(tr_text "Быстрая настройка мастером" "Quick setup wizard")"
+    menu_option "5" "$(tr_text "Установка/обновление файлов backup" "Install/update backup files")"
+    menu_option "6" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
     case "$choice" in
-      1) menu_flow_install_and_setup ;;
-      2) menu_flow_quick_setup ;;
+      1) menu_flow_telegram_settings "$setup_scope" ;;
+      2) menu_flow_backup_scope_settings "$setup_scope" ;;
       3) menu_flow_encryption_settings ;;
-      4) break ;;
+      4) menu_flow_quick_setup ;;
+      5) menu_flow_install_and_setup ;;
+      6) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
