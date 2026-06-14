@@ -272,9 +272,15 @@ bedolaga_sanitize_bot_optional_int_env() {
 bedolaga_clone_or_update_repo() {
   local repo_url="$1"
   local target_dir="$2"
+  local stash_ref=""
 
   if [[ -d "${target_dir}/.git" ]]; then
     paint "$CLR_ACCENT" "$(tr_text "Обновляю репозиторий" "Updating repository"): ${target_dir}"
+    if ! bedolaga_resolve_dirty_repo_before_update "$target_dir"; then
+      paint "$CLR_DANGER" "$(tr_text "Обновление репозитория отменено:" "Repository update canceled:") ${target_dir}"
+      return 1
+    fi
+    stash_ref="${BEDOLAGA_UPDATE_STASH_REF:-}"
     if ! git -C "$target_dir" fetch --all --prune; then
       paint "$CLR_DANGER" "$(tr_text "Не удалось получить обновления Git." "Failed to fetch Git updates.")"
       return 1
@@ -282,6 +288,14 @@ bedolaga_clone_or_update_repo() {
     if ! git -C "$target_dir" pull --ff-only; then
       paint "$CLR_DANGER" "$(tr_text "Не удалось обновить репозиторий (pull --ff-only)." "Failed to update repository (pull --ff-only).")"
       return 1
+    fi
+    if [[ -n "$stash_ref" ]]; then
+      paint "$CLR_MUTED" "$(tr_text "Возвращаю сохраненные локальные изменения из stash..." "Applying saved local changes from stash...")"
+      if ! git -C "$target_dir" stash pop; then
+        paint "$CLR_WARN" "$(tr_text "Обновление выполнено, но stash не применился автоматически. Проверьте конфликт и git stash list в:" "Update completed, but stash was not applied automatically. Check conflicts and git stash list in:") ${target_dir}"
+        return 1
+      fi
+      paint "$CLR_OK" "$(tr_text "Локальные изменения возвращены после обновления." "Local changes restored after update.")"
     fi
     return 0
   fi
