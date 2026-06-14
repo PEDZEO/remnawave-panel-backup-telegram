@@ -2,17 +2,71 @@
 # Shared UI/input/text helpers for manager and interactive modules.
 
 print_separator() {
-  paint "$CLR_MUTED" "------------------------------------------------------------"
+  MENU_SEPARATOR_PRINTED=1
+  paint "$CLR_TITLE" "  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+}
+
+menu_option_color() {
+  local key="$1"
+  local label="$2"
+
+  case "$label" in
+    *"Назад"*|*"Back"*|*"Выход"*|*"Exit"*)
+      printf '%s' "$CLR_DANGER"
+      return 0
+      ;;
+    *"Выключ"*|*"Отключ"*|*"Disable"*|*"Удал"*|*"Remove"*)
+      printf '%s' "$CLR_DANGER"
+      return 0
+      ;;
+    *"Установ"*|*"Install"*|*"Создать"*|*"Create"*|*"Включить"*|*"Enable"*)
+      printf '%s' "$CLR_OK"
+      return 0
+      ;;
+    *"Обнов"*|*"Update"*|*"Doctor"*|*"Провер"*|*"Тест"*|*"Test"*|*"Статус"*|*"Status"*)
+      printf '%s' "$CLR_WARN"
+      return 0
+      ;;
+    *"Измен"*|*"Change"*|*"Настро"*|*"Settings"*|*"Custom"*|*"Свой"*)
+      printf '%s' "$CLR_ACCENT"
+      return 0
+      ;;
+    *"Backup"*|*"backup"*|*"Восстанов"*|*"Restore"*|*"Миграц"*|*"Migration"*)
+      printf '%s' "$CLR_ACCENT"
+      return 0
+      ;;
+  esac
+
+  case "$key" in
+    1) printf '%s' "$CLR_OK" ;;
+    2) printf '%s' "$CLR_ACCENT" ;;
+    3) printf '%s' "$CLR_WARN" ;;
+    4) printf '%s' "$CLR_TITLE" ;;
+    0|9) printf '%s' "$CLR_DANGER" ;;
+    *) printf '%s' "$CLR_MUTED" ;;
+  esac
 }
 
 menu_option() {
   local key="$1"
   local label="$2"
-  local color="${3:-$CLR_ACCENT}"
+  local color="${3:-}"
+  local key_badge=""
+
+  [[ -n "$color" ]] || color="$(menu_option_color "$key" "$label")"
+  key_badge="[$key]"
+
+  if [[ "${MENU_OPTIONS_STARTED:-0}" != "1" ]]; then
+    if [[ "${MENU_SEPARATOR_PRINTED:-0}" != "1" ]]; then
+      print_separator
+    fi
+    MENU_OPTIONS_STARTED=1
+  fi
+
   if [[ "$COLOR" == "1" ]]; then
-    printf "  %b[%s]%b %b%s%b\n" "$CLR_TITLE" "$key" "$CLR_RESET" "$color" "$label" "$CLR_RESET"
+    printf "  %b%-5s%b %b%s%b\n" "$CLR_TITLE" "$key_badge" "$CLR_RESET" "$color" "$label" "$CLR_RESET"
   else
-    printf "  [%s] %s\n" "$key" "$label"
+    printf "  %-5s %s\n" "$key_badge" "$label"
   fi
 }
 
@@ -37,7 +91,13 @@ is_prev_command() {
 }
 
 show_back_hint() {
-  paint "$CLR_MUTED" "  $(tr_text "Навигация: b/back = назад." "Navigation: b/back = back.")"
+  if [[ "$COLOR" == "1" ]]; then
+    printf "  %b%s%b %b%s%b\n" \
+      "$CLR_TITLE" "$(tr_text "Навигация" "Navigation")" "$CLR_RESET" \
+      "$CLR_MUTED" "$(tr_text "b/back = назад · номер = открыть" "b/back = back · number = open")" "$CLR_RESET"
+  else
+    printf "  %s: %s\n" "$(tr_text "Навигация" "Navigation")" "$(tr_text "b/back = назад · номер = открыть" "b/back = back · number = open")"
+  fi
 }
 
 systemctl_value_or_default() {

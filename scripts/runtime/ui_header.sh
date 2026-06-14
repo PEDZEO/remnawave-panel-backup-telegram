@@ -16,13 +16,15 @@ draw_subheader() {
   local title="$1"
   local subtitle="${2:-}"
 
+  MENU_OPTIONS_STARTED=0
+  MENU_SEPARATOR_PRINTED=0
   clear
-  paint "$CLR_TITLE" "============================================================"
-  paint "$CLR_ACCENT" "  ${title}"
+  paint "$CLR_TITLE" "╔════════════════════════════════════════════════════════════"
+  paint "$CLR_ACCENT" "║ ${title}"
   if [[ -n "$subtitle" ]]; then
-    paint "$CLR_MUTED" "  ${subtitle}"
+    paint "$CLR_MUTED" "║ ${subtitle}"
   fi
-  paint "$CLR_TITLE" "============================================================"
+  paint "$CLR_TITLE" "╚════════════════════════════════════════════════════════════"
   echo
 }
 
@@ -80,6 +82,8 @@ draw_header_full() {
   local show_full_header="0"
   local show_bedolaga_header="0"
 
+  MENU_OPTIONS_STARTED=0
+  MENU_SEPARATOR_PRINTED=0
   clear
   timer_panel_state="$(systemctl_active_state panel-backup-panel.timer)"
   timer_bedolaga_state="$(systemctl_active_state panel-backup-bedolaga.timer)"
@@ -791,6 +795,8 @@ draw_header() {
   local usd_rub_label=""
   local usd_rub_color="$CLR_MUTED"
 
+  MENU_OPTIONS_STARTED=0
+  MENU_SEPARATOR_PRINTED=0
   clear
 
   os_kernel="$(dashboard_os_kernel)"
