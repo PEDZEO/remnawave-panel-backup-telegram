@@ -360,6 +360,8 @@ container_version_label() {
   local tail=""
   local image_ref=""
   local image_id=""
+  local image_info=""
+  local image_label_info=""
   local version=""
   local version_from_tag=""
   local revision=""
@@ -368,44 +370,29 @@ container_version_label() {
   local package_json=""
   local package_version=""
 
-  image_ref="$(container_image_ref "$name")"
-  image_id="$(docker inspect -f '{{.Image}}' "$name" 2>/dev/null || true)"
+  image_info="$(docker inspect -f '{{.Config.Image}}{{"\n"}}{{.Image}}{{"\n"}}{{ index .Config.Labels "com.docker.compose.project.working_dir" }}{{"\n"}}{{range .Config.Env}}{{println .}}{{end}}' "$name" 2>/dev/null || true)"
+  image_ref="$(printf '%s\n' "$image_info" | sed -n '1p')"
+  image_id="$(printf '%s\n' "$image_info" | sed -n '2p')"
+  compose_workdir="$(printf '%s\n' "$image_info" | sed -n '3p')"
+  [[ "$compose_workdir" == "<no value>" ]] && compose_workdir=""
 
   if [[ -n "$image_id" ]]; then
-    version="$(docker image inspect -f '{{ index .Config.Labels "org.opencontainers.image.version" }}' "$image_id" 2>/dev/null || true)"
+    image_label_info="$(docker image inspect -f '{{ index .Config.Labels "org.opencontainers.image.version" }}{{"\n"}}{{ index .Config.Labels "org.label-schema.version" }}{{"\n"}}{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image_id" 2>/dev/null || true)"
+    version="$(printf '%s\n' "$image_label_info" | sed -n '1p')"
     [[ "$version" == "<no value>" ]] && version=""
     if [[ -z "$version" ]]; then
-      version="$(docker image inspect -f '{{ index .Config.Labels "org.label-schema.version" }}' "$image_id" 2>/dev/null || true)"
+      version="$(printf '%s\n' "$image_label_info" | sed -n '2p')"
       [[ "$version" == "<no value>" ]] && version=""
     fi
-    if [[ -z "$version" ]]; then
-      revision="$(docker image inspect -f '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image_id" 2>/dev/null || true)"
-      [[ "$revision" == "<no value>" ]] && revision=""
-      if [[ -n "$revision" ]]; then
-        if [[ ${#revision} -gt 12 ]]; then
-          version="${revision:0:12}"
-        else
-          version="$revision"
-        fi
-      fi
-    fi
+    revision="$(printf '%s\n' "$image_label_info" | sed -n '3p')"
+    [[ "$revision" == "<no value>" ]] && revision=""
   fi
 
-  if [[ -z "$version" && -n "$image_ref" ]]; then
-    tail="${image_ref##*/}"
-    if [[ "$tail" == *:* ]]; then
-      version_from_tag="${tail##*:}"
-      if [[ "$version_from_tag" != "latest" ]]; then
-        version="$version_from_tag"
-      fi
-    fi
-  fi
-
-  env_version="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$name" 2>/dev/null | awk -F= '
-    $1=="__RW_METADATA_VERSION" {print $2; exit}
-    $1=="REMNAWAVE_VERSION" {print $2; exit}
-    $1=="SUBSCRIPTION_VERSION" {print $2; exit}
-    $1=="APP_VERSION" {print $2; exit}
+  env_version="$(printf '%s\n' "$image_info" | awk -F= '
+    NR>3 && $1=="__RW_METADATA_VERSION" {sub(/^[^=]*=/, ""); print; exit}
+    NR>3 && $1=="REMNAWAVE_VERSION" {sub(/^[^=]*=/, ""); print; exit}
+    NR>3 && $1=="SUBSCRIPTION_VERSION" {sub(/^[^=]*=/, ""); print; exit}
+    NR>3 && $1=="APP_VERSION" {sub(/^[^=]*=/, ""); print; exit}
   ' || true)"
 
   if [[ -n "$env_version" ]]; then
@@ -421,7 +408,6 @@ container_version_label() {
     return 0
   fi
 
-  compose_workdir="$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' "$name" 2>/dev/null || true)"
   if [[ -n "$compose_workdir" ]]; then
     package_json="${compose_workdir}/package.json"
     if [[ -f "$package_json" ]]; then
@@ -431,12 +417,38 @@ container_version_label() {
         return 0
       fi
     fi
-    if [[ -d "${compose_workdir}/.git" ]]; then
-      revision="$(git -C "$compose_workdir" rev-parse --short=12 HEAD 2>/dev/null || true)"
-      if [[ -n "$revision" ]]; then
-        printf '%s' "sha-${revision}"
-        return 0
+  fi
+
+  if [[ -z "$version" && -n "$image_ref" ]]; then
+    tail="${image_ref##*/}"
+    if [[ "$tail" == *:* ]]; then
+      version_from_tag="${tail##*:}"
+      if [[ "$version_from_tag" != "latest" && "$version_from_tag" != sha-* && ! "$version_from_tag" =~ ^[[:xdigit:]]{7,64}$ ]]; then
+        version="$version_from_tag"
       fi
+    fi
+  fi
+
+  if [[ -n "$version" ]]; then
+    printf '%s' "$version"
+    return 0
+  fi
+
+  if [[ -n "$compose_workdir" && -d "${compose_workdir}/.git" ]]; then
+    revision="$(git -C "$compose_workdir" rev-parse --short=12 HEAD 2>/dev/null || true)"
+    if [[ -n "$revision" ]]; then
+      printf '%s' "sha-${revision}"
+      return 0
+    fi
+  fi
+
+  if [[ -n "$image_id" ]]; then
+    if [[ -n "$revision" ]]; then
+      if [[ ${#revision} -gt 12 ]]; then
+        revision="${revision:0:12}"
+      fi
+      printf '%s' "sha-${revision}"
+      return 0
     fi
   fi
 

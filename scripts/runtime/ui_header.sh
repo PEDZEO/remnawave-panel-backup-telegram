@@ -413,7 +413,7 @@ dashboard_cpu_percent() {
   local idle_delta=0
 
   line1="$(grep '^cpu ' /proc/stat 2>/dev/null || true)"
-  sleep 0.08
+  sleep 0.03
   line2="$(grep '^cpu ' /proc/stat 2>/dev/null || true)"
   if [[ -z "$line1" || -z "$line2" ]]; then
     printf '%s' "0"
@@ -473,40 +473,105 @@ dashboard_disk_metric() {
   fi
 }
 
-dashboard_public_net() {
+dashboard_public_net_refresh() {
   local cache="/tmp/panel-backup-dashboard-ip.cache"
-  local now=0
-  local mtime=0
-  local cached=""
+  local cache_tmp=""
+  local lock="${cache}.lock"
   local json=""
   local ip=""
   local country=""
   local org=""
   local ping_ms=""
 
+  cache="${1:-$cache}"
+  cache_tmp="${cache}.$$"
+  lock="${cache}.lock"
+
+  (
+    trap 'rm -f "$lock" "$cache_tmp"' EXIT
+    if command -v curl >/dev/null 2>&1; then
+      json="$(curl -fsSL --connect-timeout 1 --max-time 2 https://ipinfo.io/json 2>/dev/null || true)"
+    fi
+    ip="$(printf '%s' "$json" | sed -n 's/.*"ip"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+    country="$(printf '%s' "$json" | sed -n 's/.*"country"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+    org="$(printf '%s' "$json" | sed -n 's/.*"org"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+    if [[ -n "$ip" ]] && command -v ping >/dev/null 2>&1; then
+      ping_ms="$(ping -c 1 -W 1 1.1.1.1 2>/dev/null | sed -n 's/.*time=\([0-9.]*\).*/\1/p' | head -n1)"
+    fi
+    [[ -n "$ip" ]] || ip="n/a"
+    [[ -n "$country" ]] || country="--"
+    [[ -n "$org" ]] || org="unknown"
+    [[ -n "$ping_ms" ]] && ping_ms="${ping_ms} ms" || ping_ms="n/a"
+    printf '%s|%s|%s|%s' "$ip" "$ping_ms" "$country" "$org" >"$cache_tmp"
+    mv -f "$cache_tmp" "$cache"
+  ) >/dev/null 2>&1 &
+}
+
+dashboard_public_net_start_refresh() {
+  local cache="$1"
+  local lock="${cache}.lock"
+  local now=0
+  local lock_mtime=0
+
+  now="$(date +%s)"
+  if [[ -f "$lock" ]]; then
+    lock_mtime="$(date -r "$lock" +%s 2>/dev/null || echo 0)"
+    if [[ "$lock_mtime" =~ ^[0-9]+$ ]] && (( now - lock_mtime < 60 )); then
+      return 0
+    fi
+  fi
+  printf '%s' "$now" >"$lock" 2>/dev/null || return 0
+  dashboard_public_net_refresh "$cache"
+}
+
+dashboard_public_net() {
+  local cache="/tmp/panel-backup-dashboard-ip.cache"
+  local now=0
+  local mtime=0
+  local cached=""
+
   now="$(date +%s)"
   if [[ -f "$cache" ]]; then
     mtime="$(date -r "$cache" +%s 2>/dev/null || echo 0)"
+    cached="$(cat "$cache" 2>/dev/null || true)"
     if [[ "$mtime" =~ ^[0-9]+$ ]] && (( now - mtime < 600 )); then
-      cached="$(cat "$cache" 2>/dev/null || true)"
       [[ -n "$cached" ]] && { printf '%s' "$cached"; return 0; }
     fi
+    dashboard_public_net_start_refresh "$cache"
+    [[ -n "$cached" ]] && { printf '%s' "$cached"; return 0; }
   fi
 
-  if command -v curl >/dev/null 2>&1; then
-    json="$(curl -fsSL --connect-timeout 1 --max-time 2 https://ipinfo.io/json 2>/dev/null || true)"
+  dashboard_public_net_start_refresh "$cache"
+  printf '%s|%s|%s|%s' "n/a" "n/a" "--" "$(tr_text "загрузка..." "loading...")"
+}
+
+dashboard_version_label() {
+  local version="${1:-}"
+
+  version="${version//$'\r'/}"
+  version="${version//$'\n'/}"
+  case "$version" in
+    ""|"unknown"|"<no value>")
+      printf '%s' ""
+      return 0
+      ;;
+    v*)
+      printf '%s' "$version"
+      return 0
+      ;;
+    sha-*)
+      printf 'build %s' "${version#sha-}"
+      return 0
+      ;;
+  esac
+
+  if [[ "$version" =~ ^[[:xdigit:]]{7,64}$ ]]; then
+    printf 'build %.12s' "$version"
+  elif [[ "$version" =~ ^[0-9]+([.][0-9]+)*([._-][0-9A-Za-z.-]+)?$ ]]; then
+    printf 'v%s' "$version"
+  else
+    printf '%s' "$version"
   fi
-  ip="$(printf '%s' "$json" | sed -n 's/.*"ip"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
-  country="$(printf '%s' "$json" | sed -n 's/.*"country"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
-  org="$(printf '%s' "$json" | sed -n 's/.*"org"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
-  if [[ -n "$ip" ]] && command -v ping >/dev/null 2>&1; then
-    ping_ms="$(ping -c 1 -W 1 1.1.1.1 2>/dev/null | sed -n 's/.*time=\([0-9.]*\).*/\1/p' | head -n1)"
-  fi
-  [[ -n "$ip" ]] || ip="n/a"
-  [[ -n "$country" ]] || country="--"
-  [[ -n "$org" ]] || org="$(tr_text "неизвестно" "unknown")"
-  [[ -n "$ping_ms" ]] && ping_ms="${ping_ms} ms" || ping_ms="n/a"
-  printf '%s|%s|%s|%s' "$ip" "$ping_ms" "$country" "$org" | tee "$cache" 2>/dev/null
 }
 
 dashboard_next_run_for_unit() {
@@ -563,11 +628,14 @@ draw_header() {
   local disk_total=""
   local panel_status=""
   local panel_version=""
+  local panel_version_label=""
   local sub_version=""
+  local sub_version_label=""
   local bot_status=""
   local cabinet_status=""
   local caddy_status=""
   local caddy_version=""
+  local caddy_version_label=""
   local capacity_label=""
   local panel_timer_state=""
   local panel_timer_enabled=""
@@ -613,13 +681,16 @@ draw_header() {
   disk_metric="$(dashboard_disk_metric)"
   IFS='|' read -r disk_percent disk_used disk_total <<< "$disk_metric"
 
-  panel_version="$(container_version_label remnawave)"
-  sub_version="$(container_version_label remnawave-subscription-page)"
   if docker inspect remnawave >/dev/null 2>&1; then
+    panel_version="$(container_version_label remnawave)"
+    panel_version_label="$(dashboard_version_label "$panel_version")"
+    panel_status="$(tr_text "Панель" "Panel")"
+    [[ -n "$panel_version_label" ]] && panel_status+=" (${panel_version_label})"
     if docker inspect remnawave-subscription-page >/dev/null 2>&1; then
-      panel_status="$(tr_text "Панель" "Panel") (v${panel_version}) + Sub-page (v${sub_version})"
-    else
-      panel_status="$(tr_text "Панель" "Panel") (v${panel_version})"
+      sub_version="$(container_version_label remnawave-subscription-page)"
+      sub_version_label="$(dashboard_version_label "$sub_version")"
+      panel_status+=" + Sub-page"
+      [[ -n "$sub_version_label" ]] && panel_status+=" (${sub_version_label})"
     fi
   else
     panel_status="$(tr_text "не найдена" "not found")"
@@ -629,7 +700,10 @@ draw_header() {
   cabinet_status="$(container_state cabinet_frontend)"
   if docker inspect remnawave-caddy >/dev/null 2>&1; then
     caddy_version="$(container_version_label remnawave-caddy)"
-    caddy_status="Caddy ${caddy_version} ($(tr_text "в Docker" "Docker"))"
+    caddy_version_label="$(dashboard_version_label "$caddy_version")"
+    caddy_status="Caddy"
+    [[ -n "$caddy_version_label" ]] && caddy_status+=" (${caddy_version_label})"
+    caddy_status+=" ($(tr_text "в Docker" "Docker"))"
   else
     caddy_status="$(tr_text "не найден" "not found")"
   fi
