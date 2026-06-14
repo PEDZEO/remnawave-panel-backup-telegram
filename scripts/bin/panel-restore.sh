@@ -5,8 +5,12 @@ set -euo pipefail
 REMNAWAVE_DIR="${REMNAWAVE_DIR:-}"
 BEDOLAGA_BOT_DIR="${BEDOLAGA_BOT_DIR:-}"
 BEDOLAGA_CABINET_DIR="${BEDOLAGA_CABINET_DIR:-}"
+BEDOLAGA_STACK_PROFILE="${BEDOLAGA_STACK_PROFILE:-auto}"
+BEDOLAGA_DB_CONTAINER="${BEDOLAGA_DB_CONTAINER:-}"
+BEDOLAGA_REDIS_CONTAINER="${BEDOLAGA_REDIS_CONTAINER:-}"
 PRE_RESTORE_BACKUP_ROOT="${PRE_RESTORE_BACKUP_ROOT:-/var/backups/panel-restore-pre}"
 RESTORE_ALLOW_NO_SNAPSHOT="${RESTORE_ALLOW_NO_SNAPSHOT:-0}"
+RESTORE_ALLOW_BEDOLAGA_PROFILE_MISMATCH="${RESTORE_ALLOW_BEDOLAGA_PROFILE_MISMATCH:-0}"
 BACKUP_ENV_PATH="${BACKUP_ENV_PATH:-/etc/panel-backup.env}"
 PBM_DEEP_AUTODETECT="${PBM_DEEP_AUTODETECT:-0}"
 BACKUP_PASSWORD="${BACKUP_PASSWORD:-}"
@@ -14,6 +18,7 @@ NO_RESTART=0
 ARCHIVE_PATH=""
 declare -a ONLY_RAW=()
 declare -A WANT=()
+BEDOLAGA_REQUIRED_PROFILE=""
 
 usage() {
   cat <<USAGE
@@ -31,6 +36,8 @@ Components:
   subscription      restore /opt/remnawave/subscription/
   bedolaga          restore Bedolaga stack (bot db + bot redis + bot configs + cabinet configs)
   bedolaga-db       restore Bedolaga bot PostgreSQL dump
+  bedolaga-fork-db  restore Bedolaga fork PostgreSQL dump only when archive/target are fork
+  bedolaga-official-db restore official Bedolaga PostgreSQL dump only when archive/target are official
   bedolaga-redis    restore Bedolaga bot Redis dump.rdb
   bedolaga-bot      restore /root/remnawave-bedolaga-telegram-bot config/data
   bedolaga-cabinet  restore /root/bedolaga-cabinet config
@@ -438,6 +445,133 @@ container_exists() {
   docker ps -a --format '{{.Names}}' | grep -qx "$name"
 }
 
+normalize_bedolaga_stack_profile() {
+  local value="${1:-auto}"
+  value="${value,,}"
+  case "$value" in
+    pedzeo|fork|fork-pedzeo|pedzeo-fork) printf '%s' "fork" ;;
+    official|main|upstream|bedolaga-dev) printf '%s' "official" ;;
+    custom) printf '%s' "custom" ;;
+    unknown|"") printf '%s' "unknown" ;;
+    auto) printf '%s' "auto" ;;
+    *) printf '%s' "$value" ;;
+  esac
+}
+
+bedolaga_repo_origin_url() {
+  local repo_dir="$1"
+  [[ -n "$repo_dir" && -d "${repo_dir}/.git" ]] || return 0
+  git -C "$repo_dir" remote get-url origin 2>/dev/null || true
+}
+
+detect_bedolaga_stack_profile() {
+  local bot_dir="$1"
+  local configured=""
+  local origin=""
+  local normalized_origin=""
+
+  configured="$(normalize_bedolaga_stack_profile "${BEDOLAGA_STACK_PROFILE:-auto}")"
+  if [[ "$configured" != "auto" ]]; then
+    printf '%s' "$configured"
+    return 0
+  fi
+
+  origin="$(bedolaga_repo_origin_url "$bot_dir")"
+  normalized_origin="${origin,,}"
+  case "$normalized_origin" in
+    *github.com/pedzeo/remnawave-bedolaga-telegram-bot*|*github.com:pedzeo/remnawave-bedolaga-telegram-bot*)
+      printf '%s' "fork"
+      return 0
+      ;;
+    *github.com/bedolaga-dev/remnawave-bedolaga-telegram-bot*|*github.com:bedolaga-dev/remnawave-bedolaga-telegram-bot*)
+      printf '%s' "official"
+      return 0
+      ;;
+  esac
+
+  if [[ -n "$origin" ]]; then
+    printf '%s' "custom"
+  else
+    printf '%s' "unknown"
+  fi
+}
+
+compose_container_name_for_service() {
+  local compose_file="$1"
+  local service_name="$2"
+
+  [[ -f "$compose_file" ]] || return 0
+  awk -v svc="$service_name" '
+    $0 ~ "^[[:space:]]{2}" svc ":[[:space:]]*$" { in_service=1; next }
+    in_service && $0 ~ "^[[:space:]]{2}[A-Za-z0-9_.-]+:[[:space:]]*$" { in_service=0 }
+    in_service && $0 ~ "^[[:space:]]*container_name:[[:space:]]*" {
+      sub(/^[[:space:]]*container_name:[[:space:]]*/, "")
+      gsub(/["'\'']/, "")
+      print
+      exit
+    }
+  ' "$compose_file" 2>/dev/null || true
+}
+
+detect_bedolaga_db_container() {
+  local bot_dir="$1"
+  local fallback="${2:-remnawave_bot_db}"
+  local detected=""
+
+  if [[ -n "${BEDOLAGA_DB_CONTAINER:-}" ]]; then
+    printf '%s' "$BEDOLAGA_DB_CONTAINER"
+    return 0
+  fi
+  detected="$(compose_container_name_for_service "${bot_dir}/docker-compose.yml" "postgres")"
+  printf '%s' "${detected:-$fallback}"
+}
+
+detect_bedolaga_redis_container() {
+  local bot_dir="$1"
+  local fallback="${2:-remnawave_bot_redis}"
+  local detected=""
+
+  if [[ -n "${BEDOLAGA_REDIS_CONTAINER:-}" ]]; then
+    printf '%s' "$BEDOLAGA_REDIS_CONTAINER"
+    return 0
+  fi
+  detected="$(compose_container_name_for_service "${bot_dir}/docker-compose.yml" "redis")"
+  printf '%s' "${detected:-$fallback}"
+}
+
+is_known_bedolaga_profile() {
+  case "${1:-unknown}" in
+    official|fork|custom) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+guard_bedolaga_db_profile_restore() {
+  local backup_profile="$1"
+  local target_profile="$2"
+  local required_profile="${BEDOLAGA_REQUIRED_PROFILE:-}"
+
+  backup_profile="$(normalize_bedolaga_stack_profile "$backup_profile")"
+  target_profile="$(normalize_bedolaga_stack_profile "$target_profile")"
+  required_profile="$(normalize_bedolaga_stack_profile "$required_profile")"
+
+  if [[ "$required_profile" != "auto" && "$required_profile" != "unknown" && -n "$required_profile" && "$backup_profile" != "$required_profile" ]]; then
+    echo "Archive Bedolaga DB profile is ${backup_profile}, but selected restore component requires ${required_profile}." >&2
+    exit 1
+  fi
+
+  if [[ "${RESTORE_ALLOW_BEDOLAGA_PROFILE_MISMATCH:-0}" == "1" ]]; then
+    log "WARNING: Bedolaga DB profile guard bypassed by RESTORE_ALLOW_BEDOLAGA_PROFILE_MISMATCH=1"
+    return 0
+  fi
+
+  if is_known_bedolaga_profile "$backup_profile" && is_known_bedolaga_profile "$target_profile" && [[ "$backup_profile" != "$target_profile" ]]; then
+    echo "Refusing Bedolaga DB/Redis restore: archive profile is ${backup_profile}, target profile is ${target_profile}." >&2
+    echo "Official and fork DB schemas can differ. Restore bot/cabinet files only, or set RESTORE_ALLOW_BEDOLAGA_PROFILE_MISMATCH=1 if you intentionally accept the risk." >&2
+    exit 1
+  fi
+}
+
 component_selected() {
   local name="$1"
   [[ -n "${WANT[$name]:-}" ]]
@@ -466,9 +600,39 @@ expand_component() {
       WANT[bedolaga-bot]=1
       WANT[bedolaga-cabinet]=1
       ;;
+    bedolaga-official)
+      WANT[bedolaga-db]=1
+      WANT[bedolaga-redis]=1
+      WANT[bedolaga-bot]=1
+      WANT[bedolaga-cabinet]=1
+      BEDOLAGA_REQUIRED_PROFILE="official"
+      ;;
+    bedolaga-fork)
+      WANT[bedolaga-db]=1
+      WANT[bedolaga-redis]=1
+      WANT[bedolaga-bot]=1
+      WANT[bedolaga-cabinet]=1
+      BEDOLAGA_REQUIRED_PROFILE="fork"
+      ;;
     bedolaga-configs)
       WANT[bedolaga-bot]=1
       WANT[bedolaga-cabinet]=1
+      ;;
+    bedolaga-official-db)
+      WANT[bedolaga-db]=1
+      BEDOLAGA_REQUIRED_PROFILE="official"
+      ;;
+    bedolaga-fork-db)
+      WANT[bedolaga-db]=1
+      BEDOLAGA_REQUIRED_PROFILE="fork"
+      ;;
+    bedolaga-official-redis)
+      WANT[bedolaga-redis]=1
+      BEDOLAGA_REQUIRED_PROFILE="official"
+      ;;
+    bedolaga-fork-redis)
+      WANT[bedolaga-redis]=1
+      BEDOLAGA_REQUIRED_PROFILE="fork"
       ;;
     db|redis|env|compose|caddy|subscription|bedolaga-db|bedolaga-redis|bedolaga-bot|bedolaga-cabinet)
       WANT["$c"]=1
@@ -585,6 +749,19 @@ BACKUP_POSTGRES_USER="$(backup_info_value postgres_user "$BACKUP_INFO_PATH")"
 BACKUP_POSTGRES_DB="$(backup_info_value postgres_db "$BACKUP_INFO_PATH")"
 BACKUP_BEDOLAGA_POSTGRES_USER="$(backup_info_value bedolaga_postgres_user "$BACKUP_INFO_PATH")"
 BACKUP_BEDOLAGA_POSTGRES_DB="$(backup_info_value bedolaga_postgres_db "$BACKUP_INFO_PATH")"
+BACKUP_BEDOLAGA_STACK_PROFILE="$(backup_info_value bedolaga_stack_profile "$BACKUP_INFO_PATH")"
+BACKUP_BEDOLAGA_DB_DUMP_PROFILE="$(backup_info_value bedolaga_db_dump_profile "$BACKUP_INFO_PATH")"
+BACKUP_BEDOLAGA_DB_CONTAINER="$(backup_info_value bedolaga_db_container "$BACKUP_INFO_PATH")"
+BACKUP_BEDOLAGA_REDIS_CONTAINER="$(backup_info_value bedolaga_redis_container "$BACKUP_INFO_PATH")"
+BACKUP_BEDOLAGA_STACK_PROFILE="$(normalize_bedolaga_stack_profile "${BACKUP_BEDOLAGA_STACK_PROFILE:-unknown}")"
+BACKUP_BEDOLAGA_DB_DUMP_PROFILE="$(normalize_bedolaga_stack_profile "${BACKUP_BEDOLAGA_DB_DUMP_PROFILE:-$BACKUP_BEDOLAGA_STACK_PROFILE}")"
+
+if [[ -f "$EXTRACT_DIR/bedolaga/db/${BACKUP_BEDOLAGA_DB_DUMP_PROFILE}/postgres.dump" ]]; then
+  BEDOLAGA_DB_DUMP="$EXTRACT_DIR/bedolaga/db/${BACKUP_BEDOLAGA_DB_DUMP_PROFILE}/postgres.dump"
+fi
+if [[ -f "$EXTRACT_DIR/bedolaga/redis/${BACKUP_BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb" ]]; then
+  BEDOLAGA_REDIS_DUMP="$EXTRACT_DIR/bedolaga/redis/${BACKUP_BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb"
+fi
 
 need_remnawave_dir=0
 need_bedolaga_bot_dir=0
@@ -647,6 +824,22 @@ fi
 
 validate_restore_target_collisions
 
+TARGET_BEDOLAGA_STACK_PROFILE="unknown"
+if component_selected bedolaga-db || component_selected bedolaga-redis || component_selected bedolaga-bot || component_selected bedolaga-cabinet; then
+  BEDOLAGA_BOT_DIR="${BEDOLAGA_BOT_DIR:-$(detect_bedolaga_bot_dir || true)}"
+  TARGET_BEDOLAGA_STACK_PROFILE="$(detect_bedolaga_stack_profile "${BEDOLAGA_BOT_DIR:-}")"
+  if [[ "$TARGET_BEDOLAGA_STACK_PROFILE" == "unknown" && -n "$BACKUP_BEDOLAGA_STACK_PROFILE" && "$BACKUP_BEDOLAGA_STACK_PROFILE" != "unknown" ]] && component_selected bedolaga-bot; then
+    TARGET_BEDOLAGA_STACK_PROFILE="$BACKUP_BEDOLAGA_STACK_PROFILE"
+  fi
+  BEDOLAGA_DB_CONTAINER="$(detect_bedolaga_db_container "${BEDOLAGA_BOT_DIR:-}" "${BACKUP_BEDOLAGA_DB_CONTAINER:-remnawave_bot_db}")"
+  BEDOLAGA_REDIS_CONTAINER="$(detect_bedolaga_redis_container "${BEDOLAGA_BOT_DIR:-}" "${BACKUP_BEDOLAGA_REDIS_CONTAINER:-remnawave_bot_redis}")"
+  log "Bedolaga archive profile: ${BACKUP_BEDOLAGA_STACK_PROFILE:-unknown}; target profile: ${TARGET_BEDOLAGA_STACK_PROFILE}; DB container: ${BEDOLAGA_DB_CONTAINER}; Redis container: ${BEDOLAGA_REDIS_CONTAINER}"
+fi
+
+if component_selected bedolaga-db || component_selected bedolaga-redis; then
+  guard_bedolaga_db_profile_restore "${BACKUP_BEDOLAGA_STACK_PROFILE:-unknown}" "${TARGET_BEDOLAGA_STACK_PROFILE:-unknown}"
+fi
+
 if component_selected db && ! container_exists remnawave-db; then
   echo "Container remnawave-db not found, cannot restore PostgreSQL dump" >&2
   exit 1
@@ -655,12 +848,12 @@ if component_selected redis && ! container_exists remnawave-redis; then
   echo "Container remnawave-redis not found, cannot restore Redis dump" >&2
   exit 1
 fi
-if component_selected bedolaga-db && ! container_exists remnawave_bot_db; then
-  echo "Container remnawave_bot_db not found, cannot restore Bedolaga PostgreSQL dump" >&2
+if component_selected bedolaga-db && ! container_exists "$BEDOLAGA_DB_CONTAINER"; then
+  echo "Container ${BEDOLAGA_DB_CONTAINER} not found, cannot restore Bedolaga PostgreSQL dump" >&2
   exit 1
 fi
-if component_selected bedolaga-redis && ! container_exists remnawave_bot_redis; then
-  echo "Container remnawave_bot_redis not found, cannot restore Bedolaga Redis dump" >&2
+if component_selected bedolaga-redis && ! container_exists "$BEDOLAGA_REDIS_CONTAINER"; then
+  echo "Container ${BEDOLAGA_REDIS_CONTAINER} not found, cannot restore Bedolaga Redis dump" >&2
   exit 1
 fi
 
@@ -814,14 +1007,14 @@ fi
 if component_selected bedolaga-db; then
   [[ -f "$BEDOLAGA_DB_DUMP" ]] || { echo "Missing bedolaga-bot-db.dump in archive" >&2; exit 1; }
   [[ -n "$BEDOLAGA_POSTGRES_USER" && -n "$BEDOLAGA_POSTGRES_DB" ]] || { echo "Cannot detect Bedolaga POSTGRES_USER/POSTGRES_DB" >&2; exit 1; }
-  log "Restore Bedolaga PostgreSQL -> db=${BEDOLAGA_POSTGRES_DB}, user=${BEDOLAGA_POSTGRES_USER}"
-  docker exec -i remnawave_bot_db pg_restore -U "$BEDOLAGA_POSTGRES_USER" -d "$BEDOLAGA_POSTGRES_DB" --clean --if-exists --no-owner --no-privileges < "$BEDOLAGA_DB_DUMP"
+  log "Restore Bedolaga PostgreSQL (${BACKUP_BEDOLAGA_DB_DUMP_PROFILE:-unknown}) -> container=${BEDOLAGA_DB_CONTAINER}, db=${BEDOLAGA_POSTGRES_DB}, user=${BEDOLAGA_POSTGRES_USER}"
+  docker exec -i "$BEDOLAGA_DB_CONTAINER" pg_restore -U "$BEDOLAGA_POSTGRES_USER" -d "$BEDOLAGA_POSTGRES_DB" --clean --if-exists --no-owner --no-privileges < "$BEDOLAGA_DB_DUMP"
 fi
 
 if component_selected bedolaga-redis; then
   [[ -f "$BEDOLAGA_REDIS_DUMP" ]] || { echo "Missing bedolaga-bot-redis.rdb in archive" >&2; exit 1; }
-  log "Restore Bedolaga Redis dump"
-  restore_redis_dump "$BEDOLAGA_REDIS_DUMP" remnawave_bot_redis "remnawave_bot_redis"
+  log "Restore Bedolaga Redis dump (${BACKUP_BEDOLAGA_DB_DUMP_PROFILE:-unknown}) -> container=${BEDOLAGA_REDIS_CONTAINER}"
+  restore_redis_dump "$BEDOLAGA_REDIS_DUMP" "$BEDOLAGA_REDIS_CONTAINER" "$BEDOLAGA_REDIS_CONTAINER"
 fi
 
 if (( NO_RESTART == 0 )); then

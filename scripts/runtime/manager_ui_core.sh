@@ -398,12 +398,12 @@ is_allowed_component_for_scope() {
       ;;
     bedolaga)
       case "$component" in
-        bedolaga|bedolaga-db|bedolaga-redis|bedolaga-bot|bedolaga-cabinet|bedolaga-configs) return 0 ;;
+        bedolaga|bedolaga-official|bedolaga-fork|bedolaga-db|bedolaga-redis|bedolaga-official-db|bedolaga-fork-db|bedolaga-official-redis|bedolaga-fork-redis|bedolaga-bot|bedolaga-cabinet|bedolaga-configs) return 0 ;;
       esac
       ;;
     *)
       case "$component" in
-        all|db|redis|configs|env|compose|caddy|subscription|bedolaga|bedolaga-db|bedolaga-redis|bedolaga-bot|bedolaga-cabinet|bedolaga-configs) return 0 ;;
+        all|db|redis|configs|env|compose|caddy|subscription|bedolaga|bedolaga-official|bedolaga-fork|bedolaga-db|bedolaga-redis|bedolaga-official-db|bedolaga-fork-db|bedolaga-official-redis|bedolaga-fork-redis|bedolaga-bot|bedolaga-cabinet|bedolaga-configs) return 0 ;;
       esac
       ;;
   esac

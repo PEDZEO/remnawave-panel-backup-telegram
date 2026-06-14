@@ -58,14 +58,17 @@ run_backup_scope_selector() {
     paint "$CLR_MUTED" "$(tr_text "Для Bedolaga можно сохранять бот и кабинет отдельно, если один из путей не найден." "For Bedolaga, bot and cabinet can be backed up separately if one of the paths is missing.")"
 
     if [[ "$profile" == "bedolaga" ]]; then
+      paint "$CLR_MUTED" "$(tr_text "DB official и DB форка разделены: профиль определяется по git origin, при несовпадении backup остановится." "Official and fork DB are separated: profile is detected from git origin, backup stops on mismatch.")"
       menu_option "1" "$(tr_text "Файлы бота + кабинета Bedolaga (без DB/Redis)" "Bedolaga bot + cabinet files (no DB/Redis)")"
       menu_option "2" "$(tr_text "Бот Bedolaga полностью (DB + Redis + файлы)" "Full Bedolaga bot (DB + Redis + files)")"
       menu_option "3" "$(tr_text "Файлы кабинета Bedolaga" "Bedolaga cabinet files")"
       menu_option "4" "$(tr_text "Полный Bedolaga (DB + Redis + бот + кабинет)" "Full Bedolaga (DB + Redis + bot + cabinet)")"
-      menu_option "5" "$(tr_text "Ручной выбор компонентов Bedolaga" "Manual Bedolaga component selection")"
-      menu_option "6" "$(tr_text "Назад" "Back")"
+      menu_option "5" "$(tr_text "Только DB форка PEDZEO" "PEDZEO fork DB only")"
+      menu_option "6" "$(tr_text "Только DB official Bedolaga" "Official Bedolaga DB only")"
+      menu_option "7" "$(tr_text "Ручной выбор компонентов Bedolaga" "Manual Bedolaga component selection")"
+      menu_option "8" "$(tr_text "Назад" "Back")"
       print_separator
-      read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice
+      read -r -p "$(tr_text "Выбор [1-8]: " "Choice [1-8]: ")" choice
       if is_back_command "$choice"; then
         return 1
       fi
@@ -74,12 +77,14 @@ run_backup_scope_selector() {
         2) run_backup_with_scope "$(tr_text "Резервная копия: бот Bedolaga полностью" "Backup: full Bedolaga bot")" "bedolaga-db,bedolaga-redis,bedolaga-bot"; return 0 ;;
         3) run_backup_with_scope "$(tr_text "Резервная копия: файлы кабинета Bedolaga" "Backup: Bedolaga cabinet files")" "bedolaga-cabinet"; return 0 ;;
         4) run_backup_with_scope "$(tr_text "Резервная копия: полный Bedolaga" "Backup: full Bedolaga")" "bedolaga"; return 0 ;;
-        5)
+        5) run_backup_with_scope "$(tr_text "Резервная копия: DB форка PEDZEO" "Backup: PEDZEO fork DB")" "bedolaga-fork-db"; return 0 ;;
+        6) run_backup_with_scope "$(tr_text "Резервная копия: DB official Bedolaga" "Backup: official Bedolaga DB")" "bedolaga-official-db"; return 0 ;;
+        7)
           paint "$CLR_MUTED" "$(tr_text "Используйте настройки backup Bedolaga, чтобы задать свой состав компонентов." "Use Bedolaga backup settings to define a custom component list.")"
           wait_for_enter
           return 1
           ;;
-        6) return 1 ;;
+        8) return 1 ;;
         *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
       esac
     else
@@ -109,6 +114,7 @@ run_restore_scope_selector() {
     paint "$CLR_MUTED" "$(tr_text "Даже из общего архива можно восстановить только нужную часть." "Even from a full backup archive you can restore only the required part.")"
 
     if [[ "$profile" == "bedolaga" ]]; then
+      paint "$CLR_MUTED" "$(tr_text "Restore DB/Redis Bedolaga защищен от смешивания official и fork. Файлы бота/кабинета можно восстанавливать отдельно без DB." "Bedolaga DB/Redis restore is guarded against official/fork mismatch. Bot/cabinet files can be restored separately without DB.")"
       menu_option "1" "$(tr_text "Файлы бота + кабинета Bedolaga (без DB/Redis)" "Bedolaga bot + cabinet files (no DB/Redis)")"
       menu_option "2" "$(tr_text "Бот Bedolaga полностью (DB + Redis + файлы)" "Full Bedolaga bot (DB + Redis + files)")"
       menu_option "3" "$(tr_text "Файлы кабинета Bedolaga" "Bedolaga cabinet files")"
@@ -253,12 +259,14 @@ menu_section_bedolaga_local_backup_restore() {
         menu_option "1" "$(tr_text "Создать backup: бот + кабинет" "Create backup: bot + cabinet")"
         menu_option "2" "$(tr_text "Создать backup: только бот" "Create backup: bot only")"
         menu_option "3" "$(tr_text "Создать backup: только кабинет" "Create backup: cabinet only")"
+        menu_option "4" "$(tr_text "Создать backup: только DB форка PEDZEO" "Create backup: PEDZEO fork DB only")"
+        menu_option "5" "$(tr_text "Создать backup: только DB official Bedolaga" "Create backup: official Bedolaga DB only")"
         menu_group "$(tr_text "Восстановление" "Restore")" "$CLR_WARN"
-        menu_option "4" "$(tr_text "Восстановление: выбрать состав" "Restore: choose scope")"
+        menu_option "6" "$(tr_text "Восстановление: выбрать состав" "Restore: choose scope")"
         menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
-        menu_option "5" "$(tr_text "Назад" "Back")"
+        menu_option "7" "$(tr_text "Назад" "Back")"
         print_separator
-        read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
+        read -r -p "$(tr_text "Выбор [1-7]: " "Choice [1-7]: ")" choice
         if is_back_command "$choice"; then
           continue
         fi
@@ -266,8 +274,10 @@ menu_section_bedolaga_local_backup_restore() {
           1) run_backup_with_scope "$(tr_text "Резервная копия: файлы бота + кабинета Bedolaga (без DB/Redis)" "Backup: Bedolaga bot + cabinet files (no DB/Redis)")" "bedolaga-bot,bedolaga-cabinet" ;;
           2) run_backup_with_scope "$(tr_text "Резервная копия: бот Bedolaga полностью" "Backup: full Bedolaga bot")" "bedolaga-db,bedolaga-redis,bedolaga-bot" ;;
           3) run_backup_with_scope "$(tr_text "Резервная копия: файлы кабинета Bedolaga" "Backup: Bedolaga cabinet files")" "bedolaga-cabinet" ;;
-          4) run_restore_scope_selector "bedolaga" || true ;;
-          5) ;;
+          4) run_backup_with_scope "$(tr_text "Резервная копия: DB форка PEDZEO" "Backup: PEDZEO fork DB")" "bedolaga-fork-db" ;;
+          5) run_backup_with_scope "$(tr_text "Резервная копия: DB official Bedolaga" "Backup: official Bedolaga DB")" "bedolaga-official-db" ;;
+          6) run_restore_scope_selector "bedolaga" || true ;;
+          7) ;;
           *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
         esac
         ;;

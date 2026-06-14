@@ -534,6 +534,9 @@ format_backup_scope_label() {
     configs,bedolaga-configs|bedolaga-configs,configs) echo "$(tr_text "конфиги (панель + бот + кабинет)" "configs (panel + bot + cabinet)")" ;;
     configs) echo "$(tr_text "только конфиги панели (configs)" "panel configs only (configs)")" ;;
     bedolaga) echo "$(tr_text "только Bedolaga (db + redis + bot + cabinet)" "Bedolaga only (db + redis + bot + cabinet)")" ;;
+    bedolaga-fork|bedolaga-fork-db|bedolaga-fork-db,bedolaga-fork-redis) echo "$(tr_text "Bedolaga fork: DB" "Bedolaga fork: DB")" ;;
+    bedolaga-official|bedolaga-official-db|bedolaga-official-db,bedolaga-official-redis) echo "$(tr_text "Bedolaga official: DB" "Bedolaga official: DB")" ;;
+    bedolaga-bot,bedolaga-cabinet|bedolaga-cabinet,bedolaga-bot|bedolaga-configs) echo "$(tr_text "файлы Bedolaga (бот + кабинет, без DB)" "Bedolaga files (bot + cabinet, no DB)")" ;;
     *) echo "${raw}" ;;
   esac
 }
@@ -856,7 +859,7 @@ menu_flow_backup_scope_settings() {
       bedolaga:2) BACKUP_INCLUDE="bedolaga-bot,bedolaga-cabinet" ;;
       bedolaga:3) BACKUP_INCLUDE="bedolaga-configs" ;;
       bedolaga:4)
-        val="$(ask_value "$(tr_text "Компоненты Bedolaga через запятую: bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs" "Bedolaga components: bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs")" "$BACKUP_INCLUDE")"
+        val="$(ask_value "$(tr_text "Компоненты Bedolaga через запятую: bedolaga,bedolaga-fork-db,bedolaga-official-db,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs" "Bedolaga components: bedolaga,bedolaga-fork-db,bedolaga-official-db,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs")" "$BACKUP_INCLUDE")"
         [[ "$val" == "__PBM_BACK__" ]] && continue
         validate_component_list_or_warn "bedolaga" "$val" || { wait_for_enter; continue; }
         BACKUP_INCLUDE="$(normalize_component_list "$val")"

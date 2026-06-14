@@ -9,6 +9,9 @@ TG_SINGLE_LIMIT_BYTES="${TG_SINGLE_LIMIT_BYTES:-50331648}"
 REMNAWAVE_DIR="${REMNAWAVE_DIR:-}"
 BEDOLAGA_BOT_DIR="${BEDOLAGA_BOT_DIR:-}"
 BEDOLAGA_CABINET_DIR="${BEDOLAGA_CABINET_DIR:-}"
+BEDOLAGA_STACK_PROFILE="${BEDOLAGA_STACK_PROFILE:-auto}"
+BEDOLAGA_DB_CONTAINER="${BEDOLAGA_DB_CONTAINER:-}"
+BEDOLAGA_REDIS_CONTAINER="${BEDOLAGA_REDIS_CONTAINER:-}"
 BACKUP_ENV_PATH="${BACKUP_ENV_PATH:-/etc/panel-backup.env}"
 PBM_DEEP_AUTODETECT="${PBM_DEEP_AUTODETECT:-0}"
 BACKUP_LANG="${BACKUP_LANG:-ru}"
@@ -49,6 +52,7 @@ WANT_BEDOLAGA_DB=0
 WANT_BEDOLAGA_REDIS=0
 WANT_BEDOLAGA_BOT=0
 WANT_BEDOLAGA_CABINET=0
+BEDOLAGA_REQUIRED_PROFILE=""
 
 cleanup() {
   rm -rf "$WORKDIR"
@@ -97,6 +101,7 @@ normalize_backup_include() {
   WANT_BEDOLAGA_REDIS=0
   WANT_BEDOLAGA_BOT=0
   WANT_BEDOLAGA_CABINET=0
+  BEDOLAGA_REQUIRED_PROFILE=""
 
   IFS=',' read -r -a __items <<< "$raw"
   for item in "${__items[@]}"; do
@@ -127,12 +132,42 @@ normalize_backup_include() {
         WANT_BEDOLAGA_BOT=1
         WANT_BEDOLAGA_CABINET=1
         ;;
+      bedolaga-official)
+        WANT_BEDOLAGA_DB=1
+        WANT_BEDOLAGA_REDIS=1
+        WANT_BEDOLAGA_BOT=1
+        WANT_BEDOLAGA_CABINET=1
+        BEDOLAGA_REQUIRED_PROFILE="official"
+        ;;
+      bedolaga-fork)
+        WANT_BEDOLAGA_DB=1
+        WANT_BEDOLAGA_REDIS=1
+        WANT_BEDOLAGA_BOT=1
+        WANT_BEDOLAGA_CABINET=1
+        BEDOLAGA_REQUIRED_PROFILE="fork"
+        ;;
       bedolaga-configs)
         WANT_BEDOLAGA_BOT=1
         WANT_BEDOLAGA_CABINET=1
         ;;
       bedolaga-db) WANT_BEDOLAGA_DB=1 ;;
       bedolaga-redis) WANT_BEDOLAGA_REDIS=1 ;;
+      bedolaga-official-db)
+        WANT_BEDOLAGA_DB=1
+        BEDOLAGA_REQUIRED_PROFILE="official"
+        ;;
+      bedolaga-fork-db)
+        WANT_BEDOLAGA_DB=1
+        BEDOLAGA_REQUIRED_PROFILE="fork"
+        ;;
+      bedolaga-official-redis)
+        WANT_BEDOLAGA_REDIS=1
+        BEDOLAGA_REQUIRED_PROFILE="official"
+        ;;
+      bedolaga-fork-redis)
+        WANT_BEDOLAGA_REDIS=1
+        BEDOLAGA_REQUIRED_PROFILE="fork"
+        ;;
       bedolaga-bot) WANT_BEDOLAGA_BOT=1 ;;
       bedolaga-cabinet) WANT_BEDOLAGA_CABINET=1 ;;
       "") ;;
@@ -170,14 +205,20 @@ normalize_backup_include() {
 
 backup_scope_text() {
   local out=""
+  local bedolaga_prefix="bedolaga"
+
+  if [[ "$BEDOLAGA_REQUIRED_PROFILE" == "official" || "$BEDOLAGA_REQUIRED_PROFILE" == "fork" ]]; then
+    bedolaga_prefix="bedolaga-${BEDOLAGA_REQUIRED_PROFILE}"
+  fi
+
   (( WANT_DB == 1 )) && out="${out}db,"
   (( WANT_REDIS == 1 )) && out="${out}redis,"
   (( WANT_ENV == 1 )) && out="${out}env,"
   (( WANT_COMPOSE == 1 )) && out="${out}compose,"
   (( WANT_CADDY == 1 )) && out="${out}caddy,"
   (( WANT_SUBSCRIPTION == 1 )) && out="${out}subscription,"
-  (( WANT_BEDOLAGA_DB == 1 )) && out="${out}bedolaga-db,"
-  (( WANT_BEDOLAGA_REDIS == 1 )) && out="${out}bedolaga-redis,"
+  (( WANT_BEDOLAGA_DB == 1 )) && out="${out}${bedolaga_prefix}-db,"
+  (( WANT_BEDOLAGA_REDIS == 1 )) && out="${out}${bedolaga_prefix}-redis,"
   (( WANT_BEDOLAGA_BOT == 1 )) && out="${out}bedolaga-bot,"
   (( WANT_BEDOLAGA_CABINET == 1 )) && out="${out}bedolaga-cabinet,"
   out="${out%,}"
@@ -481,6 +522,110 @@ container_version_label() {
     return 0
   fi
   printf '%s' "$tail"
+}
+
+normalize_bedolaga_stack_profile() {
+  local value="${1:-auto}"
+  value="${value,,}"
+  case "$value" in
+    pedzeo|fork|fork-pedzeo|pedzeo-fork) printf '%s' "fork" ;;
+    official|main|upstream|bedolaga-dev) printf '%s' "official" ;;
+    custom) printf '%s' "custom" ;;
+    unknown|"") printf '%s' "unknown" ;;
+    auto) printf '%s' "auto" ;;
+    *) printf '%s' "$value" ;;
+  esac
+}
+
+bedolaga_repo_origin_url() {
+  local repo_dir="$1"
+  [[ -n "$repo_dir" && -d "${repo_dir}/.git" ]] || return 0
+  git -C "$repo_dir" remote get-url origin 2>/dev/null || true
+}
+
+detect_bedolaga_stack_profile() {
+  local bot_dir="$1"
+  local configured=""
+  local origin=""
+  local normalized_origin=""
+
+  configured="$(normalize_bedolaga_stack_profile "${BEDOLAGA_STACK_PROFILE:-auto}")"
+  if [[ "$configured" != "auto" ]]; then
+    printf '%s' "$configured"
+    return 0
+  fi
+
+  origin="$(bedolaga_repo_origin_url "$bot_dir")"
+  normalized_origin="${origin,,}"
+  case "$normalized_origin" in
+    *github.com/pedzeo/remnawave-bedolaga-telegram-bot*|*github.com:pedzeo/remnawave-bedolaga-telegram-bot*)
+      printf '%s' "fork"
+      return 0
+      ;;
+    *github.com/bedolaga-dev/remnawave-bedolaga-telegram-bot*|*github.com:bedolaga-dev/remnawave-bedolaga-telegram-bot*)
+      printf '%s' "official"
+      return 0
+      ;;
+  esac
+
+  if [[ -n "$origin" ]]; then
+    printf '%s' "custom"
+  else
+    printf '%s' "unknown"
+  fi
+}
+
+compose_container_name_for_service() {
+  local compose_file="$1"
+  local service_name="$2"
+
+  [[ -f "$compose_file" ]] || return 0
+  awk -v svc="$service_name" '
+    $0 ~ "^[[:space:]]{2}" svc ":[[:space:]]*$" { in_service=1; next }
+    in_service && $0 ~ "^[[:space:]]{2}[A-Za-z0-9_.-]+:[[:space:]]*$" { in_service=0 }
+    in_service && $0 ~ "^[[:space:]]*container_name:[[:space:]]*" {
+      sub(/^[[:space:]]*container_name:[[:space:]]*/, "")
+      gsub(/["'\'']/, "")
+      print
+      exit
+    }
+  ' "$compose_file" 2>/dev/null || true
+}
+
+detect_bedolaga_db_container() {
+  local bot_dir="$1"
+  local detected=""
+
+  if [[ -n "${BEDOLAGA_DB_CONTAINER:-}" ]]; then
+    printf '%s' "$BEDOLAGA_DB_CONTAINER"
+    return 0
+  fi
+  detected="$(compose_container_name_for_service "${bot_dir}/docker-compose.yml" "postgres")"
+  printf '%s' "${detected:-remnawave_bot_db}"
+}
+
+detect_bedolaga_redis_container() {
+  local bot_dir="$1"
+  local detected=""
+
+  if [[ -n "${BEDOLAGA_REDIS_CONTAINER:-}" ]]; then
+    printf '%s' "$BEDOLAGA_REDIS_CONTAINER"
+    return 0
+  fi
+  detected="$(compose_container_name_for_service "${bot_dir}/docker-compose.yml" "redis")"
+  printf '%s' "${detected:-remnawave_bot_redis}"
+}
+
+assert_bedolaga_required_profile() {
+  local actual_profile="$1"
+  local required_profile="${BEDOLAGA_REQUIRED_PROFILE:-}"
+
+  [[ -n "$required_profile" ]] || return 0
+  if [[ "$actual_profile" == "$required_profile" ]]; then
+    return 0
+  fi
+
+  fail "$(t "выбран профиль backup" "selected backup profile") ${required_profile}, $(t "но найден Bedolaga профиль" "but detected Bedolaga profile") ${actual_profile}. $(t "Для другой БД используйте правильный компонент или BEDOLAGA_STACK_PROFILE." "Use the correct DB component or BEDOLAGA_STACK_PROFILE for another database.")"
 }
 
 has_panel_scope() {
@@ -862,8 +1007,8 @@ preflight_checks() {
   ensure_dependencies
   (( WANT_DB == 1 )) && check_container_present remnawave-db
   (( WANT_REDIS == 1 )) && check_container_present remnawave-redis
-  (( WANT_BEDOLAGA_DB == 1 )) && check_container_present remnawave_bot_db
-  (( WANT_BEDOLAGA_REDIS == 1 )) && check_container_present remnawave_bot_redis
+  (( WANT_BEDOLAGA_DB == 1 )) && check_container_present "$BEDOLAGA_DB_CONTAINER"
+  (( WANT_BEDOLAGA_REDIS == 1 )) && check_container_present "$BEDOLAGA_REDIS_CONTAINER"
 
   mkdir -p "$BACKUP_ROOT"
   need_bytes="$(estimate_required_bytes)"
@@ -1044,6 +1189,9 @@ POSTGRES_USER=""
 POSTGRES_DB=""
 BEDOLAGA_POSTGRES_USER=""
 BEDOLAGA_POSTGRES_DB=""
+BEDOLAGA_BOT_REPO_ORIGIN=""
+BEDOLAGA_STACK_PROFILE_RESOLVED="unknown"
+BEDOLAGA_DB_DUMP_PROFILE="unknown"
 
 if [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_ADMIN_ID:-}" ]]; then
   TELEGRAM_UPLOAD_ENABLED=1
@@ -1073,6 +1221,16 @@ if [[ -n "${BEDOLAGA_CABINET_DIR:-}" ]] && [[ ! -d "${BEDOLAGA_CABINET_DIR}" ]];
     log "$(t "Предупреждение: BEDOLAGA_CABINET_DIR недоступен, использую автонайденный путь" "Warning: BEDOLAGA_CABINET_DIR is unavailable, using detected path"): ${_detected_bedolaga_cabinet_dir}"
     BEDOLAGA_CABINET_DIR="$_detected_bedolaga_cabinet_dir"
   fi
+fi
+
+if (( WANT_BEDOLAGA_DB == 1 || WANT_BEDOLAGA_REDIS == 1 || WANT_BEDOLAGA_BOT == 1 || WANT_BEDOLAGA_CABINET == 1 )); then
+  BEDOLAGA_BOT_REPO_ORIGIN="$(bedolaga_repo_origin_url "${BEDOLAGA_BOT_DIR:-}")"
+  BEDOLAGA_STACK_PROFILE_RESOLVED="$(detect_bedolaga_stack_profile "${BEDOLAGA_BOT_DIR:-}")"
+  BEDOLAGA_DB_DUMP_PROFILE="$BEDOLAGA_STACK_PROFILE_RESOLVED"
+  BEDOLAGA_DB_CONTAINER="$(detect_bedolaga_db_container "${BEDOLAGA_BOT_DIR:-}")"
+  BEDOLAGA_REDIS_CONTAINER="$(detect_bedolaga_redis_container "${BEDOLAGA_BOT_DIR:-}")"
+  assert_bedolaga_required_profile "$BEDOLAGA_STACK_PROFILE_RESOLVED"
+  log "$(t "Профиль Bedolaga:" "Bedolaga profile:") ${BEDOLAGA_STACK_PROFILE_RESOLVED} ($(t "DB контейнер" "DB container"): ${BEDOLAGA_DB_CONTAINER}, Redis: ${BEDOLAGA_REDIS_CONTAINER})"
 fi
 
 if (( WANT_DB == 1 || WANT_ENV == 1 || WANT_COMPOSE == 1 || WANT_CADDY == 1 || WANT_SUBSCRIPTION == 1 )); then
@@ -1156,21 +1314,25 @@ fi
 
 if (( WANT_BEDOLAGA_DB == 1 )); then
   log "Создаю дамп PostgreSQL Bedolaga (${BEDOLAGA_POSTGRES_DB})"
-  docker exec remnawave_bot_db pg_dump -U "$BEDOLAGA_POSTGRES_USER" -d "$BEDOLAGA_POSTGRES_DB" -Fc -Z9 > "$WORKDIR/payload/bedolaga-bot-db.dump" \
-    || fail "ошибка pg_dump remnawave_bot_db"
-  BACKUP_ITEMS+=("- Bedolaga PostgreSQL dump: включено ($(du -h "$WORKDIR/payload/bedolaga-bot-db.dump" | awk '{print $1}'))")
+  mkdir -p "$WORKDIR/payload/bedolaga/db/${BEDOLAGA_DB_DUMP_PROFILE}"
+  docker exec "$BEDOLAGA_DB_CONTAINER" pg_dump -U "$BEDOLAGA_POSTGRES_USER" -d "$BEDOLAGA_POSTGRES_DB" -Fc -Z9 > "$WORKDIR/payload/bedolaga/db/${BEDOLAGA_DB_DUMP_PROFILE}/postgres.dump" \
+    || fail "ошибка pg_dump ${BEDOLAGA_DB_CONTAINER}"
+  ln -sf "bedolaga/db/${BEDOLAGA_DB_DUMP_PROFILE}/postgres.dump" "$WORKDIR/payload/bedolaga-bot-db.dump"
+  BACKUP_ITEMS+=("- Bedolaga PostgreSQL dump (${BEDOLAGA_DB_DUMP_PROFILE}): включено ($(du -h "$WORKDIR/payload/bedolaga/db/${BEDOLAGA_DB_DUMP_PROFILE}/postgres.dump" | awk '{print $1}'))")
 fi
 
 if (( WANT_BEDOLAGA_REDIS == 1 )); then
   log "Сохраняю Redis dump Bedolaga"
-  if ! docker exec remnawave_bot_redis sh -lc 'redis-cli save >/dev/null 2>&1'; then
+  if ! docker exec "$BEDOLAGA_REDIS_CONTAINER" sh -lc 'redis-cli save >/dev/null 2>&1'; then
     log "$(t "Предупреждение: команда сохранения Redis Bedolaga вернула ошибку, пробую забрать существующий dump.rdb" "Warning: Bedolaga Redis save command failed, trying to copy existing dump.rdb")"
   fi
-  docker cp remnawave_bot_redis:/data/dump.rdb "$WORKDIR/payload/bedolaga-bot-redis.rdb" 2>/dev/null \
+  mkdir -p "$WORKDIR/payload/bedolaga/redis/${BEDOLAGA_DB_DUMP_PROFILE}"
+  docker cp "${BEDOLAGA_REDIS_CONTAINER}:/data/dump.rdb" "$WORKDIR/payload/bedolaga/redis/${BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb" 2>/dev/null \
     || fail "$(t "не удалось получить Redis dump Bedolaga" "failed to get Bedolaga Redis dump")"
-  [[ -f "$WORKDIR/payload/bedolaga-bot-redis.rdb" ]] \
+  [[ -f "$WORKDIR/payload/bedolaga/redis/${BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb" ]] \
     || fail "$(t "Redis dump Bedolaga не найден после копирования" "Bedolaga Redis dump not found after copy")"
-  BACKUP_ITEMS+=("- Bedolaga Redis dump: включено ($(du -h "$WORKDIR/payload/bedolaga-bot-redis.rdb" | awk '{print $1}'))")
+  ln -sf "bedolaga/redis/${BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb" "$WORKDIR/payload/bedolaga-bot-redis.rdb"
+  BACKUP_ITEMS+=("- Bedolaga Redis dump (${BEDOLAGA_DB_DUMP_PROFILE}): включено ($(du -h "$WORKDIR/payload/bedolaga/redis/${BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb" | awk '{print $1}'))")
 fi
 
 if (( WANT_BEDOLAGA_BOT == 1 )); then
@@ -1219,12 +1381,19 @@ postgres_db=${POSTGRES_DB}
 postgres_user=${POSTGRES_USER}
 bedolaga_postgres_db=${BEDOLAGA_POSTGRES_DB}
 bedolaga_postgres_user=${BEDOLAGA_POSTGRES_USER}
+bedolaga_stack_profile=${BEDOLAGA_STACK_PROFILE_RESOLVED}
+bedolaga_db_dump_profile=${BEDOLAGA_DB_DUMP_PROFILE}
+bedolaga_bot_repo_origin=${BEDOLAGA_BOT_REPO_ORIGIN}
+bedolaga_db_container=${BEDOLAGA_DB_CONTAINER}
+bedolaga_redis_container=${BEDOLAGA_REDIS_CONTAINER}
 remnawave_dir=${REMNAWAVE_DIR}
 bedolaga_bot_dir=${BEDOLAGA_BOT_DIR}
 bedolaga_cabinet_dir=${BEDOLAGA_CABINET_DIR}
 remnawave_image=$(docker inspect remnawave --format '{{.Config.Image}}' 2>/dev/null || echo unknown)
 remnawave_caddy_image=$(docker inspect remnawave-caddy --format '{{.Config.Image}}' 2>/dev/null || echo unknown)
 bedolaga_bot_image=$(docker inspect remnawave_bot --format '{{.Config.Image}}' 2>/dev/null || echo unknown)
+bedolaga_db_image=$(docker inspect "$BEDOLAGA_DB_CONTAINER" --format '{{.Config.Image}}' 2>/dev/null || echo unknown)
+bedolaga_redis_image=$(docker inspect "$BEDOLAGA_REDIS_CONTAINER" --format '{{.Config.Image}}' 2>/dev/null || echo unknown)
 bedolaga_cabinet_image=$(docker inspect cabinet_frontend --format '{{.Config.Image}}' 2>/dev/null || echo unknown)
 panel_version=${PANEL_VERSION}
 subscription_version=${SUBSCRIPTION_VERSION}

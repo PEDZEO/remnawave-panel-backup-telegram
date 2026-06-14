@@ -121,7 +121,7 @@ select_restore_components() {
       3) RESTORE_ONLY="redis"; return 0 ;;
       4) RESTORE_ONLY="configs,bedolaga-configs"; return 0 ;;
       5)
-        custom="$(ask_value "$(tr_text "Компоненты через запятую (all,db,redis,configs,env,compose,caddy,subscription,bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)" "Comma-separated components (all,db,redis,configs,env,compose,caddy,subscription,bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)")" "$RESTORE_ONLY")"
+        custom="$(ask_value "$(tr_text "Компоненты через запятую (all,db,redis,configs,env,compose,caddy,subscription,bedolaga,bedolaga-fork-db,bedolaga-official-db,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)" "Comma-separated components (all,db,redis,configs,env,compose,caddy,subscription,bedolaga,bedolaga-fork-db,bedolaga-official-db,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)")" "$RESTORE_ONLY")"
         [[ "$custom" == "__PBM_BACK__" ]] && continue
         if validate_component_list_or_warn "global" "$custom"; then
           RESTORE_ONLY="$(normalize_component_list "$custom")"
@@ -195,6 +195,8 @@ show_restore_summary() {
     bedolaga) components_label="$(tr_text "полный Bedolaga (db + redis + бот + кабинет)" "full Bedolaga (db + redis + bot + cabinet)")" ;;
     bedolaga-bot,bedolaga-cabinet|bedolaga-cabinet,bedolaga-bot) components_label="$(tr_text "файлы бота + кабинета Bedolaga (без DB/Redis)" "Bedolaga bot + cabinet files (no DB/Redis)")" ;;
     bedolaga-db,bedolaga-redis,bedolaga-bot|bedolaga-bot,bedolaga-db,bedolaga-redis) components_label="$(tr_text "бот Bedolaga полностью (db + redis + файлы)" "full Bedolaga bot (db + redis + files)")" ;;
+    bedolaga-fork-db) components_label="$(tr_text "только DB форка PEDZEO" "PEDZEO fork DB only")" ;;
+    bedolaga-official-db) components_label="$(tr_text "только DB official Bedolaga" "official Bedolaga DB only")" ;;
     bedolaga-cabinet) components_label="$(tr_text "файлы кабинета Bedolaga" "Bedolaga cabinet files")" ;;
     db) components_label="$(tr_text "только база PostgreSQL" "PostgreSQL database only")" ;;
     redis) components_label="$(tr_text "только Redis" "Redis only")" ;;

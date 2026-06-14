@@ -324,7 +324,7 @@ prompt_install_settings() {
       case "$include_choice" in
         1) BACKUP_INCLUDE="bedolaga"; break ;;
         2)
-          val="$(ask_value "$(tr_text "Введите компоненты Bedolaga через запятую (bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)" "Enter Bedolaga components (bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)")" "$BACKUP_INCLUDE")"
+          val="$(ask_value "$(tr_text "Введите компоненты Bedolaga через запятую (bedolaga,bedolaga-fork-db,bedolaga-official-db,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)" "Enter Bedolaga components (bedolaga,bedolaga-fork-db,bedolaga-official-db,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)")" "$BACKUP_INCLUDE")"
           [[ "$val" == "__PBM_BACK__" ]] && continue
           if ! validate_component_list_or_warn "bedolaga" "$val"; then
             continue
@@ -340,7 +340,7 @@ prompt_install_settings() {
         2) BACKUP_INCLUDE="bedolaga"; break ;;
         3) BACKUP_INCLUDE="all,bedolaga"; break ;;
         4)
-          val="$(ask_value "$(tr_text "Введите компоненты через запятую (all,db,redis,configs,env,compose,caddy,subscription,bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)" "Enter comma-separated components (all,db,redis,configs,env,compose,caddy,subscription,bedolaga,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)")" "$BACKUP_INCLUDE")"
+          val="$(ask_value "$(tr_text "Введите компоненты через запятую (all,db,redis,configs,env,compose,caddy,subscription,bedolaga,bedolaga-fork-db,bedolaga-official-db,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)" "Enter comma-separated components (all,db,redis,configs,env,compose,caddy,subscription,bedolaga,bedolaga-fork-db,bedolaga-official-db,bedolaga-db,bedolaga-redis,bedolaga-bot,bedolaga-cabinet,bedolaga-configs)")" "$BACKUP_INCLUDE")"
           [[ "$val" == "__PBM_BACK__" ]] && continue
           if ! validate_component_list_or_warn "global" "$val"; then
             continue
