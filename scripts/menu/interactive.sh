@@ -22,7 +22,7 @@ run_component_flow_action() {
 
   paint "$CLR_DANGER" "$(tr_text "Операция завершилась с ошибкой:" "Operation failed:") ${action_title}"
   wait_for_enter
-  return 1
+  return 0
 }
 
 run_backup_with_scope() {

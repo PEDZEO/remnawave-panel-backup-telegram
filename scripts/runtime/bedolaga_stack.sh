@@ -926,6 +926,88 @@ bedolaga_post_deploy_health_check() {
   return 0
 }
 
+bedolaga_log_has_uv_lock_error() {
+  local log_file="$1"
+
+  [[ -f "$log_file" ]] || return 1
+  grep -Eiq '((uv\.lock|lockfile).*(needs to be updated)|--locked was provided)' "$log_file"
+}
+
+bedolaga_detect_uv_image() {
+  local project_dir="$1"
+  local dockerfile="${project_dir}/Dockerfile"
+  local image=""
+
+  if [[ -f "$dockerfile" ]]; then
+    image="$(awk 'tolower($1) == "from" && tolower($2) ~ /uv/ { print $2; exit }' "$dockerfile" 2>/dev/null || true)"
+  fi
+  printf '%s' "${image:-ghcr.io/astral-sh/uv:python3.13-bookworm}"
+}
+
+bedolaga_refresh_uv_lock() {
+  local project_dir="$1"
+  local uv_image=""
+
+  if [[ ! -f "${project_dir}/pyproject.toml" || ! -f "${project_dir}/uv.lock" ]]; then
+    return 1
+  fi
+
+  paint "$CLR_WARN" "$(tr_text "uv.lock устарел относительно pyproject.toml. Обновляю lock-файл и повторяю сборку." "uv.lock is stale relative to pyproject.toml. Updating the lockfile and retrying build.")"
+  if command -v uv >/dev/null 2>&1; then
+    ( cd "$project_dir" && uv lock ) || return 1
+  else
+    uv_image="$(bedolaga_detect_uv_image "$project_dir")"
+    paint "$CLR_MUTED" "$(tr_text "uv на хосте не найден, запускаю uv lock через Docker:" "uv is not installed on host, running uv lock through Docker:") ${uv_image}"
+    $SUDO docker run --rm --entrypoint sh -v "${project_dir}:/app" -w /app "$uv_image" -lc 'uv lock' || return 1
+  fi
+  paint "$CLR_WARN" "$(tr_text "uv.lock обновлен локально. Это изменение останется в папке проекта до следующего commit/stash/reset." "uv.lock was updated locally. This change will remain in the project directory until commit/stash/reset.")"
+  return 0
+}
+
+bedolaga_run_compose_up_build_once() {
+  local project_dir="$1"
+  local log_file="$2"
+  local rc=0
+  local restore_errexit=0
+
+  case "$-" in
+    *e*) restore_errexit=1; set +e ;;
+  esac
+  ( cd "$project_dir" && $SUDO docker compose up -d --build ) 2>&1 | tee "$log_file"
+  rc="${PIPESTATUS[0]}"
+  if [[ "$restore_errexit" == "1" ]]; then
+    set -e
+  fi
+  return "$rc"
+}
+
+bedolaga_compose_up_build() {
+  local project_dir="$1"
+  local label="${2:-stack}"
+  local tmp_base="${TMP_DIR:-/tmp}"
+  local log_file=""
+
+  log_file="$(mktemp "${tmp_base}/bedolaga-${label}-compose.XXXXXX.log")"
+  if bedolaga_run_compose_up_build_once "$project_dir" "$log_file"; then
+    rm -f "$log_file"
+    return 0
+  fi
+
+  if bedolaga_log_has_uv_lock_error "$log_file"; then
+    if bedolaga_refresh_uv_lock "$project_dir"; then
+      : > "$log_file"
+      paint "$CLR_MUTED" "$(tr_text "Повторяю docker compose build после обновления uv.lock..." "Retrying docker compose build after uv.lock update...")"
+      if bedolaga_run_compose_up_build_once "$project_dir" "$log_file"; then
+        rm -f "$log_file"
+        return 0
+      fi
+    fi
+  fi
+
+  paint "$CLR_DANGER" "$(tr_text "Docker compose build не завершился успешно. Лог сохранен:" "Docker compose build failed. Log saved:") ${log_file}"
+  return 1
+}
+
 bedolaga_attach_stack_to_shared_network() {
   bedolaga_ensure_shared_network || return 1
   bedolaga_connect_container_to_network "remnawave_bot"
@@ -1304,13 +1386,13 @@ run_bedolaga_stack_install_with_repos() {
   fi
   bedolaga_sanitize_bot_optional_int_env "${bot_dir}/.env"
 
-  ( cd "$bot_dir" && $SUDO docker compose up -d --build ) || return 1
+  bedolaga_compose_up_build "$bot_dir" "bot" || return 1
 
   if ! bedolaga_sync_cabinet_env "$cabinet_dir" "$bot_username" "$cabinet_port"; then
     return 1
   fi
 
-  ( cd "$cabinet_dir" && $SUDO docker compose up -d --build ) || return 1
+  bedolaga_compose_up_build "$cabinet_dir" "cabinet" || return 1
   bedolaga_repair_shared_network_if_needed || return 1
 
   if ! bedolaga_apply_caddy_block "$hooks_domain" "$cabinet_domain" "$api_domain" "$cabinet_port" "$replace_caddy_config"; then
@@ -1414,8 +1496,8 @@ run_bedolaga_stack_update_with_repos() {
   bedolaga_write_bot_compose_override "$bot_dir"
   bedolaga_write_cabinet_compose_override "$cabinet_dir"
 
-  ( cd "$bot_dir" && $SUDO docker compose up -d --build ) || return 1
-  ( cd "$cabinet_dir" && $SUDO docker compose up -d --build ) || return 1
+  bedolaga_compose_up_build "$bot_dir" "bot" || return 1
+  bedolaga_compose_up_build "$cabinet_dir" "cabinet" || return 1
 
   if bedolaga_detect_caddy_runtime >/dev/null 2>&1 && [[ "${CADDY_MODE:-}" == "container" ]]; then
     check_caddy="1"
