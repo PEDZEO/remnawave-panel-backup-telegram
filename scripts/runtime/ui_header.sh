@@ -281,37 +281,375 @@ format_duration_compact() {
   fi
 }
 
+dashboard_line() {
+  local label="$1"
+  local value="$2"
+  local color="${3:-$CLR_MUTED}"
+  local width=20
+  local len=0
+  local pad=1
+  local padding=""
+
+  len="${#label}"
+  if (( len < width )); then
+    pad=$((width - len))
+  fi
+  padding="$(printf '%*s' "$pad" '')"
+
+  if [[ "$COLOR" == "1" ]]; then
+    printf "%b║ %s%s :%b %b%s%b\n" "$CLR_MUTED" "$label" "$padding" "$CLR_RESET" "$color" "$value" "$CLR_RESET"
+  else
+    printf "║ %s%s : %s\n" "$label" "$padding" "$value"
+  fi
+}
+
+dashboard_section() {
+  local title="$1"
+  paint "$CLR_ACCENT" "╠═[ ${title} ]"
+}
+
+dashboard_bar() {
+  local percent="${1:-0}"
+  local filled=0
+  local empty=0
+  local out=""
+
+  [[ "$percent" =~ ^[0-9]+$ ]] || percent=0
+  (( percent < 0 )) && percent=0
+  (( percent > 100 )) && percent=100
+  filled=$((percent / 10))
+  empty=$((10 - filled))
+  out="["
+  while (( filled > 0 )); do out="${out}■"; filled=$((filled - 1)); done
+  while (( empty > 0 )); do out="${out}□"; empty=$((empty - 1)); done
+  out="${out}]"
+  printf '%s' "$out"
+}
+
+dashboard_metric_color() {
+  local percent="${1:-}"
+  local warn="${2:-70}"
+  local danger="${3:-90}"
+
+  if [[ "$percent" =~ ^[0-9]+$ ]]; then
+    if (( percent >= danger )); then
+      printf '%s' "$CLR_DANGER"
+    elif (( percent >= warn )); then
+      printf '%s' "$CLR_WARN"
+    else
+      printf '%s' "$CLR_OK"
+    fi
+  else
+    printf '%s' "$CLR_MUTED"
+  fi
+}
+
+human_mb_compact() {
+  local mb="${1:-0}"
+  if [[ ! "$mb" =~ ^[0-9]+$ ]]; then
+    printf '%s' "n/a"
+    return 0
+  fi
+  if (( mb >= 1024 )); then
+    awk -v m="$mb" 'BEGIN { printf "%.1fG", m / 1024 }'
+  else
+    printf '%sM' "$mb"
+  fi
+}
+
+dashboard_os_kernel() {
+  local pretty=""
+  local kernel=""
+
+  pretty="$(. /etc/os-release 2>/dev/null; printf '%s' "${PRETTY_NAME:-Linux}")"
+  kernel="$(uname -r 2>/dev/null | cut -d- -f1)"
+  printf '%s (%s)' "${pretty:-Linux}" "${kernel:-unknown}"
+}
+
+dashboard_uptime() {
+  local uptime_seconds=0
+  local days=0
+  local weeks=0
+  local hours=0
+  local mins=0
+  local users=0
+  local label=""
+
+  uptime_seconds="$(awk '{print int($1)}' /proc/uptime 2>/dev/null || echo 0)"
+  [[ "$uptime_seconds" =~ ^[0-9]+$ ]] || uptime_seconds=0
+  weeks=$((uptime_seconds / 604800))
+  days=$(((uptime_seconds % 604800) / 86400))
+  hours=$(((uptime_seconds % 86400) / 3600))
+  mins=$(((uptime_seconds % 3600) / 60))
+  (( weeks > 0 )) && label="${label}${weeks}$(tr_text "нед" "w") "
+  (( days > 0 )) && label="${label}${days}$(tr_text "д" "d") "
+  label="${label}${hours}$(tr_text "ч" "h") ${mins}$(tr_text "мин" "m")"
+  users="$(who 2>/dev/null | wc -l | awk '{print $1}')"
+  printf '%s (%s: %s)' "$label" "$(tr_text "Юзеров" "Users")" "${users:-0}"
+}
+
+dashboard_virt() {
+  local virt=""
+  virt="$(systemd-detect-virt 2>/dev/null || true)"
+  case "$virt" in
+    none|"") printf '%s' "$(tr_text "Bare metal" "Bare metal")" ;;
+    kvm) printf '%s' "KVM ($(tr_text "виртуализация" "virtualized"))" ;;
+    *) printf '%s' "$virt" ;;
+  esac
+}
+
+dashboard_cpu_percent() {
+  local line1=""
+  local line2=""
+  local _ user1 nice1 system1 idle1 iowait1 irq1 softirq1 steal1 rest1
+  local user2 nice2 system2 idle2 iowait2 irq2 softirq2 steal2 rest2
+  local idle_all1=0
+  local idle_all2=0
+  local non_idle1=0
+  local non_idle2=0
+  local total1=0
+  local total2=0
+  local total_delta=0
+  local idle_delta=0
+
+  line1="$(grep '^cpu ' /proc/stat 2>/dev/null || true)"
+  sleep 0.08
+  line2="$(grep '^cpu ' /proc/stat 2>/dev/null || true)"
+  if [[ -z "$line1" || -z "$line2" ]]; then
+    printf '%s' "0"
+    return 0
+  fi
+  read -r _ user1 nice1 system1 idle1 iowait1 irq1 softirq1 steal1 rest1 <<<"$line1"
+  read -r _ user2 nice2 system2 idle2 iowait2 irq2 softirq2 steal2 rest2 <<<"$line2"
+  user1=${user1:-0}; nice1=${nice1:-0}; system1=${system1:-0}; idle1=${idle1:-0}; iowait1=${iowait1:-0}; irq1=${irq1:-0}; softirq1=${softirq1:-0}; steal1=${steal1:-0}
+  user2=${user2:-0}; nice2=${nice2:-0}; system2=${system2:-0}; idle2=${idle2:-0}; iowait2=${iowait2:-0}; irq2=${irq2:-0}; softirq2=${softirq2:-0}; steal2=${steal2:-0}
+  idle_all1=$((idle1 + iowait1))
+  idle_all2=$((idle2 + iowait2))
+  non_idle1=$((user1 + nice1 + system1 + irq1 + softirq1 + steal1))
+  non_idle2=$((user2 + nice2 + system2 + irq2 + softirq2 + steal2))
+  total1=$((idle_all1 + non_idle1))
+  total2=$((idle_all2 + non_idle2))
+  total_delta=$((total2 - total1))
+  idle_delta=$((idle_all2 - idle_all1))
+  if (( total_delta <= 0 )); then
+    printf '%s' "0"
+  else
+    awk -v total="$total_delta" -v idle="$idle_delta" 'BEGIN { printf "%.0f", (1 - idle / total) * 100 }'
+  fi
+}
+
+dashboard_memory_metric() {
+  local total_kb=0
+  local avail_kb=0
+  local used_kb=0
+  local used_mb=0
+  local total_mb=0
+  local percent=0
+
+  total_kb="$(awk '/MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)"
+  avail_kb="$(awk '/MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)"
+  if [[ "$total_kb" =~ ^[0-9]+$ && "$avail_kb" =~ ^[0-9]+$ && "$total_kb" -gt 0 ]]; then
+    used_kb=$((total_kb - avail_kb))
+    used_mb=$((used_kb / 1024))
+    total_mb=$((total_kb / 1024))
+    percent=$((used_kb * 100 / total_kb))
+    printf '%s|%s|%s' "$percent" "$(human_mb_compact "$used_mb")" "$(human_mb_compact "$total_mb")"
+  else
+    printf '%s' "0|n/a|n/a"
+  fi
+}
+
+dashboard_disk_metric() {
+  local raw=""
+  local used=""
+  local total=""
+  local percent=""
+
+  raw="$(df -h / 2>/dev/null | awk 'NR==2 {gsub(/%/, "", $5); print $5"|"$3"|"$2}' || true)"
+  if [[ -n "$raw" ]]; then
+    printf '%s' "$raw"
+  else
+    printf '%s' "0|n/a|n/a"
+  fi
+}
+
+dashboard_public_net() {
+  local cache="/tmp/panel-backup-dashboard-ip.cache"
+  local now=0
+  local mtime=0
+  local cached=""
+  local json=""
+  local ip=""
+  local country=""
+  local org=""
+  local ping_ms=""
+
+  now="$(date +%s)"
+  if [[ -f "$cache" ]]; then
+    mtime="$(date -r "$cache" +%s 2>/dev/null || echo 0)"
+    if [[ "$mtime" =~ ^[0-9]+$ ]] && (( now - mtime < 600 )); then
+      cached="$(cat "$cache" 2>/dev/null || true)"
+      [[ -n "$cached" ]] && { printf '%s' "$cached"; return 0; }
+    fi
+  fi
+
+  if command -v curl >/dev/null 2>&1; then
+    json="$(curl -fsSL --connect-timeout 1 --max-time 2 https://ipinfo.io/json 2>/dev/null || true)"
+  fi
+  ip="$(printf '%s' "$json" | sed -n 's/.*"ip"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+  country="$(printf '%s' "$json" | sed -n 's/.*"country"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+  org="$(printf '%s' "$json" | sed -n 's/.*"org"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+  if [[ -n "$ip" ]] && command -v ping >/dev/null 2>&1; then
+    ping_ms="$(ping -c 1 -W 1 1.1.1.1 2>/dev/null | sed -n 's/.*time=\([0-9.]*\).*/\1/p' | head -n1)"
+  fi
+  [[ -n "$ip" ]] || ip="n/a"
+  [[ -n "$country" ]] || country="--"
+  [[ -n "$org" ]] || org="$(tr_text "неизвестно" "unknown")"
+  [[ -n "$ping_ms" ]] && ping_ms="${ping_ms} ms" || ping_ms="n/a"
+  printf '%s|%s|%s|%s' "$ip" "$ping_ms" "$country" "$org" | tee "$cache" 2>/dev/null
+}
+
+dashboard_next_run_for_unit() {
+  local unit="$1"
+  local raw=""
+  local now_ts=0
+  local next_ts=0
+  local left=0
+
+  raw="$($SUDO systemctl show "$unit" -p NextElapseUSecRealtime --value 2>/dev/null | sed -n '1p' || true)"
+  if [[ -z "$raw" || "$raw" == "n/a" ]]; then
+    printf '%s' "n/a"
+    return 0
+  fi
+  now_ts="$(date +%s)"
+  next_ts="$(date -d "$raw" +%s 2>/dev/null || echo 0)"
+  if [[ "$next_ts" =~ ^[0-9]+$ ]] && (( next_ts > now_ts )); then
+    left=$((next_ts - now_ts))
+    printf '%s' "$(format_duration_compact "$left")"
+  else
+    printf '%s' "$raw"
+  fi
+}
+
+dashboard_schedule_for_unit() {
+  local unit="$1"
+  local fallback="$2"
+  local value=""
+  value="$(get_timer_calendar_for_unit "$unit" || true)"
+  printf '%s' "${value:-$fallback}"
+}
+
 draw_header() {
   local title="$1"
   local subtitle="${2:-}"
-  local timer_panel_state="inactive"
-  local timer_bedolaga_state="inactive"
-  local timer_state="inactive"
-  local timer_color=""
+  local os_kernel=""
+  local uptime_label=""
+  local virt_label=""
+  local net_info=""
+  local public_ip=""
+  local public_ping=""
+  local public_country=""
+  local public_org=""
+  local cpu_model=""
+  local cpu_percent=0
+  local cpu_cores=0
+  local mem_metric=""
+  local mem_percent=0
+  local mem_used=""
+  local mem_total=""
+  local disk_metric=""
+  local disk_percent=0
+  local disk_used=""
+  local disk_total=""
+  local panel_status=""
+  local panel_version=""
+  local sub_version=""
+  local bot_status=""
+  local cabinet_status=""
+  local caddy_status=""
+  local caddy_version=""
+  local capacity_label=""
+  local panel_timer_state=""
+  local panel_timer_enabled=""
+  local bedolaga_timer_state=""
+  local bedolaga_timer_enabled=""
+  local panel_schedule=""
+  local bedolaga_schedule=""
+  local panel_next=""
+  local bedolaga_next=""
   local latest_backup=""
   local latest_label=""
   local backup_age_sec=-1
   local backup_age_label="n/a"
   local backup_age_color="$CLR_MUTED"
-  local ram_label=""
-  local disk_label=""
-  local ram_percent=""
-  local disk_percent=""
   local env_token=""
   local env_chat=""
   local tg_state=""
   local tg_color=""
   local encrypt_state=""
   local encrypt_color=""
+  local backup_script_state=""
+  local config_state=""
+  local panel_calendar_env=""
+  local bedolaga_calendar_env=""
+  local default_calendar_env=""
 
   clear
 
-  timer_panel_state="$(systemctl_active_state panel-backup-panel.timer)"
-  timer_bedolaga_state="$(systemctl_active_state panel-backup-bedolaga.timer)"
-  if [[ "$timer_panel_state" == "active" || "$timer_bedolaga_state" == "active" ]]; then
-    timer_state="active"
+  os_kernel="$(dashboard_os_kernel)"
+  uptime_label="$(dashboard_uptime)"
+  virt_label="$(dashboard_virt)"
+  net_info="$(dashboard_public_net)"
+  IFS='|' read -r public_ip public_ping public_country public_org <<< "$net_info"
+
+  cpu_model="$(awk -F: '/model name/ {gsub(/^[ \t]+/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null || true)"
+  [[ -n "$cpu_model" ]] || cpu_model="$(awk -F: '/Hardware|Processor/ {gsub(/^[ \t]+/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null || true)"
+  [[ -n "$cpu_model" ]] || cpu_model="$(tr_text "неизвестно" "unknown")"
+  cpu_percent="$(dashboard_cpu_percent)"
+  cpu_cores="$(nproc 2>/dev/null || echo 0)"
+
+  mem_metric="$(dashboard_memory_metric)"
+  IFS='|' read -r mem_percent mem_used mem_total <<< "$mem_metric"
+  disk_metric="$(dashboard_disk_metric)"
+  IFS='|' read -r disk_percent disk_used disk_total <<< "$disk_metric"
+
+  panel_version="$(container_version_label remnawave)"
+  sub_version="$(container_version_label remnawave-subscription-page)"
+  if docker inspect remnawave >/dev/null 2>&1; then
+    if docker inspect remnawave-subscription-page >/dev/null 2>&1; then
+      panel_status="$(tr_text "Панель" "Panel") (v${panel_version}) + Sub-page (v${sub_version})"
+    else
+      panel_status="$(tr_text "Панель" "Panel") (v${panel_version})"
+    fi
+  else
+    panel_status="$(tr_text "не найдена" "not found")"
   fi
-  timer_color="$(state_color "$timer_state")"
+
+  bot_status="$(container_state remnawave_bot)"
+  cabinet_status="$(container_state cabinet_frontend)"
+  if docker inspect remnawave-caddy >/dev/null 2>&1; then
+    caddy_version="$(container_version_label remnawave-caddy)"
+    caddy_status="Caddy ${caddy_version} ($(tr_text "в Docker" "Docker"))"
+  else
+    caddy_status="$(tr_text "не найден" "not found")"
+  fi
+  capacity_label="$(tr_text "n/a (запустите speedtest в Reshala)" "n/a (run speedtest in Reshala)")"
+
+  panel_timer_state="$(systemctl_active_state panel-backup-panel.timer)"
+  panel_timer_enabled="$(systemctl_enabled_state panel-backup-panel.timer)"
+  bedolaga_timer_state="$(systemctl_active_state panel-backup-bedolaga.timer)"
+  bedolaga_timer_enabled="$(systemctl_enabled_state panel-backup-bedolaga.timer)"
+  default_calendar_env="$(grep -E '^BACKUP_ON_CALENDAR=' /etc/panel-backup.env 2>/dev/null | head -n1 | cut -d= -f2- || true)"
+  panel_calendar_env="$(grep -E '^BACKUP_ON_CALENDAR_PANEL=' /etc/panel-backup.env 2>/dev/null | head -n1 | cut -d= -f2- || true)"
+  bedolaga_calendar_env="$(grep -E '^BACKUP_ON_CALENDAR_BEDOLAGA=' /etc/panel-backup.env 2>/dev/null | head -n1 | cut -d= -f2- || true)"
+  default_calendar_env="$(normalize_calendar_raw "$default_calendar_env")"
+  panel_calendar_env="$(normalize_calendar_raw "$panel_calendar_env")"
+  bedolaga_calendar_env="$(normalize_calendar_raw "$bedolaga_calendar_env")"
+  default_calendar_env="${default_calendar_env:-*-*-* 03:40:00 UTC}"
+  panel_schedule="$(dashboard_schedule_for_unit "panel-backup-panel.timer" "${panel_calendar_env:-$default_calendar_env}")"
+  bedolaga_schedule="$(dashboard_schedule_for_unit "panel-backup-bedolaga.timer" "${bedolaga_calendar_env:-$default_calendar_env}")"
+  panel_next="$(dashboard_next_run_for_unit "panel-backup-panel.timer")"
+  bedolaga_next="$(dashboard_next_run_for_unit "panel-backup-bedolaga.timer")"
 
   latest_backup="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/pb-*.tar.gz.gpg /var/backups/panel/panel-backup-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz.gpg 2>/dev/null | head -n1 || true)"
   if [[ -n "$latest_backup" ]]; then
@@ -328,11 +666,6 @@ draw_header() {
   else
     latest_label="$(tr_text "нет архивов" "no backups")"
   fi
-
-  ram_label="$(memory_usage_label)"
-  disk_label="$(disk_usage_label)"
-  ram_percent="$(memory_usage_percent)"
-  disk_percent="$(disk_usage_percent)"
 
   env_token="$(grep -E '^TELEGRAM_BOT_TOKEN=' /etc/panel-backup.env 2>/dev/null | head -n1 | cut -d= -f2- || true)"
   env_chat="$(grep -E '^TELEGRAM_ADMIN_ID=' /etc/panel-backup.env 2>/dev/null | head -n1 | cut -d= -f2- || true)"
@@ -352,22 +685,50 @@ draw_header() {
     encrypt_color="$CLR_WARN"
   fi
 
-  paint "$CLR_TITLE" "============================================================"
-  paint "$CLR_ACCENT" "  ${title}"
+  [[ -x /usr/local/bin/panel-backup.sh ]] && backup_script_state="$(tr_text "установлен" "installed")" || backup_script_state="$(tr_text "не установлен" "not installed")"
+  [[ -f /etc/panel-backup.env ]] && config_state="$(tr_text "есть" "present")" || config_state="$(tr_text "нет" "missing")"
+
+  paint "$CLR_TITLE" "╔════════════════════════════════════════════════════════════"
+  paint "$CLR_ACCENT" "║ ${title}"
   if [[ -n "$subtitle" ]]; then
-    paint "$CLR_MUTED" "  ${subtitle}"
-  else
-    paint "$CLR_MUTED" "  $(tr_text "Быстрое меню без тяжёлой диагностики. Подробно: пункт 4." "Fast menu without heavy diagnostics. Details: option 4.")"
+    paint "$CLR_MUTED" "║ ${subtitle}"
   fi
-  print_separator
-  paint_labeled_value "RAM:" "$ram_label" "$(metric_color_ram "$ram_percent")"
-  paint_labeled_value "$(tr_text "Диск:" "Disk:")" "$disk_label" "$(metric_color_disk "$disk_percent")"
-  paint_labeled_value "$(tr_text "Таймеры:" "Timers:")" "panel:${timer_panel_state} / bedolaga:${timer_bedolaga_state}" "$timer_color"
-  paint_labeled_value "$(tr_text "Последний backup:" "Latest backup:")" "$latest_label" "$CLR_ACCENT"
-  paint_labeled_value "$(tr_text "Возраст backup:" "Backup age:")" "$backup_age_label" "$backup_age_color"
-  paint_labeled_value "Telegram:" "$tg_state" "$tg_color"
-  paint_labeled_value "$(tr_text "Шифрование:" "Encryption:")" "$encrypt_state" "$encrypt_color"
-  paint "$CLR_TITLE" "============================================================"
+  dashboard_section "$(tr_text "СИСТЕМА" "SYSTEM")"
+  dashboard_line "$(tr_text "ОС / Ядро" "OS / Kernel")" "$os_kernel" "$CLR_ACCENT"
+  dashboard_line "$(tr_text "Аптайм" "Uptime")" "$uptime_label" "$CLR_MUTED"
+  dashboard_line "$(tr_text "Виртуалка" "Virtualization")" "$virt_label" "$CLR_MUTED"
+  dashboard_line "$(tr_text "IP Адрес" "IP Address")" "${public_ip} (${public_ping}) [${public_country}]" "$CLR_ACCENT"
+  dashboard_line "$(tr_text "Хостер" "Provider")" "${public_org}" "$CLR_MUTED"
+
+  dashboard_section "$(tr_text "ЖЕЛЕЗО" "HARDWARE")"
+  dashboard_line "$(tr_text "CPU Модель" "CPU Model")" "$cpu_model" "$CLR_MUTED"
+  dashboard_line "$(tr_text "Загрузка CPU" "CPU Load")" "$(dashboard_bar "$cpu_percent") ${cpu_percent}% (${cpu_cores} vCore)" "$(dashboard_metric_color "$cpu_percent" 70 90)"
+  dashboard_line "$(tr_text "Память (RAM)" "Memory (RAM)")" "$(dashboard_bar "$mem_percent") ${mem_percent}% (${mem_used} / ${mem_total})" "$(dashboard_metric_color "$mem_percent" 75 90)"
+  dashboard_line "$(tr_text "Диск (HDD)" "Disk (HDD)")" "$(dashboard_bar "$disk_percent") ${disk_percent}% (${disk_used}/${disk_total})" "$(dashboard_metric_color "$disk_percent" 70 85)"
+
+  dashboard_section "STATUS"
+  dashboard_line "Remnawave" "$panel_status" "$CLR_OK"
+  dashboard_line "Bedolaga Bot" "$bot_status" "$(state_color "$bot_status")"
+  dashboard_line "Bedolaga Cabinet" "$cabinet_status" "$(state_color "$cabinet_status")"
+  dashboard_line "Web-Server" "$caddy_status" "$CLR_MUTED"
+  dashboard_line "$(tr_text "Вместимость юзеров" "User capacity")" "$capacity_label" "$CLR_MUTED"
+
+  dashboard_section "BACKUP"
+  dashboard_line "$(tr_text "Скрипт / конфиг" "Script / config")" "${backup_script_state} / ${config_state}" "$CLR_ACCENT"
+  dashboard_line "$(tr_text "Панель timer" "Panel timer")" "${panel_timer_state} / ${panel_timer_enabled}" "$(state_color "$panel_timer_state")"
+  dashboard_line "$(tr_text "Панель расписание" "Panel schedule")" "$(format_schedule_label "$panel_schedule")" "$CLR_ACCENT"
+  dashboard_line "$(tr_text "Панель следующий" "Panel next")" "$panel_next" "$CLR_MUTED"
+  dashboard_line "$(tr_text "Bedolaga timer" "Bedolaga timer")" "${bedolaga_timer_state} / ${bedolaga_timer_enabled}" "$(state_color "$bedolaga_timer_state")"
+  dashboard_line "$(tr_text "Bedolaga распис." "Bedolaga schedule")" "$(format_schedule_label "$bedolaga_schedule")" "$CLR_ACCENT"
+  dashboard_line "$(tr_text "Bedolaga след." "Bedolaga next")" "$bedolaga_next" "$CLR_MUTED"
+  dashboard_line "$(tr_text "Последний backup" "Latest backup")" "$latest_label" "$CLR_ACCENT"
+  dashboard_line "$(tr_text "Возраст backup" "Backup age")" "$backup_age_label" "$backup_age_color"
+  dashboard_line "Telegram" "$tg_state" "$tg_color"
+  dashboard_line "$(tr_text "Шифрование" "Encryption")" "$encrypt_state" "$encrypt_color"
+
+  dashboard_section "WIDGETS"
+  dashboard_line "$(tr_text "Курс биткоина (BTC)" "Bitcoin price (BTC)")" "$(tr_text "отключен" "disabled")" "$CLR_MUTED"
+  paint "$CLR_TITLE" "╚════════════════════════════════════════════════════════════"
   paint "$CLR_MUTED" "  $(tr_text "Навигация: цифра = открыть, b/back = назад, 0 = выход." "Navigation: number = open, b/back = back, 0 = exit.")"
   echo
 }
