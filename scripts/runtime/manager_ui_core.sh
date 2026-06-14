@@ -3,7 +3,7 @@
 
 print_separator() {
   MENU_SEPARATOR_PRINTED=1
-  paint "$CLR_TITLE" "  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  paint "$CLR_MUTED" "   ────────────────────────────────────────────────────────────"
 }
 
 menu_option_color() {
@@ -60,7 +60,7 @@ menu_group() {
   if [[ "$COLOR" == "1" ]]; then
     printf "  %b╭─%b %b%s%b\n" "$CLR_TITLE" "$CLR_RESET" "$color" "$title" "$CLR_RESET"
   else
-    printf "  -- %s --\n" "$title"
+    printf "  ╭─ %s\n" "$title"
   fi
 }
 
@@ -81,9 +81,29 @@ menu_option() {
   fi
 
   if [[ "$COLOR" == "1" ]]; then
-    printf "  %b%-5s%b %b%s%b\n" "$CLR_TITLE" "$key_badge" "$CLR_RESET" "$color" "$label" "$CLR_RESET"
+    printf "   %b%-5s%b %b%s%b\n" "$CLR_TITLE" "$key_badge" "$CLR_RESET" "$color" "$label" "$CLR_RESET"
   else
-    printf "  %-5s %s\n" "$key_badge" "$label"
+    printf "   %-5s %s\n" "$key_badge" "$label"
+  fi
+}
+
+menu_hint() {
+  local text="$1"
+
+  if [[ "$COLOR" == "1" ]]; then
+    printf "          %b↳ %s%b\n" "$CLR_MUTED" "$text" "$CLR_RESET"
+  else
+    printf "          ↳ %s\n" "$text"
+  fi
+}
+
+prompt_line() {
+  local text="$1"
+
+  if [[ "$COLOR" == "1" ]]; then
+    printf "  %b%s%b\n" "$CLR_MUTED" "$text" "$CLR_RESET" >&2
+  else
+    printf "  %s\n" "$text" >&2
   fi
 }
 
@@ -116,13 +136,7 @@ normalize_answer_token() {
 }
 
 show_back_hint() {
-  if [[ "$COLOR" == "1" ]]; then
-    printf "  %b%s%b %b%s%b\n" \
-      "$CLR_TITLE" "$(tr_text "Навигация" "Navigation")" "$CLR_RESET" \
-      "$CLR_MUTED" "$(tr_text "b/back = назад · номер = открыть" "b/back = back · number = open")" "$CLR_RESET"
-  else
-    printf "  %s: %s\n" "$(tr_text "Навигация" "Navigation")" "$(tr_text "b/back = назад · номер = открыть" "b/back = back · number = open")"
-  fi
+  menu_hint "$(tr_text "Навигация: b/back = назад, номер = открыть." "Navigation: b/back = back, number = open.")"
 }
 
 systemctl_value_or_default() {
@@ -890,19 +904,11 @@ ask_value() {
   local input=""
 
   if [[ -n "$current" ]]; then
-    if [[ "$COLOR" == "1" ]]; then
-      printf "%b%s%b\n" "$CLR_MUTED" "${prompt} [${current}]" "$CLR_RESET" >&2
-    else
-      printf "%s\n" "${prompt} [${current}]" >&2
-    fi
+    prompt_line "${prompt} [${current}]"
   else
-    if [[ "$COLOR" == "1" ]]; then
-      printf "%b%s%b\n" "$CLR_MUTED" "${prompt}" "$CLR_RESET" >&2
-    else
-      printf "%s\n" "${prompt}" >&2
-    fi
+    prompt_line "${prompt}"
   fi
-  read -r -p "> " input
+  read -r -p "  > " input
 
   if is_back_command "$input"; then
     echo "__PBM_BACK__"
@@ -922,19 +928,11 @@ ask_value_nav() {
   local input=""
 
   if [[ -n "$current" ]]; then
-    if [[ "$COLOR" == "1" ]]; then
-      printf "%b%s%b\n" "$CLR_MUTED" "${prompt} [${current}]" "$CLR_RESET" >&2
-    else
-      printf "%s\n" "${prompt} [${current}]" >&2
-    fi
+    prompt_line "${prompt} [${current}]"
   else
-    if [[ "$COLOR" == "1" ]]; then
-      printf "%b%s%b\n" "$CLR_MUTED" "${prompt}" "$CLR_RESET" >&2
-    else
-      printf "%s\n" "${prompt}" >&2
-    fi
+    prompt_line "${prompt}"
   fi
-  read -r -p "> " input
+  read -r -p "  > " input
 
   if is_back_command "$input"; then
     echo "__PBM_BACK__"
@@ -958,19 +956,11 @@ ask_value_clearable() {
   local input=""
 
   if [[ -n "$current" ]]; then
-    if [[ "$COLOR" == "1" ]]; then
-      printf "%b%s [%s] (- = %s)%b\n" "$CLR_MUTED" "$prompt" "$current" "$(tr_text "очистить" "clear")" "$CLR_RESET" >&2
-    else
-      printf "%s [%s] (- = %s)\n" "$prompt" "$current" "$(tr_text "очистить" "clear")" >&2
-    fi
+    prompt_line "${prompt} [${current}] (- = $(tr_text "очистить" "clear"))"
   else
-    if [[ "$COLOR" == "1" ]]; then
-      printf "%b%s (- = %s)%b\n" "$CLR_MUTED" "$prompt" "$(tr_text "очистить" "clear")" "$CLR_RESET" >&2
-    else
-      printf "%s (- = %s)\n" "$prompt" "$(tr_text "очистить" "clear")" >&2
-    fi
+    prompt_line "${prompt} (- = $(tr_text "очистить" "clear"))"
   fi
-  read -r -p "> " input
+  read -r -p "  > " input
 
   if is_back_command "$input"; then
     echo "__PBM_BACK__"
@@ -998,13 +988,9 @@ ask_secret_value() {
     hint="$(tr_text "не задан" "not set")"
   fi
 
-  if [[ "$COLOR" == "1" ]]; then
-    printf "%b%s [%s]%b\n" "$CLR_MUTED" "$prompt" "$hint" "$CLR_RESET" >&2
-  else
-    printf "%s [%s]\n" "$prompt" "$hint" >&2
-  fi
+  prompt_line "${prompt} [${hint}]"
 
-  read -r -s -p "> " input
+  read -r -s -p "  > " input
   printf "\n" >&2
 
   if is_back_command "$input"; then
@@ -1031,13 +1017,9 @@ ask_secret_value_nav() {
     hint="$(tr_text "не задан" "not set")"
   fi
 
-  if [[ "$COLOR" == "1" ]]; then
-    printf "%b%s [%s]%b\n" "$CLR_MUTED" "$prompt" "$hint" "$CLR_RESET" >&2
-  else
-    printf "%s [%s]\n" "$prompt" "$hint" >&2
-  fi
+  prompt_line "${prompt} [${hint}]"
 
-  read -r -s -p "> " input
+  read -r -s -p "  > " input
   printf "\n" >&2
 
   if is_back_command "$input"; then
@@ -1064,12 +1046,12 @@ ask_yes_no() {
 
   while true; do
     if [[ "$default" == "y" ]]; then
-      paint "$CLR_MUTED" "${prompt} [Y/n]"
-      read -r -p "> " answer
+      prompt_line "${prompt} [Y/n]"
+      read -r -p "  > " answer
       answer="${answer:-y}"
     else
-      paint "$CLR_MUTED" "${prompt} [y/N]"
-      read -r -p "> " answer
+      prompt_line "${prompt} [y/N]"
+      read -r -p "  > " answer
       answer="${answer:-n}"
     fi
 

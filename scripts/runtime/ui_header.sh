@@ -15,16 +15,19 @@ paint_labeled_value() {
 draw_subheader() {
   local title="$1"
   local subtitle="${2:-}"
+  local width="${MENU_BOX_WIDTH:-60}"
+  local line=""
 
   MENU_OPTIONS_STARTED=0
   MENU_SEPARATOR_PRINTED=0
   clear
-  paint "$CLR_TITLE" "╔════════════════════════════════════════════════════════════"
+  line="$(printf '═%.0s' $(seq 1 "$width"))"
+  paint "$CLR_TITLE" "╔${line}"
   paint "$CLR_ACCENT" "║ ${title}"
   if [[ -n "$subtitle" ]]; then
     paint "$CLR_MUTED" "║ ${subtitle}"
   fi
-  paint "$CLR_TITLE" "╚════════════════════════════════════════════════════════════"
+  paint "$CLR_TITLE" "╚${line}"
   echo
 }
 

@@ -106,7 +106,7 @@ setup_colors() {
     CLR_RESET="$(printf '\033[0m')"
     CLR_TITLE="$(printf '\033[1;36m')"
     CLR_ACCENT="$(printf '\033[1;34m')"
-    CLR_MUTED="$(printf '\033[0;37m')"
+    CLR_MUTED="$(printf '\033[0;90m')"
     CLR_OK="$(printf '\033[1;32m')"
     CLR_WARN="$(printf '\033[1;33m')"
     CLR_DANGER="$(printf '\033[1;31m')"
