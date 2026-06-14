@@ -208,7 +208,7 @@ menu_flow_quick_setup() {
               menu_option "2" "$(tr_text "Продолжить без проверки" "Continue without verification")"
               menu_option "3" "$(tr_text "Отключить Telegram" "Disable Telegram")"
               print_separator
-              read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" input
+              read_menu_choice input "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")"
               case "$input" in
                 1) menu_flow_telegram_settings "$setup_scope" ;;
                 2) break ;;
@@ -292,7 +292,7 @@ menu_flow_quick_setup() {
       2)
         draw_subheader "$(tr_text "Быстрая настройка" "Quick setup")" "$(tr_text "Шаг 2/3: Шифрование" "Step 2/3: Encryption")"
         paint "$CLR_MUTED" "$(tr_text "1) Включить шифрование  2) Выключить шифрование" "1) Enable encryption  2) Disable encryption")"
-        read -r -p "$(tr_text "Выбор [1-2], p назад, b выход: " "Choice [1-2], p back, b exit: ")" input
+        read_menu_choice input "$(tr_text "Выбор [1-2], p назад, b выход: " "Choice [1-2], p back, b exit: ")"
         if is_back_command "$input"; then
           return 0
         fi
@@ -342,7 +342,7 @@ menu_flow_quick_setup() {
       3)
         draw_subheader "$(tr_text "Быстрая настройка" "Quick setup")" "$(tr_text "Шаг 3/3: Расписание" "Step 3/3: Schedule")"
         paint "$CLR_MUTED" "$(tr_text "1) Ежедневно 03:40 UTC  2) Каждые 12 часов  3) Каждые 6 часов  4) Каждый час  5) Свой OnCalendar" "1) Daily 03:40 UTC  2) Every 12h  3) Every 6h  4) Hourly  5) Custom OnCalendar")"
-        read -r -p "$(tr_text "Выбор [1-5], p назад, b выход: " "Choice [1-5], p back, b exit: ")" input
+        read_menu_choice input "$(tr_text "Выбор [1-5], p назад, b выход: " "Choice [1-5], p back, b exit: ")"
         if is_back_command "$input"; then
           return 0
         fi
@@ -442,7 +442,7 @@ menu_flow_encryption_settings() {
     menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "4" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
+    read_menu_choice choice "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")"
     if is_back_command "$choice"; then
       break
     fi
@@ -694,7 +694,7 @@ menu_flow_telegram_settings() {
     menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "6" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice
+    read_menu_choice choice "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")"
     if is_back_command "$choice"; then
       break
     fi
@@ -816,7 +816,7 @@ menu_flow_backup_scope_settings() {
       menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
       menu_option "5" "$(tr_text "Назад" "Back")"
       print_separator
-      read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
+      read_menu_choice choice "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")"
     elif [[ "$scope" == "bedolaga" ]]; then
       menu_group "$(tr_text "Готовые варианты" "Presets")" "$CLR_OK"
       menu_option "1" "$(tr_text "Полный Bedolaga: DB + Redis + бот + кабинет" "Full Bedolaga: DB + Redis + bot + cabinet")"
@@ -827,7 +827,7 @@ menu_flow_backup_scope_settings() {
       menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
       menu_option "5" "$(tr_text "Назад" "Back")"
       print_separator
-      read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
+      read_menu_choice choice "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")"
     else
       menu_group "$(tr_text "Готовые варианты" "Presets")" "$CLR_OK"
       menu_option "1" "$(tr_text "Только панель Remnawave" "Remnawave panel only")"
@@ -838,7 +838,7 @@ menu_flow_backup_scope_settings() {
       menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
       menu_option "5" "$(tr_text "Назад" "Back")"
       print_separator
-      read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
+      read_menu_choice choice "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")"
     fi
 
     if is_back_command "$choice"; then
@@ -936,7 +936,7 @@ menu_section_setup() {
     menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "6" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice
+    read_menu_choice choice "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")"
     if is_back_command "$choice"; then
       break
     fi

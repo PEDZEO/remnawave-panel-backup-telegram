@@ -23,7 +23,7 @@ draw_subheader() {
   clear
   line="$(printf '═%.0s' $(seq 1 "$width"))"
   paint "$CLR_TITLE" "╔${line}"
-  paint "$CLR_ACCENT" "║ ${title}"
+  paint "${CLR_WHITE:-$CLR_ACCENT}" "║ ${title}"
   if [[ -n "$subtitle" ]]; then
     paint "$CLR_MUTED" "║ ${subtitle}"
   fi
@@ -240,7 +240,7 @@ draw_header_full() {
   timer_color="$(state_color "$timer_state")"
 
   paint "$CLR_TITLE" "============================================================"
-  paint "$CLR_ACCENT" "  ${title}"
+  paint "${CLR_WHITE:-$CLR_ACCENT}" "  ${title}"
   if [[ -n "$subtitle" ]]; then
     paint "$CLR_MUTED" "  ${subtitle}"
   fi
@@ -1007,7 +1007,7 @@ draw_header() {
   fi
 
   paint "$CLR_TITLE" "╔════════════════════════════════════════════════════════════"
-  paint "$CLR_ACCENT" "║ ${title}"
+  paint "${CLR_WHITE:-$CLR_ACCENT}" "║ ${title}"
   if [[ -n "$subtitle" ]]; then
     paint "$CLR_MUTED" "║ ${subtitle}"
   fi

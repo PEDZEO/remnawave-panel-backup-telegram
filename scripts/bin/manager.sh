@@ -40,6 +40,7 @@ CLR_MUTED=""
 CLR_OK=""
 CLR_WARN=""
 CLR_DANGER=""
+CLR_WHITE=""
 
 cleanup() {
   if [[ "$UI_ACTIVE" == "1" ]]; then
@@ -104,12 +105,13 @@ setup_colors() {
   if [[ -t 1 && "${TERM:-}" != "dumb" ]]; then
     COLOR=1
     CLR_RESET="$(printf '\033[0m')"
-    CLR_TITLE="$(printf '\033[1;36m')"
-    CLR_ACCENT="$(printf '\033[1;34m')"
+    CLR_TITLE="$(printf '\033[0;36m')"
+    CLR_ACCENT="$(printf '\033[0;94m')"
     CLR_MUTED="$(printf '\033[0;90m')"
-    CLR_OK="$(printf '\033[1;32m')"
+    CLR_OK="$(printf '\033[0;32m')"
     CLR_WARN="$(printf '\033[1;33m')"
-    CLR_DANGER="$(printf '\033[1;31m')"
+    CLR_DANGER="$(printf '\033[0;31m')"
+    CLR_WHITE="$(printf '\033[1;37m')"
   fi
 }
 

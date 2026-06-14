@@ -46,7 +46,7 @@ select_restore_source() {
     menu_option "3" "$(tr_text "Указать URL архива" "Provide archive URL")"
     menu_option "4" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
+    read_menu_choice choice "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")"
     if is_back_command "$choice"; then
       return 1
     fi
@@ -111,7 +111,7 @@ select_restore_components() {
     menu_option "5" "$(tr_text "Свой список компонентов" "Custom components list")"
     menu_option "6" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice
+    read_menu_choice choice "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")"
     if is_back_command "$choice"; then
       return 1
     fi

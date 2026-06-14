@@ -95,7 +95,7 @@ prompt_install_settings() {
   menu_option "2" "$(tr_text "Локально + Telegram" "Local + Telegram")"
   print_separator
   while true; do
-    read -r -p "$(tr_text "Выбор [1-2]: " "Choice [1-2]: ")" val
+    read_menu_choice val "$(tr_text "Выбор [1-2]: " "Choice [1-2]: ")"
     if is_back_command "$val"; then
       return 1
     fi
@@ -158,7 +158,7 @@ prompt_install_settings() {
         menu_option "2" "$(tr_text "Продолжить без проверки" "Continue without verification")"
         menu_option "3" "$(tr_text "Отключить Telegram и сохранять только локально" "Disable Telegram and keep local only")"
         print_separator
-        read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" val
+        read_menu_choice val "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")"
         case "$val" in
           1) menu_flow_telegram_settings "$setup_scope" ;;
           2) break ;;
@@ -240,7 +240,7 @@ prompt_install_settings() {
   menu_option "2" "$(tr_text "Выключить шифрование" "Disable encryption")"
   print_separator
   while true; do
-    read -r -p "$(tr_text "Выбор [1-2]: " "Choice [1-2]: ")" encrypt_choice
+    read_menu_choice encrypt_choice "$(tr_text "Выбор [1-2]: " "Choice [1-2]: ")"
     if is_back_command "$encrypt_choice"; then
       return 1
     fi
@@ -299,9 +299,9 @@ prompt_install_settings() {
   print_separator
   while true; do
     if [[ "$setup_scope" == "global" ]]; then
-      read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" include_choice
+      read_menu_choice include_choice "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")"
     else
-      read -r -p "$(tr_text "Выбор [1-2]: " "Choice [1-2]: ")" include_choice
+      read_menu_choice include_choice "$(tr_text "Выбор [1-2]: " "Choice [1-2]: ")"
     fi
     if is_back_command "$include_choice"; then
       return 1
@@ -560,7 +560,7 @@ configure_schedule_menu() {
       menu_option "3" "$(tr_text "Оба проекта одинаково" "Both projects same schedule")"
       menu_option "4" "$(tr_text "Назад" "Back")"
       print_separator
-      read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" target_choice
+      read_menu_choice target_choice "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")"
       if is_back_command "$target_choice"; then
         return 1
       fi
@@ -592,7 +592,7 @@ configure_schedule_menu() {
     menu_option "5" "$(tr_text "Свой OnCalendar" "Custom OnCalendar")"
     menu_option "6" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice
+    read_menu_choice choice "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")"
     if is_back_command "$choice"; then
       return 1
     fi

@@ -68,7 +68,7 @@ run_backup_scope_selector() {
       menu_option "7" "$(tr_text "Ручной выбор компонентов Bedolaga" "Manual Bedolaga component selection")"
       menu_option "8" "$(tr_text "Назад" "Back")"
       print_separator
-      read -r -p "$(tr_text "Выбор [1-8]: " "Choice [1-8]: ")" choice
+      read_menu_choice choice "$(tr_text "Выбор [1-8]: " "Choice [1-8]: ")"
       if is_back_command "$choice"; then
         return 1
       fi
@@ -91,7 +91,7 @@ run_backup_scope_selector() {
       menu_option "1" "$(tr_text "Только панель Remnawave" "Remnawave panel only")"
       menu_option "2" "$(tr_text "Назад" "Back")"
       print_separator
-      read -r -p "$(tr_text "Выбор [1-2]: " "Choice [1-2]: ")" choice
+      read_menu_choice choice "$(tr_text "Выбор [1-2]: " "Choice [1-2]: ")"
       if is_back_command "$choice"; then
         return 1
       fi
@@ -121,7 +121,7 @@ run_restore_scope_selector() {
       menu_option "4" "$(tr_text "Ручной выбор компонентов Bedolaga" "Manual Bedolaga component selection")"
       menu_option "5" "$(tr_text "Назад" "Back")"
       print_separator
-      read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
+      read_menu_choice choice "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")"
       if is_back_command "$choice"; then
         return 1
       fi
@@ -138,7 +138,7 @@ run_restore_scope_selector() {
       menu_option "2" "$(tr_text "Ручной выбор компонентов панели" "Manual panel component selection")"
       menu_option "3" "$(tr_text "Назад" "Back")"
       print_separator
-      read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
+      read_menu_choice choice "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")"
       if is_back_command "$choice"; then
         return 1
       fi
@@ -165,7 +165,7 @@ run_bedolaga_migration_wizard() {
     menu_option "4" "$(tr_text "Дополнительные режимы миграции" "Advanced migration modes")"
     menu_option "5" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
+    read_menu_choice choice "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")"
     if is_back_command "$choice"; then
       return 1
     fi
@@ -193,7 +193,7 @@ run_bedolaga_migration_wizard() {
         menu_option "3" "$(tr_text "Ручной выбор компонентов Bedolaga" "Manual Bedolaga component selection")"
         menu_option "4" "$(tr_text "Назад" "Back")"
         print_separator
-        read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
+        read_menu_choice choice "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")"
         if is_back_command "$choice"; then
           continue
         fi
@@ -241,7 +241,7 @@ menu_section_bedolaga_local_backup_restore() {
     menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "4" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
+    read_menu_choice choice "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")"
     if is_back_command "$choice"; then
       break
     fi
@@ -266,7 +266,7 @@ menu_section_bedolaga_local_backup_restore() {
         menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
         menu_option "7" "$(tr_text "Назад" "Back")"
         print_separator
-        read -r -p "$(tr_text "Выбор [1-7]: " "Choice [1-7]: ")" choice
+        read_menu_choice choice "$(tr_text "Выбор [1-7]: " "Choice [1-7]: ")"
         if is_back_command "$choice"; then
           continue
         fi
@@ -402,7 +402,7 @@ run_bedolaga_local_migration_restore_flow() {
   menu_option "4" "$(tr_text "Полный Bedolaga (DB + Redis + бот + кабинет)" "Full Bedolaga (DB + Redis + bot + cabinet)")"
   menu_option "5" "$(tr_text "Полный перенос: Remnawave + Bedolaga (весь backup)" "Full migration: Remnawave + Bedolaga (entire backup)")"
   print_separator
-  read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" restore_scope_choice
+  read_menu_choice restore_scope_choice "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")"
   if is_back_command "$restore_scope_choice"; then
     return 1
   fi
@@ -500,7 +500,7 @@ run_bedolaga_remote_migration_flow() {
   menu_option "4" "$(tr_text "Полный Bedolaga (DB + Redis + бот + кабинет)" "Full Bedolaga (DB + Redis + bot + cabinet)")"
   menu_option "5" "$(tr_text "Полный перенос: Remnawave + Bedolaga (весь backup)" "Full migration: Remnawave + Bedolaga (entire backup)")"
   print_separator
-  read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" restore_scope_choice
+  read_menu_choice restore_scope_choice "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")"
   if is_back_command "$restore_scope_choice"; then
     return 1
   fi
@@ -1103,7 +1103,7 @@ run_restore_wizard_flow() {
     menu_option "1" "$(tr_text "Автоперезапуск после восстановления (быстрее)" "Auto-restart after restore (faster)")"
     menu_option "2" "$(tr_text "Без автоперезапуска (осторожно)" "No auto-restart (safer)")"
     print_separator
-    read -r -p "$(tr_text "Перезапуски [1-2]: " "Restarts [1-2]: ")" choice
+    read_menu_choice choice "$(tr_text "Перезапуски [1-2]: " "Restarts [1-2]: ")"
     if is_back_command "$choice"; then
       return 1
     fi
@@ -1163,7 +1163,7 @@ menu_section_remnawave_install_update() {
     menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "9" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-9]: " "Choice [1-9]: ")" choice
+    read_menu_choice choice "$(tr_text "Выбор [1-9]: " "Choice [1-9]: ")"
     if is_back_command "$choice"; then
       break
     fi
@@ -1243,7 +1243,7 @@ menu_section_remnawave_backup_restore() {
     menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "8" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-8]: " "Choice [1-8]: ")" choice
+    read_menu_choice choice "$(tr_text "Выбор [1-8]: " "Choice [1-8]: ")"
     if is_back_command "$choice"; then
       break
     fi
@@ -1274,7 +1274,7 @@ menu_section_remnawave_components() {
     menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "3" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
+    read_menu_choice choice "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")"
     if is_back_command "$choice"; then
       break
     fi
@@ -1300,7 +1300,7 @@ menu_section_bedolaga_install_update_official() {
     menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "3" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
+    read_menu_choice choice "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")"
     if is_back_command "$choice"; then
       break
     fi
@@ -1330,7 +1330,7 @@ menu_section_bedolaga_install_update_fork() {
     menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "3" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
+    read_menu_choice choice "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")"
     if is_back_command "$choice"; then
       break
     fi
@@ -1359,7 +1359,7 @@ menu_section_bedolaga_install_update() {
     menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "3" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
+    read_menu_choice choice "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")"
     if is_back_command "$choice"; then
       break
     fi
@@ -1388,7 +1388,7 @@ menu_section_bedolaga_backup_restore() {
     menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "5" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
+    read_menu_choice choice "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")"
     if is_back_command "$choice"; then
       break
     fi
@@ -1414,7 +1414,7 @@ menu_section_bedolaga_components() {
     menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "3" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
+    read_menu_choice choice "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")"
     if is_back_command "$choice"; then
       break
     fi
@@ -1446,7 +1446,7 @@ menu_section_remnanode_components() {
     menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "8" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-8]: " "Choice [1-8]: ")" choice
+    read_menu_choice choice "$(tr_text "Выбор [1-8]: " "Choice [1-8]: ")"
     if is_back_command "$choice"; then
       break
     fi
@@ -1612,7 +1612,7 @@ choose_timer_schedule_value() {
     menu_option "5" "$(tr_text "Свое время OnCalendar" "Custom OnCalendar")"
     menu_option "6" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" schedule_choice
+    read_menu_choice schedule_choice "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")"
     if is_back_command "$schedule_choice"; then
       return 1
     fi
@@ -1680,7 +1680,7 @@ menu_section_timer_scope() {
     menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "5" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
+    read_menu_choice choice "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")"
     if is_back_command "$choice"; then
       break
     fi
@@ -1736,7 +1736,7 @@ menu_section_status() {
     menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "6" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice
+    read_menu_choice choice "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")"
     if is_back_command "$choice"; then
       break
     fi
@@ -1776,7 +1776,7 @@ interactive_menu() {
     menu_option "5" "$(tr_text "Reshala toolbox: внешний набор функций" "Reshala toolbox: external feature set")" "$CLR_TITLE"
     menu_option "0" "$(tr_text "Выход" "Exit")" "$CLR_DANGER"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-5, 0 выход]: " "Choice [1-5, 0 exit]: ")" action
+    read_menu_choice action "$(tr_text "Выбор [1-5, 0 выход]: " "Choice [1-5, 0 exit]: ")"
     if is_back_command "$action"; then
       echo "$(tr_text "Выход." "Cancelled.")"
       break

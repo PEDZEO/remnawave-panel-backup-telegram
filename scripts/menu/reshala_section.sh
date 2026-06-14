@@ -170,7 +170,7 @@ menu_section_reshala_integration() {
     menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "6" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice
+    read_menu_choice choice "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")"
     if is_back_command "$choice"; then
       break
     fi

@@ -2,49 +2,15 @@
 # Shared UI/input/text helpers for manager and interactive modules.
 
 print_separator() {
+  local char="${1:--}"
+  local length="${2:-60}"
+
   MENU_SEPARATOR_PRINTED=1
-  paint "$CLR_MUTED" "   ────────────────────────────────────────────────────────────"
+  paint "$CLR_MUTED" "$(printf "%*s" "$length" "" | tr ' ' "$char")"
 }
 
 menu_option_color() {
-  local key="$1"
-  local label="$2"
-
-  case "$label" in
-    *"Назад"*|*"Back"*|*"Выход"*|*"Exit"*)
-      printf '%s' "$CLR_DANGER"
-      return 0
-      ;;
-    *"Выключ"*|*"Отключ"*|*"Disable"*|*"Удал"*|*"Remove"*)
-      printf '%s' "$CLR_DANGER"
-      return 0
-      ;;
-    *"Установ"*|*"Install"*|*"Создать"*|*"Create"*|*"Включить"*|*"Enable"*)
-      printf '%s' "$CLR_OK"
-      return 0
-      ;;
-    *"Обнов"*|*"Update"*|*"Doctor"*|*"Провер"*|*"Тест"*|*"Test"*|*"Статус"*|*"Status"*)
-      printf '%s' "$CLR_WARN"
-      return 0
-      ;;
-    *"Измен"*|*"Change"*|*"Настро"*|*"Settings"*|*"Custom"*|*"Свой"*)
-      printf '%s' "$CLR_ACCENT"
-      return 0
-      ;;
-    *"Backup"*|*"backup"*|*"Восстанов"*|*"Restore"*|*"Миграц"*|*"Migration"*)
-      printf '%s' "$CLR_ACCENT"
-      return 0
-      ;;
-  esac
-
-  case "$key" in
-    1) printf '%s' "$CLR_OK" ;;
-    2) printf '%s' "$CLR_ACCENT" ;;
-    3) printf '%s' "$CLR_WARN" ;;
-    4) printf '%s' "$CLR_TITLE" ;;
-    0|9) printf '%s' "$CLR_DANGER" ;;
-    *) printf '%s' "$CLR_MUTED" ;;
-  esac
+  printf '%s' "${CLR_WHITE:-$CLR_MUTED}"
 }
 
 menu_group() {
@@ -68,10 +34,8 @@ menu_option() {
   local key="$1"
   local label="$2"
   local color="${3:-}"
-  local key_badge=""
 
   [[ -n "$color" ]] || color="$(menu_option_color "$key" "$label")"
-  key_badge="[$key]"
 
   if [[ "${MENU_OPTIONS_STARTED:-0}" != "1" ]]; then
     if [[ "${MENU_SEPARATOR_PRINTED:-0}" != "1" ]]; then
@@ -81,9 +45,9 @@ menu_option() {
   fi
 
   if [[ "$COLOR" == "1" ]]; then
-    printf "   %b%-5s%b %b%s%b\n" "$CLR_TITLE" "$key_badge" "$CLR_RESET" "$color" "$label" "$CLR_RESET"
+    printf "   %b[%s] %b%b\n" "$color" "$key" "$label" "$CLR_RESET"
   else
-    printf "   %-5s %s\n" "$key_badge" "$label"
+    printf "   [%s] %s\n" "$key" "$label"
   fi
 }
 
@@ -91,7 +55,7 @@ menu_hint() {
   local text="$1"
 
   if [[ "$COLOR" == "1" ]]; then
-    printf "          %b↳ %s%b\n" "$CLR_MUTED" "$text" "$CLR_RESET"
+    printf "          %b↳ %b%b\n" "$CLR_MUTED" "$text" "$CLR_RESET"
   else
     printf "          ↳ %s\n" "$text"
   fi
@@ -101,10 +65,54 @@ prompt_line() {
   local text="$1"
 
   if [[ "$COLOR" == "1" ]]; then
-    printf "  %b%s%b\n" "$CLR_MUTED" "$text" "$CLR_RESET" >&2
+    printf "%b%s%b" "$CLR_MUTED" "$text" "$CLR_RESET" >&2
   else
-    printf "  %s\n" "$text" >&2
+    printf "%s" "$text" >&2
   fi
+}
+
+read_prompt_raw() {
+  local __var="$1"
+  local prompt="$2"
+  local display_default="${3:-}"
+  local secret="${4:-0}"
+  local prompt_full=""
+  local rc=0
+  local value=""
+
+  if [[ -n "$display_default" ]]; then
+    prompt_full="${prompt} [${display_default}]: "
+  else
+    prompt_full="${prompt}: "
+  fi
+
+  if [[ -t 0 ]]; then
+    while read -r -t 0; do read -r; done 2>/dev/null || true
+  fi
+
+  if [[ "$secret" == "1" ]]; then
+    read -r -s -p "$prompt_full" "$__var" || rc=$?
+    printf "\n" >&2
+  elif [[ -t 0 ]]; then
+    read -e -r -p "$prompt_full" "$__var" || rc=$?
+  else
+    read -r -p "$prompt_full" "$__var" || rc=$?
+  fi
+
+  value="${!__var-}"
+  value="${value//$'\r'/}"
+  value="${value//$'\n'/}"
+  printf -v "$__var" '%s' "$value"
+  return "$rc"
+}
+
+read_menu_choice() {
+  local __var="$1"
+  local prompt="$2"
+
+  prompt="${prompt% }"
+  prompt="${prompt%:}"
+  read_prompt_raw "$__var" "$prompt"
 }
 
 is_back_command() {
@@ -514,7 +522,7 @@ choose_ui_lang() {
   menu_option "1" "Русский [RU]"
   menu_option "2" "English [EN]"
   print_separator
-  read -r -p "Choice [1-2]: " choice
+  read_menu_choice choice "$(tr_text "Выбор [1-2]" "Choice [1-2]")"
   if is_back_command "$choice"; then
     return 0
   fi
@@ -903,12 +911,7 @@ ask_value() {
   local current="${2:-}"
   local input=""
 
-  if [[ -n "$current" ]]; then
-    prompt_line "${prompt} [${current}]"
-  else
-    prompt_line "${prompt}"
-  fi
-  read -r -p "  > " input
+  read_prompt_raw input "$prompt" "$current" || return 130
 
   if is_back_command "$input"; then
     echo "__PBM_BACK__"
@@ -927,12 +930,7 @@ ask_value_nav() {
   local current="${2:-}"
   local input=""
 
-  if [[ -n "$current" ]]; then
-    prompt_line "${prompt} [${current}]"
-  else
-    prompt_line "${prompt}"
-  fi
-  read -r -p "  > " input
+  read_prompt_raw input "$prompt" "$current" || return 130
 
   if is_back_command "$input"; then
     echo "__PBM_BACK__"
@@ -955,12 +953,7 @@ ask_value_clearable() {
   local current="${2:-}"
   local input=""
 
-  if [[ -n "$current" ]]; then
-    prompt_line "${prompt} [${current}] (- = $(tr_text "очистить" "clear"))"
-  else
-    prompt_line "${prompt} (- = $(tr_text "очистить" "clear"))"
-  fi
-  read -r -p "  > " input
+  read_prompt_raw input "${prompt} (- = $(tr_text "очистить" "clear"))" "$current" || return 130
 
   if is_back_command "$input"; then
     echo "__PBM_BACK__"
@@ -988,10 +981,7 @@ ask_secret_value() {
     hint="$(tr_text "не задан" "not set")"
   fi
 
-  prompt_line "${prompt} [${hint}]"
-
-  read -r -s -p "  > " input
-  printf "\n" >&2
+  read_prompt_raw input "$prompt" "$hint" "1" || return 130
 
   if is_back_command "$input"; then
     echo "__PBM_BACK__"
@@ -1017,10 +1007,7 @@ ask_secret_value_nav() {
     hint="$(tr_text "не задан" "not set")"
   fi
 
-  prompt_line "${prompt} [${hint}]"
-
-  read -r -s -p "  > " input
-  printf "\n" >&2
+  read_prompt_raw input "$prompt" "$hint" "1" || return 130
 
   if is_back_command "$input"; then
     echo "__PBM_BACK__"
@@ -1046,12 +1033,10 @@ ask_yes_no() {
 
   while true; do
     if [[ "$default" == "y" ]]; then
-      prompt_line "${prompt} [Y/n]"
-      read -r -p "  > " answer
+      read_prompt_raw answer "$prompt" "Y/n" || return 130
       answer="${answer:-y}"
     else
-      prompt_line "${prompt} [y/N]"
-      read -r -p "  > " answer
+      read_prompt_raw answer "$prompt" "y/N" || return 130
       answer="${answer:-n}"
     fi
 
