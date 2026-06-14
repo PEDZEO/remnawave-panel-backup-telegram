@@ -107,6 +107,14 @@ is_prev_command() {
   esac
 }
 
+normalize_answer_token() {
+  local raw="${1:-}"
+
+  printf '%s' "$raw" \
+    | tr -d '\000-\037\177' \
+    | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
+}
+
 show_back_hint() {
   if [[ "$COLOR" == "1" ]]; then
     printf "  %b%s%b %b%s%b\n" \
@@ -1065,15 +1073,19 @@ ask_yes_no() {
       answer="${answer:-n}"
     fi
 
-    normalized="$(echo "$answer" | xargs 2>/dev/null || echo "$answer")"
-    case "${normalized,,}" in
-      y|yes|д|да) return 0 ;;
-      n|no|н|нет) return 1 ;;
+    normalized="$(normalize_answer_token "$answer")"
+    case "$normalized" in
+      y|Y|yes|YES|Yes|1|д|Д|да|Да|ДА)
+        return 0
+        ;;
+      n|N|no|NO|No|0|н|Н|нет|Нет|НЕТ)
+        return 1
+        ;;
       *)
         if is_back_command "$normalized"; then
           return 2
         fi
-        echo "$(tr_text "Введите y/n (или д/н)." "Please answer y or n.")"
+        echo "$(tr_text "Введите y/n, yes/no, да/нет или 1/0." "Please answer y/n, yes/no, da/net or 1/0.")"
         ;;
     esac
   done
