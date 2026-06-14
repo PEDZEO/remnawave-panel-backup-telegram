@@ -210,7 +210,7 @@ bedolaga_prompt_value() {
       echo "$value"
       return 0
     fi
-    paint "$CLR_WARN" "$error_message"
+    paint "$CLR_WARN" "$error_message" >&2
   done
 }
 
@@ -227,7 +227,7 @@ bedolaga_prompt_secret_value() {
       echo "$value"
       return 0
     fi
-    paint "$CLR_WARN" "$error_message"
+    paint "$CLR_WARN" "$error_message" >&2
   done
 }
 
@@ -287,12 +287,46 @@ bedolaga_clone_or_update_repo() {
   fi
 
   if [[ -d "$target_dir" ]]; then
+    if [[ -z "$(find "$target_dir" -mindepth 1 -maxdepth 1 2>/dev/null | head -n1)" ]]; then
+      paint "$CLR_ACCENT" "$(tr_text "Клонирую репозиторий в пустую папку" "Cloning repository into empty directory"): ${repo_url}"
+      git clone "$repo_url" "$target_dir"
+      return $?
+    fi
     paint "$CLR_DANGER" "$(tr_text "Папка уже существует, но это не git-репозиторий:" "Directory exists but is not a git repository:") ${target_dir}"
+    paint "$CLR_MUTED" "$(tr_text "Укажите пустой путь, git-репозиторий или перенесите существующую папку." "Use an empty path, a git repository, or move the existing directory aside.")"
+    return 1
+  fi
+
+  if [[ -e "$target_dir" ]]; then
+    paint "$CLR_DANGER" "$(tr_text "Путь уже существует, но это не папка:" "Path already exists but is not a directory:") ${target_dir}"
     return 1
   fi
 
   paint "$CLR_ACCENT" "$(tr_text "Клонирую репозиторий" "Cloning repository"): ${repo_url}"
   git clone "$repo_url" "$target_dir"
+}
+
+bedolaga_describe_install_path() {
+  local label="$1"
+  local path="$2"
+
+  if [[ ! -e "$path" ]]; then
+    return 0
+  fi
+  if [[ ! -d "$path" ]]; then
+    paint "$CLR_DANGER" "  ${label}: ${path} ($(tr_text "это файл, нужен путь к папке" "this is a file, directory path required"))"
+    return 1
+  fi
+  if [[ -d "${path}/.git" ]]; then
+    paint "$CLR_MUTED" "  ${label}: ${path} ($(tr_text "git-репозиторий, будет обновлен" "git repository, will be updated"))"
+    return 0
+  fi
+  if [[ -z "$(find "$path" -mindepth 1 -maxdepth 1 2>/dev/null | head -n1)" ]]; then
+    paint "$CLR_MUTED" "  ${label}: ${path} ($(tr_text "пустая папка, можно клонировать" "empty directory, clone is possible"))"
+    return 0
+  fi
+  paint "$CLR_DANGER" "  ${label}: ${path} ($(tr_text "не git и не пустая папка" "not git and not empty"))"
+  return 1
 }
 
 bedolaga_update_repo_from_remote_default_branch() {
@@ -863,8 +897,8 @@ bedolaga_verify_cabinet_ws_route() {
 run_bedolaga_stack_install_with_repos() {
   local bot_repo="$1"
   local cabinet_repo="$2"
-  local bot_dir="/root/remnawave-bedolaga-telegram-bot"
-  local cabinet_dir="/root/bedolaga-cabinet"
+  local bot_dir=""
+  local cabinet_dir=""
   local hooks_domain=""
   local cabinet_domain=""
   local api_domain=""
@@ -894,10 +928,61 @@ run_bedolaga_stack_install_with_repos() {
   local backup_send_chat_id=""
   local backup_send_topic_id=""
   local replace_caddy_config="0"
-  local existing_env_file="${bot_dir}/.env"
+  local existing_env_file=""
   local existing_value=""
+  local existing_install_found="0"
+  local invalid_install_path="0"
 
   draw_subheader "$(tr_text "Bedolaga: установка (бот + кабинет + Caddy)" "Bedolaga: install (bot + cabinet + Caddy)")"
+
+  if declare -F load_existing_env_defaults >/dev/null 2>&1; then
+    load_existing_env_defaults
+  fi
+
+  bot_dir="${BEDOLAGA_BOT_DIR:-}"
+  cabinet_dir="${BEDOLAGA_CABINET_DIR:-}"
+  [[ -n "$bot_dir" ]] || bot_dir="$(bedolaga_detect_bot_repo_dir || true)"
+  [[ -n "$cabinet_dir" ]] || cabinet_dir="$(bedolaga_detect_cabinet_repo_dir || true)"
+  bot_dir="${bot_dir:-/root/remnawave-bedolaga-telegram-bot}"
+  cabinet_dir="${cabinet_dir:-/root/bedolaga-cabinet}"
+
+  bot_dir="$(ask_value "$(tr_text "Путь установки Bedolaga бота" "Bedolaga bot installation path")" "$bot_dir")"
+  [[ "$bot_dir" == "__PBM_BACK__" ]] && return 1
+  if ! validate_project_path_or_warn "BEDOLAGA_BOT_DIR" "$bot_dir"; then
+    return 1
+  fi
+
+  cabinet_dir="$(ask_value "$(tr_text "Путь установки Bedolaga кабинета" "Bedolaga cabinet installation path")" "$cabinet_dir")"
+  [[ "$cabinet_dir" == "__PBM_BACK__" ]] && return 1
+  if ! validate_project_path_or_warn "BEDOLAGA_CABINET_DIR" "$cabinet_dir"; then
+    return 1
+  fi
+
+  if [[ "$bot_dir" == "$cabinet_dir" ]]; then
+    paint "$CLR_DANGER" "$(tr_text "Пути бота и кабинета не должны совпадать." "Bot and cabinet paths must be different.")"
+    return 1
+  fi
+
+  BEDOLAGA_BOT_DIR="$bot_dir"
+  BEDOLAGA_CABINET_DIR="$cabinet_dir"
+  export BEDOLAGA_BOT_DIR BEDOLAGA_CABINET_DIR
+  existing_env_file="${bot_dir}/.env"
+
+  if [[ -e "$bot_dir" || -e "$cabinet_dir" ]]; then
+    existing_install_found="1"
+    paint "$CLR_WARN" "$(tr_text "Обнаружены существующие папки Bedolaga." "Existing Bedolaga directories detected.")"
+    bedolaga_describe_install_path "bot" "$bot_dir" || invalid_install_path="1"
+    bedolaga_describe_install_path "cabinet" "$cabinet_dir" || invalid_install_path="1"
+    if [[ "$invalid_install_path" == "1" ]]; then
+      paint "$CLR_WARN" "$(tr_text "Исправьте путь: нужен git-репозиторий, пустая папка или новый путь." "Fix the path: use a git repository, an empty directory, or a new path.")"
+      return 1
+    fi
+    if ! ask_yes_no "$(tr_text "Продолжить установку/обновление в этих папках? Текущие значения будут предложены по умолчанию." "Continue install/update in these directories? Current values will be offered as defaults.")" "n"; then
+      paint "$CLR_WARN" "$(tr_text "Установка Bedolaga отменена. Папки не изменены." "Bedolaga install cancelled. Directories were not changed.")"
+      return 2
+    fi
+    paint "$CLR_MUTED" "$(tr_text "Дальше можно нажимать Enter, чтобы оставить значение в скобках, или ввести свое." "Next prompts: press Enter to keep the value in brackets, or type a new one.")"
+  fi
 
   if ! ensure_docker_available; then
     return 1
@@ -932,6 +1017,8 @@ run_bedolaga_stack_install_with_repos() {
     if [[ -n "$remnawave_api_key" ]]; then
       paint "$CLR_MUTED" "$(tr_text "Обнаружен существующий REMNAWAVE_API_KEY: уже задан, можно оставить пустым чтобы не менять." "Detected existing REMNAWAVE_API_KEY: already set, leave empty to keep unchanged.")"
     fi
+  elif [[ "$existing_install_found" == "1" ]]; then
+    paint "$CLR_MUTED" "$(tr_text "Существующий .env бота не найден, секреты будут сгенерированы заново." "Existing bot .env was not found, secrets will be generated again.")"
   fi
 
   hooks_domain="$(bedolaga_prompt_value "$(tr_text "Домен для bot webhook/API (пример: hooks.example.com)" "Domain for bot webhook/API (example: hooks.example.com)")" "" bedolaga_validate_domain "$(tr_text "Введите корректный домен (без https://)." "Enter a valid domain (without https://).")")"

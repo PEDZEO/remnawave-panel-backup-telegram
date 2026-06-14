@@ -1153,9 +1153,8 @@ run_remnawave_full_install_flow() {
   local panel_step_rc=0
   draw_header "$(tr_text "Remnawave: установка панели + Caddy" "Remnawave: panel + Caddy install")"
   paint "$CLR_MUTED" "$(tr_text "Шаг 1/2: панель, шаг 2/2: Caddy." "Step 1/2: panel, step 2/2: Caddy.")"
-  if ! run_panel_install_flow; then
-    panel_step_rc=$?
-  fi
+  run_panel_install_flow
+  panel_step_rc=$?
 
   if [[ "$panel_step_rc" -eq 1 ]]; then
     paint "$CLR_WARN" "$(tr_text "Полная установка остановлена на шаге панели." "Full install stopped at panel step.")"
@@ -1164,6 +1163,9 @@ run_remnawave_full_install_flow() {
 
   if [[ "$panel_step_rc" -eq 2 ]]; then
     paint "$CLR_MUTED" "$(tr_text "Шаг панели пропущен: используется текущая установка." "Panel step skipped: using existing installation.")"
+  elif [[ "$panel_step_rc" -ne 0 ]]; then
+    paint "$CLR_WARN" "$(tr_text "Полная установка остановлена: шаг панели вернул ошибку." "Full install stopped: panel step returned an error.")"
+    return 1
   fi
 
   AUTO_PANEL_CADDY=1
