@@ -933,6 +933,13 @@ bedolaga_log_has_uv_lock_error() {
   grep -Eiq '((uv\.lock|lockfile).*(needs to be updated)|--locked was provided)' "$log_file"
 }
 
+bedolaga_log_has_missing_external_network() {
+  local log_file="$1"
+
+  [[ -f "$log_file" ]] || return 1
+  grep -Eiq '(network .* declared as external, but could not be found|external network .* not found)' "$log_file"
+}
+
 bedolaga_detect_uv_image() {
   local project_dir="$1"
   local dockerfile="${project_dir}/Dockerfile"
@@ -997,6 +1004,17 @@ bedolaga_compose_up_build() {
     if bedolaga_refresh_uv_lock "$project_dir"; then
       : > "$log_file"
       paint "$CLR_MUTED" "$(tr_text "Повторяю docker compose build после обновления uv.lock..." "Retrying docker compose build after uv.lock update...")"
+      if bedolaga_run_compose_up_build_once "$project_dir" "$log_file"; then
+        rm -f "$log_file"
+        return 0
+      fi
+    fi
+  fi
+
+  if bedolaga_log_has_missing_external_network "$log_file"; then
+    paint "$CLR_WARN" "$(tr_text "Docker сеть Bedolaga отсутствует. Создаю сеть и повторяю запуск." "Bedolaga Docker network is missing. Creating it and retrying.")"
+    if bedolaga_ensure_shared_network; then
+      : > "$log_file"
       if bedolaga_run_compose_up_build_once "$project_dir" "$log_file"; then
         rm -f "$log_file"
         return 0
@@ -1386,6 +1404,7 @@ run_bedolaga_stack_install_with_repos() {
   fi
   bedolaga_sanitize_bot_optional_int_env "${bot_dir}/.env"
 
+  bedolaga_ensure_shared_network || return 1
   bedolaga_compose_up_build "$bot_dir" "bot" || return 1
 
   if ! bedolaga_sync_cabinet_env "$cabinet_dir" "$bot_username" "$cabinet_port"; then
@@ -1496,6 +1515,7 @@ run_bedolaga_stack_update_with_repos() {
   bedolaga_write_bot_compose_override "$bot_dir"
   bedolaga_write_cabinet_compose_override "$cabinet_dir"
 
+  bedolaga_ensure_shared_network || return 1
   bedolaga_compose_up_build "$bot_dir" "bot" || return 1
   bedolaga_compose_up_build "$cabinet_dir" "cabinet" || return 1
 
