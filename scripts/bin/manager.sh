@@ -260,6 +260,7 @@ container_version_label() {
   local compose_workdir=""
   local package_json=""
   local package_version=""
+  local runtime_package_version=""
 
   image_info="$(docker inspect -f '{{.Config.Image}}{{"\n"}}{{.Image}}{{"\n"}}{{ index .Config.Labels "com.docker.compose.project.working_dir" }}{{"\n"}}{{range .Config.Env}}{{println .}}{{end}}' "$name" 2>/dev/null || true)"
   image_ref="$(printf '%s\n' "$image_info" | sed -n '1p')"
@@ -312,6 +313,13 @@ container_version_label() {
         return 0
       fi
     fi
+  fi
+
+  runtime_package_version="$(docker exec "$name" sh -c 'for f in /opt/app/package.json /app/package.json /usr/src/app/package.json; do [ -f "$f" ] || continue; awk -F\" "/\"version\"[[:space:]]*:/ {print \$4; exit}" "$f"; exit 0; done' 2>/dev/null | head -n1 || true)"
+  runtime_package_version="${runtime_package_version//$'\r'/}"
+  if [[ -n "$runtime_package_version" ]]; then
+    echo "$runtime_package_version"
+    return 0
   fi
 
   if [[ -z "$version" && -n "$image_ref" ]]; then
@@ -484,14 +492,23 @@ fetch() {
     sep="&"
   fi
 
-  curl -fsSL "${url}${sep}v=$(date +%s)" -o "$dst"
+  curl -fsSL --connect-timeout 3 --max-time 20 "${url}${sep}v=$(date +%s)" -o "$dst"
 }
 
 resolve_raw_base() {
   local sha=""
   local candidate=""
+  local manager_dir=""
+  local repo_root=""
 
-  sha="$(curl -fsSL "$REPO_API" 2>/dev/null | sed -n 's/.*"sha":[[:space:]]*"\([a-f0-9]\{40\}\)".*/\1/p' | head -n1 || true)"
+  manager_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  repo_root="$(cd "${manager_dir}/../.." && pwd)"
+  if [[ -f "${repo_root}/scripts/runtime/manager_ui_core.sh" ]]; then
+    RAW_BASE_RESOLVED="$RAW_BASE"
+    return 0
+  fi
+
+  sha="$(curl -fsSL --connect-timeout 1 --max-time 2 "$REPO_API" 2>/dev/null | sed -n 's/.*"sha":[[:space:]]*"\([a-f0-9]\{40\}\)".*/\1/p' | head -n1 || true)"
   if [[ -z "$sha" ]]; then
     RAW_BASE_RESOLVED="$RAW_BASE"
     return 0

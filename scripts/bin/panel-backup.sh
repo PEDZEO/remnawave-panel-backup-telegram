@@ -369,6 +369,7 @@ container_version_label() {
   local compose_workdir=""
   local package_json=""
   local package_version=""
+  local runtime_package_version=""
 
   image_info="$(docker inspect -f '{{.Config.Image}}{{"\n"}}{{.Image}}{{"\n"}}{{ index .Config.Labels "com.docker.compose.project.working_dir" }}{{"\n"}}{{range .Config.Env}}{{println .}}{{end}}' "$name" 2>/dev/null || true)"
   image_ref="$(printf '%s\n' "$image_info" | sed -n '1p')"
@@ -417,6 +418,13 @@ container_version_label() {
         return 0
       fi
     fi
+  fi
+
+  runtime_package_version="$(docker exec "$name" sh -c 'for f in /opt/app/package.json /app/package.json /usr/src/app/package.json; do [ -f "$f" ] || continue; awk -F\" "/\"version\"[[:space:]]*:/ {print \$4; exit}" "$f"; exit 0; done' 2>/dev/null | head -n1 || true)"
+  runtime_package_version="${runtime_package_version//$'\r'/}"
+  if [[ -n "$runtime_package_version" ]]; then
+    printf '%s' "$runtime_package_version"
+    return 0
   fi
 
   if [[ -z "$version" && -n "$image_ref" ]]; then

@@ -1667,11 +1667,11 @@ interactive_menu() {
     draw_header "$(tr_text "Panel Backup Manager" "Panel Backup Manager")"
     paint "$CLR_ACCENT" "  $(tr_text "Основные разделы" "Main sections")"
     print_separator
-    menu_option "1" "$(tr_text "Bedolaga: бот, кабинет, backup, миграция" "Bedolaga: bot, cabinet, backup, migration")"
-    menu_option "2" "$(tr_text "Remnawave: панель, подписки, backup" "Remnawave: panel, subscription page, backup")"
-    menu_option "3" "$(tr_text "RemnaNode: нода, Caddy, BBR, WARP" "RemnaNode: node, Caddy, BBR, WARP")"
-    menu_option "4" "$(tr_text "Статус, логи, диск, очистка" "Status, logs, disk, cleanup")"
-    menu_option "5" "$(tr_text "Reshala toolbox: внешний набор функций" "Reshala toolbox: external feature set")"
+    menu_option "1" "$(tr_text "Bedolaga: бот, кабинет, backup, миграция" "Bedolaga: bot, cabinet, backup, migration")" "$CLR_OK"
+    menu_option "2" "$(tr_text "Remnawave: панель, подписки, backup" "Remnawave: panel, subscription page, backup")" "$CLR_ACCENT"
+    menu_option "3" "$(tr_text "RemnaNode: нода, Caddy, BBR, WARP" "RemnaNode: node, Caddy, BBR, WARP")" "$CLR_WARN"
+    menu_option "4" "$(tr_text "Статус, логи, диск, очистка" "Status, logs, disk, cleanup")" "$CLR_MUTED"
+    menu_option "5" "$(tr_text "Reshala toolbox: внешний набор функций" "Reshala toolbox: external feature set")" "$CLR_TITLE"
     menu_option "0" "$(tr_text "Выход" "Exit")" "$CLR_DANGER"
     print_separator
     read -r -p "$(tr_text "Выбор [1-5, 0 выход]: " "Choice [1-5, 0 exit]: ")" action

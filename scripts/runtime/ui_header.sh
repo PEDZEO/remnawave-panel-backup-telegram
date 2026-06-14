@@ -285,6 +285,7 @@ dashboard_line() {
   local label="$1"
   local value="$2"
   local color="${3:-$CLR_MUTED}"
+  local label_color="${4:-$CLR_MUTED}"
   local width=20
   local len=0
   local pad=1
@@ -297,7 +298,7 @@ dashboard_line() {
   padding="$(printf '%*s' "$pad" '')"
 
   if [[ "$COLOR" == "1" ]]; then
-    printf "%b║ %s%s :%b %b%s%b\n" "$CLR_MUTED" "$label" "$padding" "$CLR_RESET" "$color" "$value" "$CLR_RESET"
+    printf "%b║%b %b%s%s%b : %b%s%b\n" "$CLR_TITLE" "$CLR_RESET" "$label_color" "$label" "$padding" "$CLR_RESET" "$color" "$value" "$CLR_RESET"
   else
     printf "║ %s%s : %s\n" "$label" "$padding" "$value"
   fi
@@ -305,7 +306,12 @@ dashboard_line() {
 
 dashboard_section() {
   local title="$1"
-  paint "$CLR_ACCENT" "╠═[ ${title} ]"
+  local color="${2:-$CLR_ACCENT}"
+  paint "$color" "╠═[ ${title} ]"
+}
+
+dashboard_gap() {
+  paint "$CLR_TITLE" "║"
 }
 
 dashboard_bar() {
@@ -475,45 +481,49 @@ dashboard_disk_metric() {
 
 dashboard_public_net_refresh() {
   local cache="/tmp/panel-backup-dashboard-ip.cache"
-  local cache_tmp=""
-  local lock="${cache}.lock"
-  local json=""
-  local ip=""
-  local country=""
-  local org=""
-  local ping_ms=""
 
   cache="${1:-$cache}"
-  cache_tmp="${cache}.$$"
-  lock="${cache}.lock"
-
-  (
-    trap 'rm -f "$lock" "$cache_tmp"' EXIT
-    if command -v curl >/dev/null 2>&1; then
-      json="$(curl -fsSL --connect-timeout 1 --max-time 2 https://ipinfo.io/json 2>/dev/null || true)"
-    fi
-    ip="$(printf '%s' "$json" | sed -n 's/.*"ip"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
-    country="$(printf '%s' "$json" | sed -n 's/.*"country"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
-    org="$(printf '%s' "$json" | sed -n 's/.*"org"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
-    if [[ -n "$ip" ]] && command -v ping >/dev/null 2>&1; then
-      ping_ms="$(ping -c 1 -W 1 1.1.1.1 2>/dev/null | sed -n 's/.*time=\([0-9.]*\).*/\1/p' | head -n1)"
-    fi
-    [[ -n "$ip" ]] || ip="n/a"
-    [[ -n "$country" ]] || country="--"
-    [[ -n "$org" ]] || org="unknown"
-    [[ -n "$ping_ms" ]] && ping_ms="${ping_ms} ms" || ping_ms="n/a"
-    printf '%s|%s|%s|%s' "$ip" "$ping_ms" "$country" "$org" >"$cache_tmp"
-    mv -f "$cache_tmp" "$cache"
-  ) >/dev/null 2>&1 &
+  nohup bash -c '
+cache="$1"
+cache_tmp="${cache}.$$"
+lock="${cache}.lock"
+trap '\''rm -f "$lock" "$cache_tmp"'\'' EXIT
+json=""
+ip=""
+country=""
+org=""
+ping_ms=""
+if command -v curl >/dev/null 2>&1; then
+  json="$(curl -fsSL --connect-timeout 0.5 --max-time 0.5 https://ipinfo.io/json 2>/dev/null || true)"
+fi
+ip="$(printf "%s" "$json" | sed -n "s/.*\"ip\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p")"
+country="$(printf "%s" "$json" | sed -n "s/.*\"country\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p")"
+org="$(printf "%s" "$json" | sed -n "s/.*\"org\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p")"
+[[ -n "$ip" ]] || ip="n/a"
+[[ -n "$country" ]] || country="--"
+[[ -n "$org" ]] || org="unknown"
+[[ -n "$ping_ms" ]] && ping_ms="${ping_ms} ms" || ping_ms="n/a"
+printf "%s|%s|%s|%s" "$ip" "$ping_ms" "$country" "$org" >"$cache_tmp"
+mv -f "$cache_tmp" "$cache"
+' dashboard-public-net "$cache" >/dev/null 2>&1 &
+  disown "$!" 2>/dev/null || true
 }
 
 dashboard_public_net_start_refresh() {
   local cache="$1"
+  local ttl="${2:-0}"
   local lock="${cache}.lock"
   local now=0
+  local cache_mtime=0
   local lock_mtime=0
 
   now="$(date +%s)"
+  if [[ "$ttl" =~ ^[0-9]+$ && "$ttl" -gt 0 && -f "$cache" ]]; then
+    cache_mtime="$(date -r "$cache" +%s 2>/dev/null || echo 0)"
+    if [[ "$cache_mtime" =~ ^[0-9]+$ ]] && (( now - cache_mtime < ttl )); then
+      return 0
+    fi
+  fi
   if [[ -f "$lock" ]]; then
     lock_mtime="$(date -r "$lock" +%s 2>/dev/null || echo 0)"
     if [[ "$lock_mtime" =~ ^[0-9]+$ ]] && (( now - lock_mtime < 60 )); then
@@ -537,12 +547,92 @@ dashboard_public_net() {
     if [[ "$mtime" =~ ^[0-9]+$ ]] && (( now - mtime < 600 )); then
       [[ -n "$cached" ]] && { printf '%s' "$cached"; return 0; }
     fi
-    dashboard_public_net_start_refresh "$cache"
     [[ -n "$cached" ]] && { printf '%s' "$cached"; return 0; }
   fi
 
-  dashboard_public_net_start_refresh "$cache"
   printf '%s|%s|%s|%s' "n/a" "n/a" "--" "$(tr_text "загрузка..." "loading...")"
+}
+
+dashboard_usd_rub_refresh() {
+  local cache="/tmp/panel-backup-dashboard-usdrub.cache"
+
+  cache="${1:-$cache}"
+  nohup bash -c '
+cache="$1"
+cache_tmp="${cache}.$$"
+lock="${cache}.lock"
+trap '\''rm -f "$lock" "$cache_tmp"'\'' EXIT
+json=""
+usd_block=""
+value=""
+previous=""
+change=""
+rate_date=""
+if command -v curl >/dev/null 2>&1; then
+  json="$(curl -fsSL --connect-timeout 0.8 --max-time 0.8 https://www.cbr-xml-daily.ru/daily_json.js 2>/dev/null || true)"
+fi
+json="$(printf "%s" "$json" | tr "\n" " ")"
+usd_block="$(printf "%s" "$json" | sed -n "s/.*\"USD\"[[:space:]]*:{\([^}]*\)}.*/\1/p")"
+value="$(printf "%s" "$usd_block" | sed -n "s/.*\"Value\"[[:space:]]*:[[:space:]]*\([0-9.]*\).*/\1/p")"
+previous="$(printf "%s" "$usd_block" | sed -n "s/.*\"Previous\"[[:space:]]*:[[:space:]]*\([0-9.]*\).*/\1/p")"
+rate_date="$(printf "%s" "$json" | sed -n "s/.*\"Date\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p")"
+rate_date="${rate_date%%T*}"
+if [[ "$value" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+  value="$(awk -v value="$value" "BEGIN { printf \"%.2f\", value }")"
+  if [[ "$previous" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    change="$(awk -v value="$value" -v previous="$previous" "BEGIN { diff = value - previous; if (diff > 0) printf \"+%.2f\", diff; else printf \"%.2f\", diff }")"
+  else
+    change="n/a"
+  fi
+  printf "%s|%s|%s" "$value" "$change" "${rate_date:-CBR}" >"$cache_tmp"
+  mv -f "$cache_tmp" "$cache"
+fi
+' dashboard-usd-rub "$cache" >/dev/null 2>&1 &
+  disown "$!" 2>/dev/null || true
+}
+
+dashboard_usd_rub_start_refresh() {
+  local cache="$1"
+  local ttl="${2:-0}"
+  local lock="${cache}.lock"
+  local now=0
+  local cache_mtime=0
+  local lock_mtime=0
+
+  now="$(date +%s)"
+  if [[ "$ttl" =~ ^[0-9]+$ && "$ttl" -gt 0 && -f "$cache" ]]; then
+    cache_mtime="$(date -r "$cache" +%s 2>/dev/null || echo 0)"
+    if [[ "$cache_mtime" =~ ^[0-9]+$ ]] && (( now - cache_mtime < ttl )); then
+      return 0
+    fi
+  fi
+  if [[ -f "$lock" ]]; then
+    lock_mtime="$(date -r "$lock" +%s 2>/dev/null || echo 0)"
+    if [[ "$lock_mtime" =~ ^[0-9]+$ ]] && (( now - lock_mtime < 60 )); then
+      return 0
+    fi
+  fi
+  printf '%s' "$now" >"$lock" 2>/dev/null || return 0
+  dashboard_usd_rub_refresh "$cache"
+}
+
+dashboard_usd_rub() {
+  local cache="/tmp/panel-backup-dashboard-usdrub.cache"
+  local now=0
+  local mtime=0
+  local cached=""
+
+  now="$(date +%s)"
+  if [[ -f "$cache" ]]; then
+    mtime="$(date -r "$cache" +%s 2>/dev/null || echo 0)"
+    cached="$(cat "$cache" 2>/dev/null || true)"
+    if [[ "$mtime" =~ ^[0-9]+$ ]] && (( now - mtime < 21600 )); then
+      [[ -n "$cached" ]] && { printf '%s' "$cached"; return 0; }
+    fi
+    [[ -n "$cached" ]] && { printf '%s' "$cached"; return 0; }
+  fi
+
+  printf '%s|%s|%s' "$(tr_text "загрузка..." "loading...")" "" ""
 }
 
 dashboard_version_label() {
@@ -551,7 +641,7 @@ dashboard_version_label() {
   version="${version//$'\r'/}"
   version="${version//$'\n'/}"
   case "$version" in
-    ""|"unknown"|"<no value>")
+    ""|"unknown"|"<no value>"|"latest")
       printf '%s' ""
       return 0
       ;;
@@ -560,13 +650,13 @@ dashboard_version_label() {
       return 0
       ;;
     sha-*)
-      printf 'build %s' "${version#sha-}"
+      printf '%s' ""
       return 0
       ;;
   esac
 
   if [[ "$version" =~ ^[[:xdigit:]]{7,64}$ ]]; then
-    printf 'build %.12s' "$version"
+    printf '%s' ""
   elif [[ "$version" =~ ^[0-9]+([.][0-9]+)*([._-][0-9A-Za-z.-]+)?$ ]]; then
     printf 'v%s' "$version"
   else
@@ -574,14 +664,12 @@ dashboard_version_label() {
   fi
 }
 
-dashboard_next_run_for_unit() {
-  local unit="$1"
-  local raw=""
+dashboard_next_run_label() {
+  local raw="$1"
   local now_ts=0
   local next_ts=0
   local left=0
 
-  raw="$($SUDO systemctl show "$unit" -p NextElapseUSecRealtime --value 2>/dev/null | sed -n '1p' || true)"
   if [[ -z "$raw" || "$raw" == "n/a" ]]; then
     printf '%s' "n/a"
     return 0
@@ -594,6 +682,28 @@ dashboard_next_run_for_unit() {
   else
     printf '%s' "$raw"
   fi
+}
+
+dashboard_next_run_for_unit() {
+  local unit="$1"
+  local raw=""
+
+  raw="$($SUDO systemctl show "$unit" -p NextElapseUSecRealtime --value 2>/dev/null | sed -n '1p' || true)"
+  dashboard_next_run_label "$raw"
+}
+
+dashboard_timer_info() {
+  local unit="$1"
+  local raw=""
+  local active_state=""
+  local enabled_state=""
+  local next_raw=""
+
+  raw="$($SUDO systemctl show "$unit" -p ActiveState -p UnitFileState -p NextElapseUSecRealtime 2>/dev/null || true)"
+  active_state="$(printf '%s\n' "$raw" | awk -F= '$1=="ActiveState" {print $2; exit}')"
+  enabled_state="$(printf '%s\n' "$raw" | awk -F= '$1=="UnitFileState" {print $2; exit}')"
+  next_raw="$(printf '%s\n' "$raw" | awk -F= '$1=="NextElapseUSecRealtime" {print $2; exit}')"
+  printf '%s|%s|%s' "${active_state:-inactive}" "${enabled_state:-disabled}" "$(dashboard_next_run_label "$next_raw")"
 }
 
 dashboard_schedule_for_unit() {
@@ -639,8 +749,10 @@ draw_header() {
   local capacity_label=""
   local panel_timer_state=""
   local panel_timer_enabled=""
+  local panel_timer_info=""
   local bedolaga_timer_state=""
   local bedolaga_timer_enabled=""
+  local bedolaga_timer_info=""
   local panel_schedule=""
   local bedolaga_schedule=""
   local panel_next=""
@@ -661,12 +773,20 @@ draw_header() {
   local panel_calendar_env=""
   local bedolaga_calendar_env=""
   local default_calendar_env=""
+  local usd_rub_info=""
+  local usd_rub_value=""
+  local usd_rub_change=""
+  local usd_rub_date=""
+  local usd_rub_label=""
+  local usd_rub_color="$CLR_MUTED"
 
   clear
 
   os_kernel="$(dashboard_os_kernel)"
   uptime_label="$(dashboard_uptime)"
   virt_label="$(dashboard_virt)"
+  dashboard_public_net_start_refresh "/tmp/panel-backup-dashboard-ip.cache" 600
+  dashboard_usd_rub_start_refresh "/tmp/panel-backup-dashboard-usdrub.cache" 21600
   net_info="$(dashboard_public_net)"
   IFS='|' read -r public_ip public_ping public_country public_org <<< "$net_info"
 
@@ -709,10 +829,10 @@ draw_header() {
   fi
   capacity_label="$(tr_text "n/a (запустите speedtest в Reshala)" "n/a (run speedtest in Reshala)")"
 
-  panel_timer_state="$(systemctl_active_state panel-backup-panel.timer)"
-  panel_timer_enabled="$(systemctl_enabled_state panel-backup-panel.timer)"
-  bedolaga_timer_state="$(systemctl_active_state panel-backup-bedolaga.timer)"
-  bedolaga_timer_enabled="$(systemctl_enabled_state panel-backup-bedolaga.timer)"
+  panel_timer_info="$(dashboard_timer_info panel-backup-panel.timer)"
+  IFS='|' read -r panel_timer_state panel_timer_enabled panel_next <<< "$panel_timer_info"
+  bedolaga_timer_info="$(dashboard_timer_info panel-backup-bedolaga.timer)"
+  IFS='|' read -r bedolaga_timer_state bedolaga_timer_enabled bedolaga_next <<< "$bedolaga_timer_info"
   default_calendar_env="$(grep -E '^BACKUP_ON_CALENDAR=' /etc/panel-backup.env 2>/dev/null | head -n1 | cut -d= -f2- || true)"
   panel_calendar_env="$(grep -E '^BACKUP_ON_CALENDAR_PANEL=' /etc/panel-backup.env 2>/dev/null | head -n1 | cut -d= -f2- || true)"
   bedolaga_calendar_env="$(grep -E '^BACKUP_ON_CALENDAR_BEDOLAGA=' /etc/panel-backup.env 2>/dev/null | head -n1 | cut -d= -f2- || true)"
@@ -722,8 +842,6 @@ draw_header() {
   default_calendar_env="${default_calendar_env:-*-*-* 03:40:00 UTC}"
   panel_schedule="$(dashboard_schedule_for_unit "panel-backup-panel.timer" "${panel_calendar_env:-$default_calendar_env}")"
   bedolaga_schedule="$(dashboard_schedule_for_unit "panel-backup-bedolaga.timer" "${bedolaga_calendar_env:-$default_calendar_env}")"
-  panel_next="$(dashboard_next_run_for_unit "panel-backup-panel.timer")"
-  bedolaga_next="$(dashboard_next_run_for_unit "panel-backup-bedolaga.timer")"
 
   latest_backup="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/pb-*.tar.gz.gpg /var/backups/panel/panel-backup-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz.gpg 2>/dev/null | head -n1 || true)"
   if [[ -n "$latest_backup" ]]; then
@@ -762,46 +880,68 @@ draw_header() {
   [[ -x /usr/local/bin/panel-backup.sh ]] && backup_script_state="$(tr_text "установлен" "installed")" || backup_script_state="$(tr_text "не установлен" "not installed")"
   [[ -f /etc/panel-backup.env ]] && config_state="$(tr_text "есть" "present")" || config_state="$(tr_text "нет" "missing")"
 
+  usd_rub_info="$(dashboard_usd_rub)"
+  IFS='|' read -r usd_rub_value usd_rub_change usd_rub_date <<< "$usd_rub_info"
+  if [[ "$usd_rub_value" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    usd_rub_label="${usd_rub_value} ₽"
+    [[ -n "$usd_rub_change" && "$usd_rub_change" != "n/a" ]] && usd_rub_label+=" (${usd_rub_change})"
+    [[ -n "$usd_rub_date" ]] && usd_rub_label+=" · ЦБ ${usd_rub_date}"
+    if [[ "$usd_rub_change" == -* ]]; then
+      usd_rub_color="$CLR_OK"
+    elif [[ "$usd_rub_change" == +* ]]; then
+      usd_rub_color="$CLR_WARN"
+    else
+      usd_rub_color="$CLR_ACCENT"
+    fi
+  else
+    usd_rub_label="${usd_rub_value:-$(tr_text "загрузка..." "loading...")}"
+    usd_rub_color="$CLR_MUTED"
+  fi
+
   paint "$CLR_TITLE" "╔════════════════════════════════════════════════════════════"
   paint "$CLR_ACCENT" "║ ${title}"
   if [[ -n "$subtitle" ]]; then
     paint "$CLR_MUTED" "║ ${subtitle}"
   fi
-  dashboard_section "$(tr_text "СИСТЕМА" "SYSTEM")"
-  dashboard_line "$(tr_text "ОС / Ядро" "OS / Kernel")" "$os_kernel" "$CLR_ACCENT"
-  dashboard_line "$(tr_text "Аптайм" "Uptime")" "$uptime_label" "$CLR_MUTED"
-  dashboard_line "$(tr_text "Виртуалка" "Virtualization")" "$virt_label" "$CLR_MUTED"
-  dashboard_line "$(tr_text "IP Адрес" "IP Address")" "${public_ip} (${public_ping}) [${public_country}]" "$CLR_ACCENT"
-  dashboard_line "$(tr_text "Хостер" "Provider")" "${public_org}" "$CLR_MUTED"
+  dashboard_section "$(tr_text "СИСТЕМА" "SYSTEM")" "$CLR_ACCENT"
+  dashboard_line "$(tr_text "ОС / Ядро" "OS / Kernel")" "$os_kernel" "$CLR_ACCENT" "$CLR_ACCENT"
+  dashboard_line "$(tr_text "Аптайм" "Uptime")" "$uptime_label" "$CLR_MUTED" "$CLR_ACCENT"
+  dashboard_line "$(tr_text "Виртуалка" "Virtualization")" "$virt_label" "$CLR_MUTED" "$CLR_ACCENT"
+  dashboard_line "$(tr_text "IP Адрес" "IP Address")" "${public_ip} (${public_ping}) [${public_country}]" "$CLR_ACCENT" "$CLR_ACCENT"
+  dashboard_line "$(tr_text "Хостер" "Provider")" "${public_org}" "$CLR_MUTED" "$CLR_ACCENT"
+  dashboard_gap
 
-  dashboard_section "$(tr_text "ЖЕЛЕЗО" "HARDWARE")"
-  dashboard_line "$(tr_text "CPU Модель" "CPU Model")" "$cpu_model" "$CLR_MUTED"
-  dashboard_line "$(tr_text "Загрузка CPU" "CPU Load")" "$(dashboard_bar "$cpu_percent") ${cpu_percent}% (${cpu_cores} vCore)" "$(dashboard_metric_color "$cpu_percent" 70 90)"
-  dashboard_line "$(tr_text "Память (RAM)" "Memory (RAM)")" "$(dashboard_bar "$mem_percent") ${mem_percent}% (${mem_used} / ${mem_total})" "$(dashboard_metric_color "$mem_percent" 75 90)"
-  dashboard_line "$(tr_text "Диск (HDD)" "Disk (HDD)")" "$(dashboard_bar "$disk_percent") ${disk_percent}% (${disk_used}/${disk_total})" "$(dashboard_metric_color "$disk_percent" 70 85)"
+  dashboard_section "$(tr_text "ЖЕЛЕЗО" "HARDWARE")" "$CLR_WARN"
+  dashboard_line "$(tr_text "CPU Модель" "CPU Model")" "$cpu_model" "$CLR_MUTED" "$CLR_WARN"
+  dashboard_line "$(tr_text "Загрузка CPU" "CPU Load")" "$(dashboard_bar "$cpu_percent") ${cpu_percent}% (${cpu_cores} vCore)" "$(dashboard_metric_color "$cpu_percent" 70 90)" "$CLR_WARN"
+  dashboard_line "$(tr_text "Память (RAM)" "Memory (RAM)")" "$(dashboard_bar "$mem_percent") ${mem_percent}% (${mem_used} / ${mem_total})" "$(dashboard_metric_color "$mem_percent" 75 90)" "$CLR_WARN"
+  dashboard_line "$(tr_text "Диск (HDD)" "Disk (HDD)")" "$(dashboard_bar "$disk_percent") ${disk_percent}% (${disk_used}/${disk_total})" "$(dashboard_metric_color "$disk_percent" 70 85)" "$CLR_WARN"
+  dashboard_gap
 
-  dashboard_section "STATUS"
-  dashboard_line "Remnawave" "$panel_status" "$CLR_OK"
-  dashboard_line "Bedolaga Bot" "$bot_status" "$(state_color "$bot_status")"
-  dashboard_line "Bedolaga Cabinet" "$cabinet_status" "$(state_color "$cabinet_status")"
-  dashboard_line "Web-Server" "$caddy_status" "$CLR_MUTED"
-  dashboard_line "$(tr_text "Вместимость юзеров" "User capacity")" "$capacity_label" "$CLR_MUTED"
+  dashboard_section "STATUS" "$CLR_OK"
+  dashboard_line "Remnawave" "$panel_status" "$CLR_OK" "$CLR_OK"
+  dashboard_line "Bedolaga Bot" "$bot_status" "$(state_color "$bot_status")" "$CLR_OK"
+  dashboard_line "Bedolaga Cabinet" "$cabinet_status" "$(state_color "$cabinet_status")" "$CLR_OK"
+  dashboard_line "Web-Server" "$caddy_status" "$CLR_MUTED" "$CLR_OK"
+  dashboard_line "$(tr_text "Вместимость юзеров" "User capacity")" "$capacity_label" "$CLR_MUTED" "$CLR_OK"
+  dashboard_gap
 
-  dashboard_section "BACKUP"
-  dashboard_line "$(tr_text "Скрипт / конфиг" "Script / config")" "${backup_script_state} / ${config_state}" "$CLR_ACCENT"
-  dashboard_line "$(tr_text "Панель timer" "Panel timer")" "${panel_timer_state} / ${panel_timer_enabled}" "$(state_color "$panel_timer_state")"
-  dashboard_line "$(tr_text "Панель расписание" "Panel schedule")" "$(format_schedule_label "$panel_schedule")" "$CLR_ACCENT"
-  dashboard_line "$(tr_text "Панель следующий" "Panel next")" "$panel_next" "$CLR_MUTED"
-  dashboard_line "$(tr_text "Bedolaga timer" "Bedolaga timer")" "${bedolaga_timer_state} / ${bedolaga_timer_enabled}" "$(state_color "$bedolaga_timer_state")"
-  dashboard_line "$(tr_text "Bedolaga распис." "Bedolaga schedule")" "$(format_schedule_label "$bedolaga_schedule")" "$CLR_ACCENT"
-  dashboard_line "$(tr_text "Bedolaga след." "Bedolaga next")" "$bedolaga_next" "$CLR_MUTED"
-  dashboard_line "$(tr_text "Последний backup" "Latest backup")" "$latest_label" "$CLR_ACCENT"
-  dashboard_line "$(tr_text "Возраст backup" "Backup age")" "$backup_age_label" "$backup_age_color"
-  dashboard_line "Telegram" "$tg_state" "$tg_color"
-  dashboard_line "$(tr_text "Шифрование" "Encryption")" "$encrypt_state" "$encrypt_color"
+  dashboard_section "BACKUP" "$CLR_WARN"
+  dashboard_line "$(tr_text "Скрипт / конфиг" "Script / config")" "${backup_script_state} / ${config_state}" "$CLR_ACCENT" "$CLR_WARN"
+  dashboard_line "$(tr_text "Панель timer" "Panel timer")" "${panel_timer_state} / ${panel_timer_enabled}" "$(state_color "$panel_timer_state")" "$CLR_WARN"
+  dashboard_line "$(tr_text "Панель расписание" "Panel schedule")" "$(format_schedule_label "$panel_schedule")" "$CLR_ACCENT" "$CLR_WARN"
+  dashboard_line "$(tr_text "Панель следующий" "Panel next")" "$panel_next" "$CLR_MUTED" "$CLR_WARN"
+  dashboard_line "$(tr_text "Bedolaga timer" "Bedolaga timer")" "${bedolaga_timer_state} / ${bedolaga_timer_enabled}" "$(state_color "$bedolaga_timer_state")" "$CLR_WARN"
+  dashboard_line "$(tr_text "Bedolaga распис." "Bedolaga schedule")" "$(format_schedule_label "$bedolaga_schedule")" "$CLR_ACCENT" "$CLR_WARN"
+  dashboard_line "$(tr_text "Bedolaga след." "Bedolaga next")" "$bedolaga_next" "$CLR_MUTED" "$CLR_WARN"
+  dashboard_line "$(tr_text "Последний backup" "Latest backup")" "$latest_label" "$CLR_ACCENT" "$CLR_WARN"
+  dashboard_line "$(tr_text "Возраст backup" "Backup age")" "$backup_age_label" "$backup_age_color" "$CLR_WARN"
+  dashboard_line "Telegram" "$tg_state" "$tg_color" "$CLR_WARN"
+  dashboard_line "$(tr_text "Шифрование" "Encryption")" "$encrypt_state" "$encrypt_color" "$CLR_WARN"
+  dashboard_gap
 
-  dashboard_section "WIDGETS"
-  dashboard_line "$(tr_text "Курс биткоина (BTC)" "Bitcoin price (BTC)")" "$(tr_text "отключен" "disabled")" "$CLR_MUTED"
+  dashboard_section "WIDGETS" "$CLR_ACCENT"
+  dashboard_line "USD/RUB" "$usd_rub_label" "$usd_rub_color" "$CLR_ACCENT"
   paint "$CLR_TITLE" "╚════════════════════════════════════════════════════════════"
   paint "$CLR_MUTED" "  $(tr_text "Навигация: цифра = открыть, b/back = назад, 0 = выход." "Navigation: number = open, b/back = back, 0 = exit.")"
   echo

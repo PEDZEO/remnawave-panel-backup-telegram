@@ -9,7 +9,11 @@ menu_option() {
   local key="$1"
   local label="$2"
   local color="${3:-$CLR_ACCENT}"
-  paint "$color" "  [${key}] ${label}"
+  if [[ "$COLOR" == "1" ]]; then
+    printf "  %b[%s]%b %b%s%b\n" "$CLR_TITLE" "$key" "$CLR_RESET" "$color" "$label" "$CLR_RESET"
+  else
+    printf "  [%s] %s\n" "$key" "$label"
+  fi
 }
 
 is_back_command() {

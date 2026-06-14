@@ -14,14 +14,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-REPO_SHA="$(curl -fsSL "$REPO_API" 2>/dev/null | sed -n 's/.*"sha":[[:space:]]*"\([a-f0-9]\{40\}\)".*/\1/p' | head -n1 || true)"
+REPO_SHA="$(curl -fsSL --connect-timeout 1 --max-time 2 "$REPO_API" 2>/dev/null | sed -n 's/.*"sha":[[:space:]]*"\([a-f0-9]\{40\}\)".*/\1/p' | head -n1 || true)"
 if [[ -n "$REPO_SHA" ]]; then
   MANAGER_URL="https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/${REPO_SHA}/scripts/bin/manager.sh"
 else
   MANAGER_URL="${RAW_BASE}/scripts/bin/manager.sh"
 fi
 
-curl -fsSL "$MANAGER_URL" -o "$TMP_MANAGER"
+curl -fsSL --connect-timeout 3 --max-time 20 "$MANAGER_URL" -o "$TMP_MANAGER"
 chmod 700 "$TMP_MANAGER"
 
 exec bash "$TMP_MANAGER" "$@"
