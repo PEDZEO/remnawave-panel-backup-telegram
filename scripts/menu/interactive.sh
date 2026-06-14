@@ -1297,7 +1297,7 @@ menu_section_bedolaga_install_update_official() {
     menu_option "1" "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")"
     menu_group "$(tr_text "Обновление" "Update")" "$CLR_WARN"
     menu_option "2" "$(tr_text "Подтянуть обновления из git и перезапустить" "Pull updates from git and restart")"
-    menu_hint "$(tr_text "Бот + кабинет: git fetch/pull, docker compose up -d --build, env/Caddy и проверка запуска." "Bot + cabinet: git fetch/pull, docker compose up -d --build, env/Caddy and health check.")"
+    menu_hint "$(tr_text "Бот + кабинет: git fetch/pull, docker compose up -d --build. .env и Caddyfile не трогаются." "Bot + cabinet: git fetch/pull, docker compose up -d --build. .env and Caddyfile are untouched.")"
     menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "3" "$(tr_text "Назад" "Back")"
     print_separator

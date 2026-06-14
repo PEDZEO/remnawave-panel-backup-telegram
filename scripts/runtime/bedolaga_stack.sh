@@ -766,6 +766,7 @@ bedolaga_collect_container_logs_if_needed() {
 
 bedolaga_post_deploy_health_check() {
   local cabinet_port="${1:-3020}"
+  local check_caddy="${2:-1}"
   local failed="0"
 
   paint "$CLR_ACCENT" "$(tr_text "Проверяю состояние контейнеров Bedolaga..." "Checking Bedolaga container health...")"
@@ -773,7 +774,9 @@ bedolaga_post_deploy_health_check() {
   bedolaga_collect_container_logs_if_needed "remnawave_bot_db" "$cabinet_port" || failed="1"
   bedolaga_collect_container_logs_if_needed "remnawave_bot_redis" "$cabinet_port" || failed="1"
   bedolaga_collect_container_logs_if_needed "cabinet_frontend" "$cabinet_port" || failed="1"
-  bedolaga_collect_container_logs_if_needed "remnawave-caddy" "$cabinet_port" || failed="1"
+  if [[ "$check_caddy" == "1" ]]; then
+    bedolaga_collect_container_logs_if_needed "remnawave-caddy" "$cabinet_port" || failed="1"
+  fi
 
   if [[ "$failed" == "1" ]]; then
     paint "$CLR_DANGER" "$(tr_text "Обнаружены проблемы после запуска Bedolaga. Исправьте ошибки по логам выше." "Issues detected after Bedolaga start. Fix errors using logs above.")"
@@ -1217,14 +1220,10 @@ run_bedolaga_stack_update_with_repos() {
   local flow_title="${4:-$(tr_text "Bedolaga: обновление (бот + кабинет)" "Bedolaga: update (bot + cabinet)")}"
   local bot_dir=""
   local cabinet_dir=""
-  local replace_caddy_config="0"
-  local hooks_domain=""
-  local cabinet_domain=""
-  local api_domain=""
   local cabinet_port="3020"
   local bot_env_file=""
-  local bot_username=""
-  local bot_token=""
+  local cabinet_env_file=""
+  local check_caddy="0"
 
   draw_subheader "${flow_title}"
 
@@ -1234,13 +1233,11 @@ run_bedolaga_stack_update_with_repos() {
   if ! ensure_git_available; then
     return 1
   fi
-  if ! bedolaga_ensure_caddy_runtime; then
-    return 1
-  fi
 
   bot_dir="$(bedolaga_detect_bot_repo_dir || true)"
   cabinet_dir="$(bedolaga_detect_cabinet_repo_dir || true)"
   bot_env_file="${bot_dir}/.env"
+  cabinet_env_file="${cabinet_dir}/.env"
   if [[ -z "$bot_dir" || ! -d "${bot_dir}/.git" ]]; then
     paint "$CLR_DANGER" "$(tr_text "Не найден установленный репозиторий бота (ожидаемые пути: /root/remnawave-bedolaga-telegram-bot, /opt/remnawave-bedolaga-telegram-bot)" "Installed bot repository not found (expected paths: /root/remnawave-bedolaga-telegram-bot, /opt/remnawave-bedolaga-telegram-bot)")"
     return 1
@@ -1249,21 +1246,23 @@ run_bedolaga_stack_update_with_repos() {
     paint "$CLR_DANGER" "$(tr_text "Не найден установленный репозиторий кабинета (ожидаемые пути: /root/bedolaga-cabinet, /root/cabinet-frontend, /opt/bedolaga-cabinet, /opt/cabinet-frontend)" "Installed cabinet repository not found (expected paths: /root/bedolaga-cabinet, /root/cabinet-frontend, /opt/bedolaga-cabinet, /opt/cabinet-frontend)")"
     return 1
   fi
+  if [[ ! -f "$bot_env_file" ]]; then
+    paint "$CLR_DANGER" "$(tr_text "Не найден .env бота. Обычное обновление не может безопасно восстановить настройки." "Bot .env was not found. A normal update cannot safely restore settings.")"
+    return 1
+  fi
+  if [[ ! -f "$cabinet_env_file" ]]; then
+    paint "$CLR_DANGER" "$(tr_text "Не найден .env кабинета. Обычное обновление не может безопасно восстановить настройки." "Cabinet .env was not found. A normal update cannot safely restore settings.")"
+    return 1
+  fi
 
-  hooks_domain="$(bedolaga_prompt_value "$(tr_text "Домен webhook/API (как в установке)" "Webhook/API domain (same as install)")" "" bedolaga_validate_domain "$(tr_text "Введите корректный домен (без https://)." "Enter a valid domain (without https://).")")"
-  [[ "$hooks_domain" == "__PBM_BACK__" ]] && return 1
-
-  cabinet_domain="$(bedolaga_prompt_value "$(tr_text "Домен кабинета (как в установке)" "Cabinet domain (same as install)")" "" bedolaga_validate_domain "$(tr_text "Введите корректный домен кабинета (без https://)." "Enter a valid cabinet domain (without https://).")")"
-  [[ "$cabinet_domain" == "__PBM_BACK__" ]] && return 1
-
-  api_domain="$(bedolaga_prompt_value "$(tr_text "Домен API (как в установке)" "API domain (same as install)")" "" bedolaga_validate_domain "$(tr_text "Введите корректный домен API (без https://)." "Enter a valid API domain (without https://).")")"
-  [[ "$api_domain" == "__PBM_BACK__" ]] && return 1
-
-  cabinet_port="$(ask_value "$(tr_text "Локальный порт cabinet (для Caddy reverse proxy)" "Local cabinet port (for Caddy reverse proxy)")" "3020")"
-  [[ "$cabinet_port" == "__PBM_BACK__" ]] && return 1
+  cabinet_port="$(bedolaga_read_env_value "$cabinet_env_file" "CABINET_PORT")"
+  cabinet_port="${cabinet_port:-3020}"
   if ! validate_tcp_port_or_warn "CABINET_PORT" "$cabinet_port"; then
     return 1
   fi
+  paint "$CLR_MUTED" "$(tr_text "Обновление без перенастройки: домены, токены, .env и Caddyfile сохраняются как есть." "Update without reconfiguration: domains, tokens, .env and Caddyfile are preserved.")"
+  paint "$CLR_MUTED" "  bot: ${bot_dir}"
+  paint "$CLR_MUTED" "  cabinet: ${cabinet_dir}"
 
   if [[ "$fork_mode" == "1" ]]; then
     paint "$CLR_MUTED" "$(tr_text "Режим форка: переключаю репозитории на PEDZEO и обновляю по дефолтной ветке origin." "Fork mode: switching repositories to PEDZEO and updating via origin default branch.")"
@@ -1276,34 +1275,16 @@ run_bedolaga_stack_update_with_repos() {
   bedolaga_write_bot_compose_override "$bot_dir"
   bedolaga_write_cabinet_compose_override "$cabinet_dir"
 
-  bot_username="$(bedolaga_read_env_value "$bot_env_file" "BOT_USERNAME")"
-  if [[ -z "$bot_username" ]]; then
-    bot_token="$(bedolaga_read_env_value "$bot_env_file" "BOT_TOKEN")"
-    if [[ -n "$bot_token" ]]; then
-      bot_username="$(bedolaga_detect_bot_username "$bot_token")"
-    fi
-  fi
-  if ! bedolaga_sync_bot_env_defaults "$bot_dir" "$hooks_domain" "$cabinet_domain" "$bot_username"; then
-    return 1
-  fi
-  if ! bedolaga_sync_cabinet_env "$cabinet_dir" "$bot_username" "$cabinet_port"; then
-    return 1
-  fi
-
   ( cd "$bot_dir" && $SUDO docker compose up -d --build ) || return 1
   ( cd "$cabinet_dir" && $SUDO docker compose up -d --build ) || return 1
-  bedolaga_repair_shared_network_if_needed || return 1
 
-  if ask_yes_no "$(tr_text "Заменить весь Caddyfile на шаблон Bedolaga? (иначе обновится только автоген-блок)" "Replace full Caddyfile with Bedolaga template? (otherwise only autogen block is updated)")" "n"; then
-    replace_caddy_config="1"
+  if bedolaga_detect_caddy_runtime >/dev/null 2>&1 && [[ "${CADDY_MODE:-}" == "container" ]]; then
+    check_caddy="1"
+    bedolaga_repair_shared_network_if_needed || return 1
+  else
+    paint "$CLR_MUTED" "$(tr_text "Docker Caddy не найден: Caddyfile не трогаю, проверку Caddy пропускаю." "Docker Caddy not found: leaving Caddyfile untouched and skipping Caddy check.")"
   fi
-  if ! bedolaga_apply_caddy_block "$hooks_domain" "$cabinet_domain" "$api_domain" "$cabinet_port" "$replace_caddy_config"; then
-    return 1
-  fi
-  if ! bedolaga_verify_cabinet_ws_route "$cabinet_domain"; then
-    return 1
-  fi
-  if ! bedolaga_post_deploy_health_check "$cabinet_port"; then
+  if ! bedolaga_post_deploy_health_check "$cabinet_port" "$check_caddy"; then
     return 1
   fi
 
