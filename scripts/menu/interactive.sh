@@ -1296,7 +1296,8 @@ menu_section_bedolaga_install_update_official() {
     menu_group "$(tr_text "Установка" "Install")" "$CLR_OK"
     menu_option "1" "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")"
     menu_group "$(tr_text "Обновление" "Update")" "$CLR_WARN"
-    menu_option "2" "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")"
+    menu_option "2" "$(tr_text "Подтянуть обновления из git и перезапустить" "Pull updates from git and restart")"
+    menu_hint "$(tr_text "Бот + кабинет: git fetch/pull, docker compose up -d --build, env/Caddy и проверка запуска." "Bot + cabinet: git fetch/pull, docker compose up -d --build, env/Caddy and health check.")"
     menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "3" "$(tr_text "Назад" "Back")"
     print_separator
@@ -1309,7 +1310,7 @@ menu_section_bedolaga_install_update_official() {
         run_component_flow_action "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")" run_bedolaga_stack_install_flow
         ;;
       2)
-        run_component_flow_action "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")" run_bedolaga_stack_update_flow
+        run_component_flow_action "$(tr_text "Подтянуть обновления Bedolaga из git и перезапустить" "Pull Bedolaga updates from git and restart")" run_bedolaga_stack_update_flow
         ;;
       3) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;

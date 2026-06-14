@@ -1316,7 +1316,7 @@ run_bedolaga_stack_update_flow() {
     "$BEDOLAGA_BOT_REPO_DEFAULT" \
     "$BEDOLAGA_CABINET_REPO_DEFAULT" \
     "0" \
-    "$(tr_text "Bedolaga: обновление (бот + кабинет)" "Bedolaga: update (bot + cabinet)")"
+    "$(tr_text "Bedolaga: обновление из git и перезапуск" "Bedolaga: git update and restart")"
 }
 
 run_bedolaga_stack_update_fork_flow() {
