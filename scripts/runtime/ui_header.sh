@@ -747,6 +747,17 @@ draw_header() {
   local caddy_version=""
   local caddy_version_label=""
   local capacity_label=""
+  local has_panel=0
+  local has_bot=0
+  local has_cabinet=0
+  local has_caddy=0
+  local has_panel_backup=0
+  local has_bedolaga_backup=0
+  local has_latest_backup=0
+  local has_tg_config=0
+  local has_encrypt_enabled=0
+  local has_backup_section=0
+  local status_rows=0
   local panel_timer_state=""
   local panel_timer_enabled=""
   local panel_timer_info=""
@@ -802,6 +813,7 @@ draw_header() {
   IFS='|' read -r disk_percent disk_used disk_total <<< "$disk_metric"
 
   if docker inspect remnawave >/dev/null 2>&1; then
+    has_panel=1
     panel_version="$(container_version_label remnawave)"
     panel_version_label="$(dashboard_version_label "$panel_version")"
     panel_status="$(tr_text "Панель" "Panel")"
@@ -813,19 +825,26 @@ draw_header() {
       [[ -n "$sub_version_label" ]] && panel_status+=" (${sub_version_label})"
     fi
   else
-    panel_status="$(tr_text "не найдена" "not found")"
+    panel_status=""
   fi
 
-  bot_status="$(container_state remnawave_bot)"
-  cabinet_status="$(container_state cabinet_frontend)"
+  if docker inspect remnawave_bot >/dev/null 2>&1; then
+    has_bot=1
+    bot_status="$(container_state remnawave_bot)"
+  fi
+  if docker inspect cabinet_frontend >/dev/null 2>&1; then
+    has_cabinet=1
+    cabinet_status="$(container_state cabinet_frontend)"
+  fi
   if docker inspect remnawave-caddy >/dev/null 2>&1; then
+    has_caddy=1
     caddy_version="$(container_version_label remnawave-caddy)"
     caddy_version_label="$(dashboard_version_label "$caddy_version")"
     caddy_status="Caddy"
     [[ -n "$caddy_version_label" ]] && caddy_status+=" (${caddy_version_label})"
     caddy_status+=" ($(tr_text "в Docker" "Docker"))"
   else
-    caddy_status="$(tr_text "не найден" "not found")"
+    caddy_status=""
   fi
   capacity_label="$(tr_text "n/a (запустите speedtest в Reshala)" "n/a (run speedtest in Reshala)")"
 
@@ -833,6 +852,12 @@ draw_header() {
   IFS='|' read -r panel_timer_state panel_timer_enabled panel_next <<< "$panel_timer_info"
   bedolaga_timer_info="$(dashboard_timer_info panel-backup-bedolaga.timer)"
   IFS='|' read -r bedolaga_timer_state bedolaga_timer_enabled bedolaga_next <<< "$bedolaga_timer_info"
+  if (( has_panel == 1 )) && [[ "$panel_timer_state" == "active" || "$panel_timer_enabled" == "enabled" ]]; then
+    has_panel_backup=1
+  fi
+  if (( has_bot == 1 || has_cabinet == 1 )) && [[ "$bedolaga_timer_state" == "active" || "$bedolaga_timer_enabled" == "enabled" ]]; then
+    has_bedolaga_backup=1
+  fi
   default_calendar_env="$(grep -E '^BACKUP_ON_CALENDAR=' /etc/panel-backup.env 2>/dev/null | head -n1 | cut -d= -f2- || true)"
   panel_calendar_env="$(grep -E '^BACKUP_ON_CALENDAR_PANEL=' /etc/panel-backup.env 2>/dev/null | head -n1 | cut -d= -f2- || true)"
   bedolaga_calendar_env="$(grep -E '^BACKUP_ON_CALENDAR_BEDOLAGA=' /etc/panel-backup.env 2>/dev/null | head -n1 | cut -d= -f2- || true)"
@@ -845,6 +870,7 @@ draw_header() {
 
   latest_backup="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/pb-*.tar.gz.gpg /var/backups/panel/panel-backup-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz.gpg 2>/dev/null | head -n1 || true)"
   if [[ -n "$latest_backup" ]]; then
+    has_latest_backup=1
     latest_label="$(short_backup_label "$(basename "$latest_backup")")"
     backup_age_sec="$(( $(date +%s) - $(date -r "$latest_backup" +%s) ))"
     backup_age_label="$(format_duration_compact "$backup_age_sec")"
@@ -862,6 +888,7 @@ draw_header() {
   env_token="$(grep -E '^TELEGRAM_BOT_TOKEN=' /etc/panel-backup.env 2>/dev/null | head -n1 | cut -d= -f2- || true)"
   env_chat="$(grep -E '^TELEGRAM_ADMIN_ID=' /etc/panel-backup.env 2>/dev/null | head -n1 | cut -d= -f2- || true)"
   if [[ -n "$env_token" && -n "$env_chat" ]]; then
+    has_tg_config=1
     tg_state="$(tr_text "настроен" "configured")"
     tg_color="$CLR_OK"
   else
@@ -870,6 +897,7 @@ draw_header() {
   fi
 
   if [[ "$(grep -E '^BACKUP_ENCRYPT=' /etc/panel-backup.env 2>/dev/null | head -n1 | cut -d= -f2- | tr -d '\"' || true)" == "1" ]]; then
+    has_encrypt_enabled=1
     encrypt_state="$(tr_text "включено" "enabled")"
     encrypt_color="$CLR_OK"
   else
@@ -879,6 +907,9 @@ draw_header() {
 
   [[ -x /usr/local/bin/panel-backup.sh ]] && backup_script_state="$(tr_text "установлен" "installed")" || backup_script_state="$(tr_text "не установлен" "not installed")"
   [[ -f /etc/panel-backup.env ]] && config_state="$(tr_text "есть" "present")" || config_state="$(tr_text "нет" "missing")"
+  if (( has_panel_backup == 1 || has_bedolaga_backup == 1 || has_latest_backup == 1 || has_tg_config == 1 || has_encrypt_enabled == 1 )); then
+    has_backup_section=1
+  fi
 
   usd_rub_info="$(dashboard_usd_rub)"
   IFS='|' read -r usd_rub_value usd_rub_change usd_rub_date <<< "$usd_rub_info"
@@ -919,26 +950,58 @@ draw_header() {
   dashboard_gap
 
   dashboard_section "STATUS" "$CLR_OK"
-  dashboard_line "Remnawave" "$panel_status" "$CLR_OK" "$CLR_OK"
-  dashboard_line "Bedolaga Bot" "$bot_status" "$(state_color "$bot_status")" "$CLR_OK"
-  dashboard_line "Bedolaga Cabinet" "$cabinet_status" "$(state_color "$cabinet_status")" "$CLR_OK"
-  dashboard_line "Web-Server" "$caddy_status" "$CLR_MUTED" "$CLR_OK"
-  dashboard_line "$(tr_text "Вместимость юзеров" "User capacity")" "$capacity_label" "$CLR_MUTED" "$CLR_OK"
+  if (( has_panel == 1 )); then
+    dashboard_line "Remnawave" "$panel_status" "$CLR_OK" "$CLR_OK"
+    status_rows=$((status_rows + 1))
+  fi
+  if (( has_bot == 1 )); then
+    dashboard_line "Bedolaga Bot" "$bot_status" "$(state_color "$bot_status")" "$CLR_OK"
+    status_rows=$((status_rows + 1))
+  fi
+  if (( has_cabinet == 1 )); then
+    dashboard_line "Bedolaga Cabinet" "$cabinet_status" "$(state_color "$cabinet_status")" "$CLR_OK"
+    status_rows=$((status_rows + 1))
+  fi
+  if (( has_caddy == 1 )); then
+    dashboard_line "Web-Server" "$caddy_status" "$CLR_MUTED" "$CLR_OK"
+    status_rows=$((status_rows + 1))
+  fi
+  if [[ "$capacity_label" != n/a* ]]; then
+    dashboard_line "$(tr_text "Вместимость юзеров" "User capacity")" "$capacity_label" "$CLR_MUTED" "$CLR_OK"
+    status_rows=$((status_rows + 1))
+  fi
+  if (( status_rows == 0 )); then
+    dashboard_line "$(tr_text "Сервисы" "Services")" "$(tr_text "не найдены" "not found")" "$CLR_WARN" "$CLR_OK"
+  fi
   dashboard_gap
 
-  dashboard_section "BACKUP" "$CLR_WARN"
-  dashboard_line "$(tr_text "Скрипт / конфиг" "Script / config")" "${backup_script_state} / ${config_state}" "$CLR_ACCENT" "$CLR_WARN"
-  dashboard_line "$(tr_text "Панель timer" "Panel timer")" "${panel_timer_state} / ${panel_timer_enabled}" "$(state_color "$panel_timer_state")" "$CLR_WARN"
-  dashboard_line "$(tr_text "Панель расписание" "Panel schedule")" "$(format_schedule_label "$panel_schedule")" "$CLR_ACCENT" "$CLR_WARN"
-  dashboard_line "$(tr_text "Панель следующий" "Panel next")" "$panel_next" "$CLR_MUTED" "$CLR_WARN"
-  dashboard_line "$(tr_text "Bedolaga timer" "Bedolaga timer")" "${bedolaga_timer_state} / ${bedolaga_timer_enabled}" "$(state_color "$bedolaga_timer_state")" "$CLR_WARN"
-  dashboard_line "$(tr_text "Bedolaga распис." "Bedolaga schedule")" "$(format_schedule_label "$bedolaga_schedule")" "$CLR_ACCENT" "$CLR_WARN"
-  dashboard_line "$(tr_text "Bedolaga след." "Bedolaga next")" "$bedolaga_next" "$CLR_MUTED" "$CLR_WARN"
-  dashboard_line "$(tr_text "Последний backup" "Latest backup")" "$latest_label" "$CLR_ACCENT" "$CLR_WARN"
-  dashboard_line "$(tr_text "Возраст backup" "Backup age")" "$backup_age_label" "$backup_age_color" "$CLR_WARN"
-  dashboard_line "Telegram" "$tg_state" "$tg_color" "$CLR_WARN"
-  dashboard_line "$(tr_text "Шифрование" "Encryption")" "$encrypt_state" "$encrypt_color" "$CLR_WARN"
-  dashboard_gap
+  if (( has_backup_section == 1 )); then
+    dashboard_section "BACKUP" "$CLR_WARN"
+    if [[ -x /usr/local/bin/panel-backup.sh || -f /etc/panel-backup.env ]]; then
+      dashboard_line "$(tr_text "Скрипт / конфиг" "Script / config")" "${backup_script_state} / ${config_state}" "$CLR_ACCENT" "$CLR_WARN"
+    fi
+    if (( has_panel_backup == 1 )); then
+      dashboard_line "$(tr_text "Панель timer" "Panel timer")" "${panel_timer_state} / ${panel_timer_enabled}" "$(state_color "$panel_timer_state")" "$CLR_WARN"
+      dashboard_line "$(tr_text "Панель расписание" "Panel schedule")" "$(format_schedule_label "$panel_schedule")" "$CLR_ACCENT" "$CLR_WARN"
+      dashboard_line "$(tr_text "Панель следующий" "Panel next")" "$panel_next" "$CLR_MUTED" "$CLR_WARN"
+    fi
+    if (( has_bedolaga_backup == 1 )); then
+      dashboard_line "$(tr_text "Bedolaga timer" "Bedolaga timer")" "${bedolaga_timer_state} / ${bedolaga_timer_enabled}" "$(state_color "$bedolaga_timer_state")" "$CLR_WARN"
+      dashboard_line "$(tr_text "Bedolaga распис." "Bedolaga schedule")" "$(format_schedule_label "$bedolaga_schedule")" "$CLR_ACCENT" "$CLR_WARN"
+      dashboard_line "$(tr_text "Bedolaga след." "Bedolaga next")" "$bedolaga_next" "$CLR_MUTED" "$CLR_WARN"
+    fi
+    if (( has_latest_backup == 1 )); then
+      dashboard_line "$(tr_text "Последний backup" "Latest backup")" "$latest_label" "$CLR_ACCENT" "$CLR_WARN"
+      dashboard_line "$(tr_text "Возраст backup" "Backup age")" "$backup_age_label" "$backup_age_color" "$CLR_WARN"
+    fi
+    if (( has_tg_config == 1 )); then
+      dashboard_line "Telegram" "$tg_state" "$tg_color" "$CLR_WARN"
+    fi
+    if (( has_encrypt_enabled == 1 )); then
+      dashboard_line "$(tr_text "Шифрование" "Encryption")" "$encrypt_state" "$encrypt_color" "$CLR_WARN"
+    fi
+    dashboard_gap
+  fi
 
   dashboard_section "WIDGETS" "$CLR_ACCENT"
   dashboard_line "USD/RUB" "$usd_rub_label" "$usd_rub_color" "$CLR_ACCENT"
