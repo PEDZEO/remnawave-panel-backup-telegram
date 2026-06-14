@@ -329,22 +329,138 @@ bedolaga_describe_install_path() {
   return 1
 }
 
+bedolaga_read_choice() {
+  local __var="$1"
+  local prompt="$2"
+
+  if declare -F read_menu_choice >/dev/null 2>&1; then
+    read_menu_choice "$__var" "$prompt"
+  else
+    prompt="${prompt% }"
+    prompt="${prompt%:}"
+    read -r -p "${prompt}: " "$__var"
+  fi
+}
+
+bedolaga_confirm_yes_no() {
+  local prompt="$1"
+  local default="${2:-n}"
+  local answer=""
+
+  if declare -F ask_yes_no >/dev/null 2>&1; then
+    ask_yes_no "$prompt" "$default"
+    return $?
+  fi
+
+  while true; do
+    if [[ "$default" == "y" ]]; then
+      read -r -p "${prompt} [Y/n]: " answer
+      answer="${answer:-y}"
+    else
+      read -r -p "${prompt} [y/N]: " answer
+      answer="${answer:-n}"
+    fi
+    case "${answer,,}" in
+      y|yes|д|да|1) return 0 ;;
+      n|no|н|нет|0) return 1 ;;
+      *) paint "$CLR_WARN" "$(tr_text "Введите y/n или д/н." "Enter y/n.")" ;;
+    esac
+  done
+}
+
+bedolaga_menu_separator() {
+  if declare -F print_separator >/dev/null 2>&1; then
+    print_separator
+  else
+    printf '%s\n' "------------------------------------------------------------"
+  fi
+}
+
+bedolaga_menu_option() {
+  if declare -F menu_option >/dev/null 2>&1; then
+    menu_option "$@"
+  else
+    printf "   [%s] %s\n" "$1" "$2"
+  fi
+}
+
+bedolaga_menu_hint() {
+  if declare -F menu_hint >/dev/null 2>&1; then
+    menu_hint "$1"
+  else
+    printf "          ↳ %s\n" "$1"
+  fi
+}
+
+bedolaga_resolve_dirty_repo_before_update() {
+  local target_dir="$1"
+  local choice=""
+  local stash_ref=""
+  BEDOLAGA_UPDATE_STASH_REF=""
+
+  if [[ -z "$(git -C "$target_dir" status --porcelain 2>/dev/null || true)" ]]; then
+    return 0
+  fi
+
+  paint "$CLR_WARN" "$(tr_text "В репозитории есть локальные изменения:" "Repository has local changes:") ${target_dir}"
+  git -C "$target_dir" status --short || true
+  bedolaga_menu_separator
+  bedolaga_menu_option "1" "$(tr_text "Сохранить изменения в git stash и обновиться" "Save changes to git stash and update")"
+  bedolaga_menu_hint "$(tr_text "После обновления скрипт попробует вернуть stash обратно." "After update the script will try to apply the stash back.")"
+  bedolaga_menu_option "2" "$(tr_text "Обновиться без сохранения локальных изменений" "Update without keeping local changes")" "$CLR_DANGER"
+  bedolaga_menu_hint "$(tr_text "Опасно: git reset --hard и git clean -fd удалят локальные правки и новые файлы." "Danger: git reset --hard and git clean -fd will delete local edits and new files.")"
+  bedolaga_menu_option "3" "$(tr_text "Отмена" "Cancel")"
+  bedolaga_menu_separator
+
+  while true; do
+    bedolaga_read_choice choice "$(tr_text "Что сделать с локальными изменениями [1-3]" "What to do with local changes [1-3]")" || return 1
+    case "$choice" in
+      1)
+        stash_ref="panel-manager auto-stash before Bedolaga update $(date '+%Y-%m-%d %H:%M:%S')"
+        if ! git -C "$target_dir" stash push -u -m "$stash_ref"; then
+          paint "$CLR_DANGER" "$(tr_text "Не удалось сохранить изменения в git stash." "Failed to save changes to git stash.")"
+          return 1
+        fi
+        BEDOLAGA_UPDATE_STASH_REF="$stash_ref"
+        paint "$CLR_OK" "$(tr_text "Локальные изменения сохранены в git stash." "Local changes saved to git stash.")"
+        return 0
+        ;;
+      2)
+        if ! bedolaga_confirm_yes_no "$(tr_text "Точно удалить локальные изменения и новые файлы в ${target_dir}?" "Really delete local changes and new files in ${target_dir}?")" "n"; then
+          return 1
+        fi
+        git -C "$target_dir" reset --hard || return 1
+        git -C "$target_dir" clean -fd || return 1
+        paint "$CLR_WARN" "$(tr_text "Локальные изменения удалены." "Local changes were removed.")"
+        return 0
+        ;;
+      3|b|back|назад)
+        return 1
+        ;;
+      *)
+        paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"
+        ;;
+    esac
+  done
+}
+
 bedolaga_update_repo_from_remote_default_branch() {
   local repo_url="$1"
   local target_dir="$2"
   local current_origin=""
   local default_branch=""
+  local stash_ref=""
 
   if [[ ! -d "${target_dir}/.git" ]]; then
     paint "$CLR_DANGER" "$(tr_text "Папка не является git-репозиторием:" "Directory is not a git repository:") ${target_dir}"
     return 1
   fi
 
-  if [[ -n "$(git -C "$target_dir" status --porcelain 2>/dev/null || true)" ]]; then
-    paint "$CLR_DANGER" "$(tr_text "В репозитории есть локальные изменения, автообновление форка остановлено:" "Repository has local changes, fork auto-update is stopped:") ${target_dir}"
-    paint "$CLR_WARN" "$(tr_text "Сделайте commit/stash и повторите." "Commit/stash your changes and retry.")"
+  if ! bedolaga_resolve_dirty_repo_before_update "$target_dir"; then
+    paint "$CLR_DANGER" "$(tr_text "Обновление репозитория отменено:" "Repository update canceled:") ${target_dir}"
     return 1
   fi
+  stash_ref="${BEDOLAGA_UPDATE_STASH_REF:-}"
 
   current_origin="$(git -C "$target_dir" remote get-url origin 2>/dev/null || true)"
   if [[ -n "$current_origin" && "$current_origin" != "$repo_url" ]]; then
@@ -387,6 +503,15 @@ bedolaga_update_repo_from_remote_default_branch() {
   if ! git -C "$target_dir" pull --ff-only origin "${default_branch}"; then
     paint "$CLR_DANGER" "$(tr_text "Не удалось обновить ветку (pull --ff-only)." "Failed to update branch (pull --ff-only).")"
     return 1
+  fi
+
+  if [[ -n "$stash_ref" ]]; then
+    paint "$CLR_MUTED" "$(tr_text "Возвращаю сохраненные локальные изменения из stash..." "Applying saved local changes from stash...")"
+    if ! git -C "$target_dir" stash pop; then
+      paint "$CLR_WARN" "$(tr_text "Обновление выполнено, но stash не применился автоматически. Проверьте конфликт и git stash list в:" "Update completed, but stash was not applied automatically. Check conflicts and git stash list in:") ${target_dir}"
+      return 1
+    fi
+    paint "$CLR_OK" "$(tr_text "Локальные изменения возвращены после обновления." "Local changes restored after update.")"
   fi
 
   return 0
