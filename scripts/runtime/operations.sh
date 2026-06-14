@@ -500,6 +500,218 @@ run_doctor_checks() {
   return 0
 }
 
+server_check_public_ip() {
+  local endpoint=""
+  local ip=""
+
+  for endpoint in "https://api.ipify.org" "https://ifconfig.me/ip" "https://icanhazip.com"; do
+    ip="$(curl -fsSL --connect-timeout 3 --max-time 6 "$endpoint" 2>/dev/null | tr -d '[:space:]' || true)"
+    if [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ || "$ip" =~ ^[0-9A-Fa-f:]+$ ]]; then
+      printf '%s' "$ip"
+      return 0
+    fi
+  done
+  return 1
+}
+
+server_check_ipinfo_line() {
+  local json=""
+  local city=""
+  local country=""
+  local org=""
+
+  json="$(curl -fsSL --connect-timeout 3 --max-time 6 https://ipinfo.io/json 2>/dev/null || true)"
+  [[ -n "$json" ]] || return 1
+  city="$(printf '%s' "$json" | sed -n 's/.*"city"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+  country="$(printf '%s' "$json" | sed -n 's/.*"country"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+  org="$(printf '%s' "$json" | sed -n 's/.*"org"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+  printf '%s' "${org:-n/a}${city:+ · ${city}}${country:+ [${country}]}"
+}
+
+server_check_reverse_ipv4() {
+  local ip="$1"
+  local a=""
+  local b=""
+  local c=""
+  local d=""
+
+  [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+  IFS='.' read -r a b c d <<< "$ip"
+  printf '%s.%s.%s.%s' "$d" "$c" "$b" "$a"
+}
+
+server_check_dns_query() {
+  local host="$1"
+
+  if ! command -v getent >/dev/null 2>&1; then
+    return 1
+  fi
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 4 getent ahosts "$host" 2>/dev/null | awk 'NR==1 {print $1}'
+  else
+    getent ahosts "$host" 2>/dev/null | awk 'NR==1 {print $1}'
+  fi
+}
+
+server_check_dnsbl_query() {
+  local host="$1"
+
+  if ! command -v getent >/dev/null 2>&1; then
+    return 1
+  fi
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 4 getent hosts "$host" >/dev/null 2>&1
+  else
+    getent hosts "$host" >/dev/null 2>&1
+  fi
+}
+
+server_check_http_probe() {
+  local label="$1"
+  local url="$2"
+  local result=""
+  local code=""
+  local connect_time=""
+  local total_time=""
+  local color="$CLR_DANGER"
+  local state=""
+
+  result="$(curl -L -s -o /dev/null -w '%{http_code}|%{time_connect}|%{time_total}' --connect-timeout 5 --max-time 12 "$url" 2>/dev/null || true)"
+  IFS='|' read -r code connect_time total_time <<< "$result"
+  if [[ -n "$code" && "$code" != "000" ]]; then
+    if [[ "$code" =~ ^[0-9]+$ && "$code" -lt 500 ]]; then
+      color="$CLR_OK"
+      state="$(tr_text "доступен" "reachable")"
+    else
+      color="$CLR_WARN"
+      state="$(tr_text "ответ с ошибкой" "error response")"
+    fi
+    paint "$color" "  ${label}: ${state} HTTP ${code} · ${total_time:-n/a}s"
+  else
+    paint "$CLR_DANGER" "  ${label}: $(tr_text "нет доступа/таймаут" "unreachable/timeout")"
+  fi
+}
+
+server_check_download_speed() {
+  local bytes="${1:-10000000}"
+  local result=""
+  local speed_bps=""
+  local total_time=""
+  local downloaded=""
+  local mbps=""
+  local mibps=""
+
+  result="$(curl -L -s -o /dev/null -w '%{speed_download}|%{time_total}|%{size_download}' --connect-timeout 5 --max-time 30 "https://speed.cloudflare.com/__down?bytes=${bytes}" 2>/dev/null || true)"
+  IFS='|' read -r speed_bps total_time downloaded <<< "$result"
+  if [[ "$speed_bps" =~ ^[0-9]+([.][0-9]+)?$ && "$speed_bps" != "0" ]]; then
+    mbps="$(awk -v bps="$speed_bps" 'BEGIN { printf "%.1f", (bps * 8) / 1000000 }')"
+    mibps="$(awk -v bps="$speed_bps" 'BEGIN { printf "%.1f", bps / 1048576 }')"
+    paint "$CLR_OK" "  $(tr_text "Download:" "Download:") ${mbps} Mbps (${mibps} MiB/s) · ${total_time:-n/a}s · ${downloaded:-0} bytes"
+    return 0
+  fi
+  paint "$CLR_WARN" "  $(tr_text "Download:" "Download:") $(tr_text "не удалось измерить" "failed to measure")"
+  return 1
+}
+
+run_server_checks() {
+  local ip=""
+  local ipinfo=""
+  local rev_ip=""
+  local listed_count=0
+  local zone=""
+  local lookup=""
+  local speed_rc=0
+  local -a dns_hosts=(
+    "google.com"
+    "youtube.com"
+    "api.telegram.org"
+    "github.com"
+    "registry-1.docker.io"
+    "raw.githubusercontent.com"
+  )
+  local -a dnsbl_zones=(
+    "zen.spamhaus.org"
+    "bl.spamcop.net"
+    "dnsbl.sorbs.net"
+    "all.s5h.net"
+  )
+
+  draw_header "$(tr_text "Проверка сервера" "Server checks")"
+  paint "$CLR_MUTED" "$(tr_text "Проверка дает быстрый сигнал по сети и репутации IP. DNSBL не гарантирует, что IP полностью чистый для всех сервисов." "This gives a quick network and IP reputation signal. DNSBL does not guarantee the IP is clean for every service.")"
+  print_separator
+
+  if ! command -v curl >/dev/null 2>&1; then
+    paint "$CLR_DANGER" "curl $(tr_text "не установлен: проверка сети недоступна." "is not installed: network checks are unavailable.")"
+    return 1
+  fi
+
+  paint "$CLR_TITLE" "$(tr_text "Публичный IP" "Public IP")"
+  if ip="$(server_check_public_ip)"; then
+    paint "$CLR_OK" "  IP: ${ip}"
+    ipinfo="$(server_check_ipinfo_line || true)"
+    paint "$CLR_MUTED" "  $(tr_text "Провайдер/локация:" "Provider/location:") ${ipinfo:-n/a}"
+  else
+    paint "$CLR_DANGER" "  $(tr_text "Не удалось определить публичный IP." "Failed to detect public IP.")"
+  fi
+
+  print_separator
+  paint "$CLR_TITLE" "$(tr_text "Репутация IP (DNSBL)" "IP reputation (DNSBL)")"
+  if [[ -n "$ip" ]] && rev_ip="$(server_check_reverse_ipv4 "$ip")"; then
+    for zone in "${dnsbl_zones[@]}"; do
+      if server_check_dnsbl_query "${rev_ip}.${zone}"; then
+        listed_count=$((listed_count + 1))
+        paint "$CLR_DANGER" "  [LISTED] ${zone}"
+      else
+        paint "$CLR_OK" "  [OK] ${zone}"
+      fi
+    done
+    if (( listed_count == 0 )); then
+      paint "$CLR_OK" "  $(tr_text "В проверенных DNSBL IP не найден." "IP was not found in checked DNSBL zones.")"
+    else
+      paint "$CLR_DANGER" "  $(tr_text "IP найден в DNSBL:" "IP is listed in DNSBL:") ${listed_count}"
+    fi
+  else
+    paint "$CLR_WARN" "  $(tr_text "DNSBL-проверка доступна только для IPv4." "DNSBL check is available for IPv4 only.")"
+  fi
+
+  print_separator
+  paint "$CLR_TITLE" "DNS"
+  for zone in "${dns_hosts[@]}"; do
+    lookup="$(server_check_dns_query "$zone" || true)"
+    if [[ -n "$lookup" ]]; then
+      paint "$CLR_OK" "  ${zone}: ${lookup}"
+    else
+      paint "$CLR_DANGER" "  ${zone}: $(tr_text "не резолвится" "does not resolve")"
+    fi
+  done
+
+  print_separator
+  paint "$CLR_TITLE" "$(tr_text "Доступность сайтов/API" "Website/API reachability")"
+  server_check_http_probe "Google" "https://www.google.com/generate_204"
+  server_check_http_probe "YouTube" "https://www.youtube.com/"
+  server_check_http_probe "Telegram API" "https://api.telegram.org/"
+  server_check_http_probe "GitHub" "https://github.com/"
+  server_check_http_probe "GitHub raw" "https://raw.githubusercontent.com/"
+  server_check_http_probe "Docker Hub" "https://registry-1.docker.io/v2/"
+  server_check_http_probe "Cloudflare" "https://www.cloudflare.com/cdn-cgi/trace"
+
+  print_separator
+  paint "$CLR_TITLE" "$(tr_text "Скорость" "Speed")"
+  if ask_yes_no "$(tr_text "Сделать легкий download-тест через Cloudflare (~10 MB)?" "Run a light Cloudflare download test (~10 MB)?")" "y"; then
+    server_check_download_speed 10000000 || speed_rc=$?
+  else
+    speed_rc=$?
+    if [[ "$speed_rc" -eq 2 ]]; then
+      paint "$CLR_WARN" "$(tr_text "Проверка скорости пропущена." "Speed check skipped.")"
+    else
+      paint "$CLR_MUTED" "$(tr_text "Проверка скорости пропущена." "Speed check skipped.")"
+    fi
+  fi
+
+  print_separator
+  paint "$CLR_MUTED" "$(tr_text "Если сайты недоступны, проверьте DNS, firewall провайдера, IPv6/WARP/прокси и ограничения датацентра." "If sites are unreachable, check DNS, provider firewall, IPv6/WARP/proxy and datacenter restrictions.")"
+}
+
 show_disk_usage_top() {
   local root_df=""
   local path=""

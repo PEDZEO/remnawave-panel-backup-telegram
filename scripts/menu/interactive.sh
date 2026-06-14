@@ -1680,28 +1680,31 @@ menu_section_status() {
     menu_group "$(tr_text "Диагностика" "Diagnostics")" "$CLR_WARN"
     menu_option "1" "$(tr_text "Показать полный статус" "Show full status")"
     menu_option "2" "$(tr_text "Doctor: быстрая проверка настроек" "Doctor: quick configuration check")"
+    menu_group "$(tr_text "Сервер" "Server")" "$CLR_OK"
+    menu_option "3" "$(tr_text "Проверка IP, сайтов и скорости" "IP, website and speed checks")"
     menu_group "$(tr_text "Диск" "Disk")" "$CLR_ACCENT"
-    menu_option "3" "$(tr_text "Анализ использования диска" "Analyze disk usage")"
-    menu_option "4" "$(tr_text "Безопасная очистка диска" "Safe disk cleanup")"
+    menu_option "4" "$(tr_text "Анализ использования диска" "Analyze disk usage")"
+    menu_option "5" "$(tr_text "Безопасная очистка диска" "Safe disk cleanup")"
     menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
-    menu_option "5" "$(tr_text "Назад" "Back")"
+    menu_option "6" "$(tr_text "Назад" "Back")"
     print_separator
-    read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
+    read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice
     if is_back_command "$choice"; then
       break
     fi
     case "$choice" in
       1) show_status; wait_for_enter ;;
       2) run_doctor_checks || true; wait_for_enter ;;
-      3) show_disk_usage_top; wait_for_enter ;;
-      4)
+      3) run_server_checks || true; wait_for_enter ;;
+      4) show_disk_usage_top; wait_for_enter ;;
+      5)
         show_safe_cleanup_preview
         if ask_yes_no "$(tr_text "Запустить безопасную очистку сейчас?" "Run safe cleanup now?")" "n"; then
           run_safe_cleanup
         fi
         wait_for_enter
         ;;
-      5) break ;;
+      6) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
@@ -1721,7 +1724,7 @@ interactive_menu() {
     menu_option "1" "$(tr_text "Bedolaga: бот, кабинет, backup, миграция" "Bedolaga: bot, cabinet, backup, migration")" "$CLR_OK"
     menu_option "2" "$(tr_text "Remnawave: панель, подписки, backup" "Remnawave: panel, subscription page, backup")" "$CLR_ACCENT"
     menu_option "3" "$(tr_text "RemnaNode: нода, Caddy, BBR, WARP" "RemnaNode: node, Caddy, BBR, WARP")" "$CLR_WARN"
-    menu_option "4" "$(tr_text "Статус, логи, диск, очистка" "Status, logs, disk, cleanup")" "$CLR_MUTED"
+    menu_option "4" "$(tr_text "Статус, сервер, диск, очистка" "Status, server, disk, cleanup")" "$CLR_MUTED"
     menu_option "5" "$(tr_text "Reshala toolbox: внешний набор функций" "Reshala toolbox: external feature set")" "$CLR_TITLE"
     menu_option "0" "$(tr_text "Выход" "Exit")" "$CLR_DANGER"
     print_separator
