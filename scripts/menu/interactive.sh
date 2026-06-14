@@ -4,9 +4,18 @@
 run_component_flow_action() {
   local action_title="$1"
   local flow_func="$2"
+  local flow_rc=0
 
   if "$flow_func"; then
     paint "$CLR_OK" "$(tr_text "Операция завершена:" "Operation completed:") ${action_title}"
+    wait_for_enter
+    return 0
+  else
+    flow_rc=$?
+  fi
+
+  if [[ "$flow_rc" -eq 2 ]]; then
+    paint "$CLR_WARN" "$(tr_text "Операция пропущена:" "Operation skipped:") ${action_title}"
     wait_for_enter
     return 0
   fi

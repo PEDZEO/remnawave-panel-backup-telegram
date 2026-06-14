@@ -5,6 +5,65 @@ REMNAWAVE_LAST_PANEL_DOMAIN=""
 REMNAWAVE_LAST_SUB_DOMAIN=""
 REMNAWAVE_LAST_PANEL_PORT=""
 REMNAWAVE_LAST_SUB_PORT=""
+REMNAWAVE_LAST_SUB_MODE=""
+REMNAWAVE_LAST_API_TOKEN=""
+
+remnawave_env_value() {
+  local env_file="$1"
+  local key="$2"
+
+  [[ -f "$env_file" ]] || return 0
+  awk -v key="$key" '
+    index($0, key "=") == 1 {
+      value = substr($0, length(key) + 2)
+      sub(/\r$/, "", value)
+      sub(/^"/, "", value)
+      sub(/"$/, "", value)
+      print value
+      exit
+    }
+  ' "$env_file" 2>/dev/null || true
+}
+
+remnawave_domain_from_url() {
+  local value="${1:-}"
+
+  value="${value#http://}"
+  value="${value#https://}"
+  value="${value%%/*}"
+  printf '%s' "$value"
+}
+
+load_panel_install_defaults() {
+  local panel_dir="$1"
+  local env_file="${panel_dir}/.env"
+  local value=""
+
+  value="$(remnawave_env_value "$env_file" "FRONT_END_DOMAIN")"
+  [[ -n "$value" ]] && REMNAWAVE_LAST_PANEL_DOMAIN="$value"
+  value="$(remnawave_env_value "$env_file" "SUB_PUBLIC_DOMAIN")"
+  [[ -n "$value" ]] && REMNAWAVE_LAST_SUB_DOMAIN="$value"
+  value="$(remnawave_env_value "$env_file" "APP_PORT")"
+  [[ -n "$value" ]] && REMNAWAVE_LAST_PANEL_PORT="$value"
+}
+
+load_subscription_install_defaults() {
+  local sub_dir="$1"
+  local env_file="${sub_dir}/.env"
+  local value=""
+
+  value="$(remnawave_env_value "$env_file" "APP_PORT")"
+  [[ -n "$value" ]] && REMNAWAVE_LAST_SUB_PORT="$value"
+  value="$(remnawave_env_value "$env_file" "PBM_SUBSCRIPTION_DOMAIN")"
+  [[ -n "$value" ]] && REMNAWAVE_LAST_SUB_DOMAIN="$value"
+  value="$(remnawave_env_value "$env_file" "REMNAWAVE_PANEL_URL")"
+  value="$(remnawave_domain_from_url "$value")"
+  [[ -n "$value" ]] && REMNAWAVE_LAST_PANEL_DOMAIN="$value"
+  value="$(remnawave_env_value "$env_file" "REMNAWAVE_API_TOKEN")"
+  [[ -n "$value" ]] && REMNAWAVE_LAST_API_TOKEN="$value"
+  value="$(remnawave_env_value "$env_file" "PBM_SUBSCRIPTION_MODE")"
+  [[ -n "$value" ]] && REMNAWAVE_LAST_SUB_MODE="$value"
+}
 
 ensure_docker_available() {
   if command -v docker >/dev/null 2>&1; then
@@ -358,28 +417,31 @@ run_panel_install_flow() {
   local metrics_user=""
   local metrics_pass=""
   local webhook_secret_header=""
+  local panel_env_file=""
 
+  load_existing_env_defaults
   draw_header "$(tr_text "Установка панели Remnawave" "Install Remnawave panel")"
-  panel_dir="$(ask_value "$(tr_text "Путь установки панели" "Panel installation path")" "/opt/remnawave")"
+  panel_dir="$(ask_value "$(tr_text "Путь установки панели" "Panel installation path")" "${REMNAWAVE_DIR:-/opt/remnawave}")"
   [[ "$panel_dir" == "__PBM_BACK__" ]] && return 1
   if ! validate_project_path_or_warn "REMNAWAVE_DIR" "$panel_dir"; then
     return 1
   fi
   REMNAWAVE_DIR="$panel_dir"
+  panel_env_file="${panel_dir}/.env"
+  load_panel_install_defaults "$panel_dir"
 
-  if [[ -f "${panel_dir}/.env" ]]; then
-    REMNAWAVE_LAST_PANEL_DOMAIN="$(awk -F= '/^FRONT_END_DOMAIN=/{print $2; exit}' "${panel_dir}/.env")"
-    REMNAWAVE_LAST_SUB_DOMAIN="$(awk -F= '/^SUB_PUBLIC_DOMAIN=/{print $2; exit}' "${panel_dir}/.env")"
-    REMNAWAVE_LAST_PANEL_PORT="$(awk -F= '/^APP_PORT=/{print $2; exit}' "${panel_dir}/.env")"
-  fi
-
-  if [[ -f "${panel_dir}/docker-compose.yml" || -f "${panel_dir}/.env" ]]; then
+  if [[ -f "${panel_dir}/docker-compose.yml" || -f "$panel_env_file" ]]; then
     paint "$CLR_WARN" "$(tr_text "Обнаружена существующая установка панели." "Existing panel installation detected.")"
-    if ! ask_yes_no "$(tr_text "Перезаписать конфиги и выполнить переустановку?" "Overwrite config files and reinstall?")" "n"; then
-      paint "$CLR_WARN" "$(tr_text "Установка отменена." "Installation cancelled.")"
+    paint "$CLR_MUTED" "  $(tr_text "Путь:" "Path:") ${panel_dir}"
+    paint "$CLR_MUTED" "  $(tr_text "Домен панели:" "Panel domain:") ${REMNAWAVE_LAST_PANEL_DOMAIN:-n/a}"
+    paint "$CLR_MUTED" "  $(tr_text "Домен подписки:" "Subscription domain:") ${REMNAWAVE_LAST_SUB_DOMAIN:-n/a}"
+    paint "$CLR_MUTED" "  $(tr_text "Порт панели:" "Panel port:") ${REMNAWAVE_LAST_PANEL_PORT:-3000}"
+    if ! ask_yes_no "$(tr_text "Точно переустановить панель? Текущие значения будут предложены по умолчанию." "Reinstall panel? Current values will be offered as defaults.")" "n"; then
+      paint "$CLR_WARN" "$(tr_text "Переустановка отменена. Текущая панель не изменена." "Reinstall cancelled. Current panel was not changed.")"
       return 2
     fi
     reinstall_choice="1"
+    paint "$CLR_MUTED" "$(tr_text "Дальше можно нажимать Enter, чтобы оставить значение в скобках, или ввести свое." "Next prompts: press Enter to keep the value in brackets, or type a new one.")"
 
     if ask_yes_no "$(tr_text "Остановить контейнеры перед переустановкой?" "Stop containers before reinstall?")" "y"; then
       if ! (cd "$panel_dir" && $SUDO docker compose down); then
@@ -403,13 +465,13 @@ run_panel_install_flow() {
   done
 
   while true; do
-    sub_domain="$(ask_value "$(tr_text "Домен подписки (без http/https)" "Subscription domain (without http/https)")" "")"
+    sub_domain="$(ask_value "$(tr_text "Домен подписки (без http/https)" "Subscription domain (without http/https)")" "${REMNAWAVE_LAST_SUB_DOMAIN}")"
     [[ "$sub_domain" == "__PBM_BACK__" ]] && return 1
     validate_domain_or_warn "SUB_PUBLIC_DOMAIN" "$sub_domain" && break
   done
 
   while true; do
-    panel_port="$(ask_value "$(tr_text "Порт панели" "Panel port")" "3000")"
+    panel_port="$(ask_value "$(tr_text "Порт панели" "Panel port")" "${REMNAWAVE_LAST_PANEL_PORT:-3000}")"
     [[ "$panel_port" == "__PBM_BACK__" ]] && return 1
     validate_tcp_port_or_warn "APP_PORT" "$panel_port" && break
   done
@@ -421,13 +483,22 @@ run_panel_install_flow() {
     return 1
   fi
 
-  db_user="$(generate_alpha_login)"
-  db_password="$(generate_hex 24)"
-  jwt_auth_secret="$(generate_hex 64)"
-  jwt_api_tokens_secret="$(generate_hex 64)"
-  metrics_user="$(generate_alpha_login)"
-  metrics_pass="$(generate_hex 64)"
-  webhook_secret_header="$(generate_hex 64)"
+  if [[ -f "$panel_env_file" && -z "$clean_data" ]]; then
+    db_user="$(remnawave_env_value "$panel_env_file" "POSTGRES_USER")"
+    db_password="$(remnawave_env_value "$panel_env_file" "POSTGRES_PASSWORD")"
+    jwt_auth_secret="$(remnawave_env_value "$panel_env_file" "JWT_AUTH_SECRET")"
+    jwt_api_tokens_secret="$(remnawave_env_value "$panel_env_file" "JWT_API_TOKENS_SECRET")"
+    metrics_user="$(remnawave_env_value "$panel_env_file" "METRICS_USER")"
+    metrics_pass="$(remnawave_env_value "$panel_env_file" "METRICS_PASS")"
+    webhook_secret_header="$(remnawave_env_value "$panel_env_file" "WEBHOOK_SECRET_HEADER")"
+  fi
+  [[ -n "$db_user" ]] || db_user="$(generate_alpha_login)"
+  [[ -n "$db_password" ]] || db_password="$(generate_hex 24)"
+  [[ -n "$jwt_auth_secret" ]] || jwt_auth_secret="$(generate_hex 64)"
+  [[ -n "$jwt_api_tokens_secret" ]] || jwt_api_tokens_secret="$(generate_hex 64)"
+  [[ -n "$metrics_user" ]] || metrics_user="$(generate_alpha_login)"
+  [[ -n "$metrics_pass" ]] || metrics_pass="$(generate_hex 64)"
+  [[ -n "$webhook_secret_header" ]] || webhook_secret_header="$(generate_hex 64)"
 
   paint "$CLR_ACCENT" "$(tr_text "Генерирую конфигурацию панели" "Generating panel configuration")"
   if [[ -n "$reinstall_choice" ]]; then
@@ -864,14 +935,17 @@ run_subscription_install_flow() {
   local api_token=""
   local backup_suffix=""
   local install_with_panel="1"
-  local panel_dir="${REMNAWAVE_DIR:-/opt/remnawave}"
+  local panel_dir=""
   local default_same_server="y"
   local yn_rc=0
   local deploy_mode="same-server"
   local install_caddy_for_separate="0"
   local caddy_dir=""
+  local reinstall_choice=""
 
   load_existing_env_defaults
+  panel_dir="${REMNAWAVE_DIR:-/opt/remnawave}"
+  load_panel_install_defaults "$panel_dir"
 
   draw_header "$(tr_text "Установка страницы подписок" "Install subscription page")"
   sub_dir="$(ask_value "$(tr_text "Путь установки subscription" "Subscription installation path")" "${REMNAWAVE_DIR:-/opt/remnawave}/subscription")"
@@ -882,9 +956,35 @@ run_subscription_install_flow() {
   if ! validate_project_path_or_warn "REMNAWAVE_DIR" "$panel_dir"; then
     return 1
   fi
+  load_subscription_install_defaults "$sub_dir"
 
   if [[ ! -f "${panel_dir}/.env" && ! -f "${panel_dir}/docker-compose.yml" ]]; then
     default_same_server="n"
+  fi
+  if [[ "${REMNAWAVE_LAST_SUB_MODE:-}" == "separate-server" ]]; then
+    default_same_server="n"
+  elif [[ "${REMNAWAVE_LAST_SUB_MODE:-}" == "same-server" ]]; then
+    default_same_server="y"
+  fi
+
+  if [[ -f "${sub_dir}/.env" || -f "${sub_dir}/docker-compose.yml" ]]; then
+    paint "$CLR_WARN" "$(tr_text "Обнаружена существующая установка страницы подписок." "Existing subscription page installation detected.")"
+    paint "$CLR_MUTED" "  $(tr_text "Путь:" "Path:") ${sub_dir}"
+    paint "$CLR_MUTED" "  $(tr_text "Домен панели:" "Panel domain:") ${REMNAWAVE_LAST_PANEL_DOMAIN:-n/a}"
+    paint "$CLR_MUTED" "  $(tr_text "Домен подписки:" "Subscription domain:") ${REMNAWAVE_LAST_SUB_DOMAIN:-n/a}"
+    paint "$CLR_MUTED" "  $(tr_text "Порт subscription:" "Subscription port:") ${REMNAWAVE_LAST_SUB_PORT:-3010}"
+    paint "$CLR_MUTED" "  $(tr_text "Режим:" "Mode:") ${REMNAWAVE_LAST_SUB_MODE:-same-server}"
+    if [[ -n "${REMNAWAVE_LAST_API_TOKEN:-}" ]]; then
+      paint "$CLR_MUTED" "  API token: $(tr_text "задан" "set")"
+    else
+      paint "$CLR_MUTED" "  API token: $(tr_text "не задан" "not set")"
+    fi
+    if ! ask_yes_no "$(tr_text "Точно переустановить страницу подписок? Текущие значения будут предложены по умолчанию." "Reinstall subscription page? Current values will be offered as defaults.")" "n"; then
+      paint "$CLR_WARN" "$(tr_text "Переустановка отменена. Текущая страница подписок не изменена." "Reinstall cancelled. Current subscription page was not changed.")"
+      return 2
+    fi
+    reinstall_choice="1"
+    paint "$CLR_MUTED" "$(tr_text "Дальше можно нажимать Enter, чтобы оставить значение в скобках, или ввести свое." "Next prompts: press Enter to keep the value in brackets, or type a new one.")"
   fi
 
   if [[ "${AUTO_REMNAWAVE_FULL:-0}" != "1" ]]; then
@@ -927,13 +1027,13 @@ run_subscription_install_flow() {
   fi
 
   while true; do
-    sub_port="$(ask_value "$(tr_text "Порт subscription" "Subscription port")" "3010")"
+    sub_port="$(ask_value "$(tr_text "Порт subscription" "Subscription port")" "${REMNAWAVE_LAST_SUB_PORT:-3010}")"
     [[ "$sub_port" == "__PBM_BACK__" ]] && return 1
     validate_tcp_port_or_warn "SUBSCRIPTION_PORT" "$sub_port" && break
   done
 
   while true; do
-    api_token="$(ask_value "$(tr_text "API токен панели (Remnawave Settings -> API Tokens)" "Panel API token (Remnawave Settings -> API Tokens)")" "")"
+    api_token="$(ask_secret_value "$(tr_text "API токен панели (Remnawave Settings -> API Tokens)" "Panel API token (Remnawave Settings -> API Tokens)")" "${REMNAWAVE_LAST_API_TOKEN}")"
     [[ "$api_token" == "__PBM_BACK__" ]] && return 1
     [[ -n "$api_token" ]] && break
     paint "$CLR_WARN" "$(tr_text "API токен не может быть пустым." "API token cannot be empty.")"
@@ -943,7 +1043,7 @@ run_subscription_install_flow() {
     return 1
   fi
 
-  if [[ -f "${sub_dir}/.env" || -f "${sub_dir}/docker-compose.yml" ]]; then
+  if [[ -n "$reinstall_choice" ]]; then
     backup_suffix="$(date -u +%Y%m%d-%H%M%S)"
     if [[ -f "${sub_dir}/.env" ]]; then
       if ! $SUDO cp "${sub_dir}/.env" "${sub_dir}/.env.bak-${backup_suffix}" 2>/dev/null; then
