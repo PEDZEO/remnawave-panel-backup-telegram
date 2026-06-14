@@ -462,8 +462,18 @@ run_bedolaga_remote_migration_flow() {
   local old_include="${BACKUP_INCLUDE-__PBM_UNSET__}"
   local bot_repo_url=""
   local cabinet_repo_url=""
+  local archive_bedolaga_profile=""
+  local archive_bot_repo_origin=""
+  local archive_cabinet_repo_origin=""
+  local archive_db_container=""
+  local archive_redis_container=""
   local remote_repo_prepare_cmd=""
   local remote_env_prefix=""
+  local remote_network_prepare_cmd="docker network inspect remnawave-network >/dev/null 2>&1 || docker network create remnawave-network >/dev/null 2>&1 || true; docker network inspect bedolaga-network >/dev/null 2>&1 || docker network create bedolaga-network >/dev/null 2>&1 || true"
+  local postcheck_db_container="remnawave_bot_db"
+  local postcheck_redis_container="remnawave_bot_redis"
+  local local_restore_bin="${PBM_LOCAL_RESTORE_BIN:-/usr/local/bin/panel-restore.sh}"
+  local local_backup_bin="${PBM_LOCAL_BACKUP_BIN:-/usr/local/bin/panel-backup.sh}"
   local target_remnawave_dir=""
   local target_bot_dir=""
   local target_cabinet_dir=""
@@ -666,6 +676,27 @@ run_bedolaga_remote_migration_flow() {
   target_remnawave_dir="$(archive_backup_info_value "$archive_path" "remnawave_dir" "$restore_password")"
   target_bot_dir="$(archive_backup_info_value "$archive_path" "bedolaga_bot_dir" "$restore_password")"
   target_cabinet_dir="$(archive_backup_info_value "$archive_path" "bedolaga_cabinet_dir" "$restore_password")"
+  archive_bedolaga_profile="$(archive_backup_info_value "$archive_path" "bedolaga_stack_profile" "$restore_password")"
+  archive_bot_repo_origin="$(archive_backup_info_value "$archive_path" "bedolaga_bot_repo_origin" "$restore_password")"
+  archive_cabinet_repo_origin="$(archive_backup_info_value "$archive_path" "bedolaga_cabinet_repo_origin" "$restore_password")"
+  archive_db_container="$(archive_backup_info_value "$archive_path" "bedolaga_db_container" "$restore_password")"
+  archive_redis_container="$(archive_backup_info_value "$archive_path" "bedolaga_redis_container" "$restore_password")"
+  if declare -F bedolaga_repo_url_to_https >/dev/null 2>&1; then
+    archive_bot_repo_origin="$(bedolaga_repo_url_to_https "$archive_bot_repo_origin")"
+    archive_cabinet_repo_origin="$(bedolaga_repo_url_to_https "$archive_cabinet_repo_origin")"
+  fi
+  if declare -F bedolaga_normalize_git_repo_url >/dev/null 2>&1; then
+    archive_bot_repo_origin="$(bedolaga_normalize_git_repo_url "$archive_bot_repo_origin")"
+    archive_cabinet_repo_origin="$(bedolaga_normalize_git_repo_url "$archive_cabinet_repo_origin")"
+  fi
+  if bedolaga_validate_git_repo_url "$archive_bot_repo_origin"; then
+    bot_repo_url="$archive_bot_repo_origin"
+  fi
+  if bedolaga_validate_git_repo_url "$archive_cabinet_repo_origin"; then
+    cabinet_repo_url="$archive_cabinet_repo_origin"
+  fi
+  postcheck_db_container="${archive_db_container:-remnawave_bot_db}"
+  postcheck_redis_container="${archive_redis_container:-remnawave_bot_redis}"
   target_bot_dir="${target_bot_dir:-/root/remnawave-bedolaga-telegram-bot}"
   target_cabinet_dir="${target_cabinet_dir:-/root/bedolaga-cabinet}"
   if [[ -n "$target_remnawave_dir" ]] && ! validate_project_path_or_warn "REMOTE_REMNAWAVE_DIR" "$target_remnawave_dir"; then
@@ -723,6 +754,11 @@ run_bedolaga_remote_migration_flow() {
   paint "$CLR_MUTED" "  $(tr_text "Новый VPS:" "New VPS:") ${ssh_user}@${ssh_host}:${ssh_port}"
   paint "$CLR_MUTED" "  $(tr_text "Файл на новом VPS:" "Archive on new VPS:") ${remote_archive}"
   paint "$CLR_MUTED" "  $(tr_text "Состав восстановления:" "Restore scope:") ${restore_only}"
+  if [[ -n "$archive_bedolaga_profile" ]]; then
+    paint "$CLR_MUTED" "  $(tr_text "Профиль Bedolaga в архиве:" "Bedolaga archive profile:") ${archive_bedolaga_profile}"
+  fi
+  paint "$CLR_MUTED" "  $(tr_text "Репозиторий бота:" "Bot repository:") ${bot_repo_url}"
+  paint "$CLR_MUTED" "  $(tr_text "Репозиторий кабинета:" "Cabinet repository:") ${cabinet_repo_url}"
   paint "$CLR_MUTED" "  $(tr_text "Автоподготовка VPS:" "VPS auto-prepare:") $([[ "$auto_prepare_remote" == "1" ]] && tr_text "включена" "enabled" || tr_text "выключена" "disabled")"
   if (( include_caddy == 1 )); then
     paint "$CLR_MUTED" "  $(tr_text "Caddy перенос:" "Caddy migration:") ${detected_caddy_dir} -> ${remote_caddy_dir}"
@@ -812,19 +848,19 @@ fi'
       return 1
     fi
 
-    if [[ ! -x /usr/local/bin/panel-restore.sh ]]; then
-      paint "$CLR_DANGER" "$(tr_text "Локально не найден /usr/local/bin/panel-restore.sh для копирования на новый VPS." "Local /usr/local/bin/panel-restore.sh not found for upload to new VPS.")"
+    if [[ ! -x "$local_restore_bin" ]]; then
+      paint "$CLR_DANGER" "$(tr_text "Локально не найден panel-restore.sh для копирования на новый VPS." "Local panel-restore.sh not found for upload to new VPS.") ${local_restore_bin}"
       wait_for_enter
       return 1
     fi
     paint "$CLR_ACCENT" "$(tr_text "Копирую runtime restore-скрипты на новый VPS..." "Uploading runtime restore scripts to the new VPS...")"
-    if ! "${scp_cmd[@]}" /usr/local/bin/panel-restore.sh "${ssh_user}@${ssh_host}:/usr/local/bin/panel-restore.sh"; then
+    if ! "${scp_cmd[@]}" "$local_restore_bin" "${ssh_user}@${ssh_host}:/usr/local/bin/panel-restore.sh"; then
       paint "$CLR_DANGER" "$(tr_text "Не удалось скопировать panel-restore.sh на новый VPS." "Failed to copy panel-restore.sh to new VPS.")"
       wait_for_enter
       return 1
     fi
-    if [[ -x /usr/local/bin/panel-backup.sh ]]; then
-      "${scp_cmd[@]}" /usr/local/bin/panel-backup.sh "${ssh_user}@${ssh_host}:/usr/local/bin/panel-backup.sh" >/dev/null 2>&1 || true
+    if [[ -x "$local_backup_bin" ]]; then
+      "${scp_cmd[@]}" "$local_backup_bin" "${ssh_user}@${ssh_host}:/usr/local/bin/panel-backup.sh" >/dev/null 2>&1 || true
     fi
     if ! "${ssh_cmd[@]}" "chmod 755 /usr/local/bin/panel-restore.sh /usr/local/bin/panel-backup.sh >/dev/null 2>&1 || true"; then
       paint "$CLR_WARN" "$(tr_text "Не удалось применить chmod для runtime-скриптов на новом VPS." "Failed to chmod runtime scripts on new VPS.")"
@@ -914,7 +950,7 @@ true"
       wait_for_enter
       return 1
     fi
-    if ! "${ssh_cmd[@]}" "set -e; test -f $(printf '%q' "$target_bot_dir")/.env; mkdir -p $(printf '%q' "$target_bot_dir")/logs $(printf '%q' "$target_bot_dir")/data $(printf '%q' "$target_bot_dir")/data/backups $(printf '%q' "$target_bot_dir")/data/referral_qr; chown -R 1000:1000 $(printf '%q' "$target_bot_dir")/logs $(printf '%q' "$target_bot_dir")/data >/dev/null 2>&1 || true; chmod -R 755 $(printf '%q' "$target_bot_dir")/logs $(printf '%q' "$target_bot_dir")/data >/dev/null 2>&1 || true; docker network inspect remnawave-network >/dev/null 2>&1 || docker network create remnawave-network >/dev/null 2>&1 || true; cd $(printf '%q' "$target_bot_dir") && docker compose up -d"; then
+    if ! "${ssh_cmd[@]}" "set -e; test -f $(printf '%q' "$target_bot_dir")/.env; mkdir -p $(printf '%q' "$target_bot_dir")/logs $(printf '%q' "$target_bot_dir")/data $(printf '%q' "$target_bot_dir")/data/backups $(printf '%q' "$target_bot_dir")/data/referral_qr; chown -R 1000:1000 $(printf '%q' "$target_bot_dir")/logs $(printf '%q' "$target_bot_dir")/data >/dev/null 2>&1 || true; chmod -R 755 $(printf '%q' "$target_bot_dir")/logs $(printf '%q' "$target_bot_dir")/data >/dev/null 2>&1 || true; ${remote_network_prepare_cmd}; cd $(printf '%q' "$target_bot_dir") && docker compose up -d"; then
       paint "$CLR_DANGER" "$(tr_text "Не удалось поднять контейнеры Bedolaga бота на новом VPS." "Failed to start Bedolaga bot containers on the new VPS.")"
       wait_for_enter
       return 1
@@ -935,7 +971,7 @@ true"
       wait_for_enter
       return 1
     fi
-    if ! "${ssh_cmd[@]}" "set -e; test -f $(printf '%q' "$target_bot_dir")/.env; mkdir -p $(printf '%q' "$target_bot_dir")/logs $(printf '%q' "$target_bot_dir")/data $(printf '%q' "$target_bot_dir")/data/backups $(printf '%q' "$target_bot_dir")/data/referral_qr; chown -R 1000:1000 $(printf '%q' "$target_bot_dir")/logs $(printf '%q' "$target_bot_dir")/data >/dev/null 2>&1 || true; chmod -R 755 $(printf '%q' "$target_bot_dir")/logs $(printf '%q' "$target_bot_dir")/data >/dev/null 2>&1 || true; docker network inspect remnawave-network >/dev/null 2>&1 || docker network create remnawave-network >/dev/null 2>&1 || true; cd $(printf '%q' "$target_bot_dir") && docker compose up -d; cabdir=$(printf '%q' "$target_cabinet_dir"); if [ -d \"\$cabdir\" ]; then if [ -f \"\$cabdir/.env\" ] && { [ -f \"\$cabdir/docker-compose.yml\" ] || [ -f \"\$cabdir/docker-compose.caddy.yml\" ] || [ -f \"\$cabdir/compose.yaml\" ] || [ -f \"\$cabdir/compose.yml\" ]; }; then cd \"\$cabdir\" && docker compose up -d; fi; fi"; then
+    if ! "${ssh_cmd[@]}" "set -e; test -f $(printf '%q' "$target_bot_dir")/.env; mkdir -p $(printf '%q' "$target_bot_dir")/logs $(printf '%q' "$target_bot_dir")/data $(printf '%q' "$target_bot_dir")/data/backups $(printf '%q' "$target_bot_dir")/data/referral_qr; chown -R 1000:1000 $(printf '%q' "$target_bot_dir")/logs $(printf '%q' "$target_bot_dir")/data >/dev/null 2>&1 || true; chmod -R 755 $(printf '%q' "$target_bot_dir")/logs $(printf '%q' "$target_bot_dir")/data >/dev/null 2>&1 || true; ${remote_network_prepare_cmd}; cd $(printf '%q' "$target_bot_dir") && docker compose up -d; cabdir=$(printf '%q' "$target_cabinet_dir"); if [ -d \"\$cabdir\" ]; then if [ -f \"\$cabdir/.env\" ] && { [ -f \"\$cabdir/docker-compose.yml\" ] || [ -f \"\$cabdir/docker-compose.caddy.yml\" ] || [ -f \"\$cabdir/compose.yaml\" ] || [ -f \"\$cabdir/compose.yml\" ]; }; then cd \"\$cabdir\" && docker compose up -d; fi; fi"; then
       paint "$CLR_DANGER" "$(tr_text "Не удалось поднять контейнеры Bedolaga на новом VPS." "Failed to start Bedolaga containers on the new VPS.")"
       wait_for_enter
       return 1
@@ -956,7 +992,7 @@ true"
       wait_for_enter
       return 1
     fi
-    if ! "${ssh_cmd[@]}" "set -e; docker network inspect remnawave-network >/dev/null 2>&1 || docker network create remnawave-network >/dev/null 2>&1 || true; paneldir=$(printf '%q' "$target_remnawave_dir"); if [ -z \"\$paneldir\" ] || { [ ! -d \"\$paneldir\" ] && [ ! -f \"\$paneldir/docker-compose.yml\" ] && [ ! -f \"\$paneldir/compose.yaml\" ] && [ ! -f \"\$paneldir/compose.yml\" ]; }; then paneldir=''; for d in /opt/remnawave /srv/remnawave /root/remnawave /home/remnawave; do if [ -f \"\$d/.env\" ] && [ -f \"\$d/docker-compose.yml\" ]; then paneldir=\"\$d\"; break; fi; done; if [ -z \"\$paneldir\" ]; then paneldir=$(find /root /opt /srv /home -maxdepth 6 -type d -name remnawave 2>/dev/null | while read -r d; do [ -f \"\$d/.env\" ] && [ -f \"\$d/docker-compose.yml\" ] || continue; echo \"\$d\"; break; done); fi; fi; if [ -n \"\$paneldir\" ]; then cd \"\$paneldir\" && docker compose up -d; fi; test -f $(printf '%q' "$target_bot_dir")/.env; mkdir -p $(printf '%q' "$target_bot_dir")/logs $(printf '%q' "$target_bot_dir")/data $(printf '%q' "$target_bot_dir")/data/backups $(printf '%q' "$target_bot_dir")/data/referral_qr; chown -R 1000:1000 $(printf '%q' "$target_bot_dir")/logs $(printf '%q' "$target_bot_dir")/data >/dev/null 2>&1 || true; chmod -R 755 $(printf '%q' "$target_bot_dir")/logs $(printf '%q' "$target_bot_dir")/data >/dev/null 2>&1 || true; cd $(printf '%q' "$target_bot_dir") && docker compose up -d; cabdir=$(printf '%q' "$target_cabinet_dir"); if [ -d \"\$cabdir\" ]; then if [ -f \"\$cabdir/.env\" ] && { [ -f \"\$cabdir/docker-compose.yml\" ] || [ -f \"\$cabdir/docker-compose.caddy.yml\" ] || [ -f \"\$cabdir/compose.yaml\" ] || [ -f \"\$cabdir/compose.yml\" ]; }; then cd \"\$cabdir\" && docker compose up -d; fi; fi"; then
+    if ! "${ssh_cmd[@]}" "set -e; ${remote_network_prepare_cmd}; paneldir=$(printf '%q' "$target_remnawave_dir"); if [ -z \"\$paneldir\" ] || { [ ! -d \"\$paneldir\" ] && [ ! -f \"\$paneldir/docker-compose.yml\" ] && [ ! -f \"\$paneldir/compose.yaml\" ] && [ ! -f \"\$paneldir/compose.yml\" ]; }; then paneldir=''; for d in /opt/remnawave /srv/remnawave /root/remnawave /home/remnawave; do if [ -f \"\$d/.env\" ] && [ -f \"\$d/docker-compose.yml\" ]; then paneldir=\"\$d\"; break; fi; done; if [ -z \"\$paneldir\" ]; then paneldir=$(find /root /opt /srv /home -maxdepth 6 -type d -name remnawave 2>/dev/null | while read -r d; do [ -f \"\$d/.env\" ] && [ -f \"\$d/docker-compose.yml\" ] || continue; echo \"\$d\"; break; done); fi; fi; if [ -n \"\$paneldir\" ]; then cd \"\$paneldir\" && docker compose up -d; fi; test -f $(printf '%q' "$target_bot_dir")/.env; mkdir -p $(printf '%q' "$target_bot_dir")/logs $(printf '%q' "$target_bot_dir")/data $(printf '%q' "$target_bot_dir")/data/backups $(printf '%q' "$target_bot_dir")/data/referral_qr; chown -R 1000:1000 $(printf '%q' "$target_bot_dir")/logs $(printf '%q' "$target_bot_dir")/data >/dev/null 2>&1 || true; chmod -R 755 $(printf '%q' "$target_bot_dir")/logs $(printf '%q' "$target_bot_dir")/data >/dev/null 2>&1 || true; cd $(printf '%q' "$target_bot_dir") && docker compose up -d; cabdir=$(printf '%q' "$target_cabinet_dir"); if [ -d \"\$cabdir\" ]; then if [ -f \"\$cabdir/.env\" ] && { [ -f \"\$cabdir/docker-compose.yml\" ] || [ -f \"\$cabdir/docker-compose.caddy.yml\" ] || [ -f \"\$cabdir/compose.yaml\" ] || [ -f \"\$cabdir/compose.yml\" ]; }; then cd \"\$cabdir\" && docker compose up -d; fi; fi"; then
       paint "$CLR_DANGER" "$(tr_text "Не удалось поднять контейнеры Remnawave+Bedolaga на новом VPS." "Failed to start Remnawave+Bedolaga containers on the new VPS.")"
       wait_for_enter
       return 1
@@ -972,7 +1008,7 @@ true"
 
   if (( include_caddy == 1 )); then
     paint "$CLR_ACCENT" "$(tr_text "Поднимаю Caddy на новом VPS..." "Starting Caddy on the new VPS...")"
-    caddy_up_cmd="set -e; docker network inspect remnawave-network >/dev/null 2>&1 || docker network create remnawave-network >/dev/null 2>&1 || true; cd $(printf '%q' "$remote_caddy_dir"); cfile=''; if [ -f docker-compose.yml ]; then cfile='docker-compose.yml'; elif [ -f docker-compose.caddy.yml ]; then cfile='docker-compose.caddy.yml'; elif [ -f compose.yaml ]; then cfile='compose.yaml'; elif [ -f compose.yml ]; then cfile='compose.yml'; fi; if [ -n \"\$cfile\" ]; then docker compose -f \"\$cfile\" up -d; else echo 'compose file not found in caddy dir'; exit 1; fi"
+    caddy_up_cmd="set -e; ${remote_network_prepare_cmd}; cd $(printf '%q' "$remote_caddy_dir"); cfile=''; if [ -f docker-compose.yml ]; then cfile='docker-compose.yml'; elif [ -f docker-compose.caddy.yml ]; then cfile='docker-compose.caddy.yml'; elif [ -f compose.yaml ]; then cfile='compose.yaml'; elif [ -f compose.yml ]; then cfile='compose.yml'; fi; if [ -n \"\$cfile\" ]; then docker compose -f \"\$cfile\" up -d; else echo 'compose file not found in caddy dir'; exit 1; fi"
     if ! "${ssh_cmd[@]}" "$caddy_up_cmd"; then
       paint "$CLR_WARN" "$(tr_text "Не удалось запустить Caddy на новом VPS." "Failed to start Caddy on the new VPS.")"
     fi
@@ -981,16 +1017,18 @@ true"
   paint "$CLR_ACCENT" "$(tr_text "Проверяю состояние сервисов и последние логи на новом VPS..." "Checking service state and recent logs on the new VPS...")"
   postcheck_cmd='
 set +e
+db_container='"$(printf '%q' "$postcheck_db_container")"'
+redis_container='"$(printf '%q' "$postcheck_redis_container")"'
 echo "============================================================"
 echo "  Service check: Bedolaga stack"
 echo "============================================================"
-for c in remnawave_bot_db remnawave_bot_redis remnawave_bot cabinet_frontend remnawave-caddy remnawave_caddy caddy; do
+for c in "$db_container" "$redis_container" remnawave_bot cabinet_frontend remnawave-caddy remnawave_caddy caddy; do
   st="$(docker inspect -f "{{.State.Status}}" "$c" 2>/dev/null || echo "not-found")"
   printf "  %-20s %s\n" "$c:" "$st"
 done
 echo "------------------------------------------------------------"
 echo "docker ps (filtered)"
-docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" | grep -E "NAMES|remnawave_bot|cabinet_frontend" || true
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" | awk -v db="$db_container" -v redis="$redis_container" '"'"'NR == 1 || index($0, db) || index($0, redis) || index($0, "remnawave_bot") || index($0, "cabinet_frontend") || index($0, "caddy")'"'"' || true
 echo "------------------------------------------------------------"
 echo "logs: remnawave_bot (tail 40)"
 docker logs --tail 40 remnawave_bot 2>&1 || true
@@ -998,11 +1036,11 @@ echo "------------------------------------------------------------"
 echo "logs: cabinet_frontend (tail 40)"
 docker logs --tail 40 cabinet_frontend 2>&1 || true
 echo "------------------------------------------------------------"
-echo "logs: remnawave_bot_db (tail 30)"
-docker logs --tail 30 remnawave_bot_db 2>&1 || true
+echo "logs: ${db_container} (tail 30)"
+docker logs --tail 30 "$db_container" 2>&1 || true
 echo "------------------------------------------------------------"
-echo "logs: remnawave_bot_redis (tail 30)"
-docker logs --tail 30 remnawave_bot_redis 2>&1 || true
+echo "logs: ${redis_container} (tail 30)"
+docker logs --tail 30 "$redis_container" 2>&1 || true
 echo "------------------------------------------------------------"
 for cc in remnawave-caddy remnawave_caddy caddy; do
   if docker inspect "$cc" >/dev/null 2>&1; then

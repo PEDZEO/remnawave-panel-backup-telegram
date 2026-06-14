@@ -1190,6 +1190,7 @@ POSTGRES_DB=""
 BEDOLAGA_POSTGRES_USER=""
 BEDOLAGA_POSTGRES_DB=""
 BEDOLAGA_BOT_REPO_ORIGIN=""
+BEDOLAGA_CABINET_REPO_ORIGIN=""
 BEDOLAGA_STACK_PROFILE_RESOLVED="unknown"
 BEDOLAGA_DB_DUMP_PROFILE="unknown"
 
@@ -1225,6 +1226,7 @@ fi
 
 if (( WANT_BEDOLAGA_DB == 1 || WANT_BEDOLAGA_REDIS == 1 || WANT_BEDOLAGA_BOT == 1 || WANT_BEDOLAGA_CABINET == 1 )); then
   BEDOLAGA_BOT_REPO_ORIGIN="$(bedolaga_repo_origin_url "${BEDOLAGA_BOT_DIR:-}")"
+  BEDOLAGA_CABINET_REPO_ORIGIN="$(bedolaga_repo_origin_url "${BEDOLAGA_CABINET_DIR:-}")"
   BEDOLAGA_STACK_PROFILE_RESOLVED="$(detect_bedolaga_stack_profile "${BEDOLAGA_BOT_DIR:-}")"
   BEDOLAGA_DB_DUMP_PROFILE="$BEDOLAGA_STACK_PROFILE_RESOLVED"
   BEDOLAGA_DB_CONTAINER="$(detect_bedolaga_db_container "${BEDOLAGA_BOT_DIR:-}")"
@@ -1384,6 +1386,7 @@ bedolaga_postgres_user=${BEDOLAGA_POSTGRES_USER}
 bedolaga_stack_profile=${BEDOLAGA_STACK_PROFILE_RESOLVED}
 bedolaga_db_dump_profile=${BEDOLAGA_DB_DUMP_PROFILE}
 bedolaga_bot_repo_origin=${BEDOLAGA_BOT_REPO_ORIGIN}
+bedolaga_cabinet_repo_origin=${BEDOLAGA_CABINET_REPO_ORIGIN}
 bedolaga_db_container=${BEDOLAGA_DB_CONTAINER}
 bedolaga_redis_container=${BEDOLAGA_REDIS_CONTAINER}
 remnawave_dir=${REMNAWAVE_DIR}
