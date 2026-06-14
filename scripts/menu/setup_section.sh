@@ -434,9 +434,12 @@ menu_flow_encryption_settings() {
     paint "$CLR_MUTED" "  $(tr_text "Шифрование:" "Encryption:") ${encrypt_state}"
     paint "$CLR_MUTED" "  $(tr_text "Пароль:" "Password:") ${password_state}"
     print_separator
+    menu_group "$(tr_text "Шифрование" "Encryption")" "$CLR_OK"
     menu_option "1" "$(tr_text "Включить шифрование и задать пароль" "Enable encryption and set password")"
     menu_option "2" "$(tr_text "Изменить пароль шифрования" "Change encryption password")"
+    menu_group "$(tr_text "Отключение" "Disable")" "$CLR_DANGER"
     menu_option "3" "$(tr_text "Выключить шифрование" "Disable encryption")"
+    menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "4" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
@@ -677,11 +680,15 @@ menu_flow_telegram_settings() {
     paint "$CLR_MUTED" "  TELEGRAM_ADMIN_ID: ${chat_state}"
     paint "$CLR_MUTED" "  ${thread_label}: ${thread_state}"
     print_separator
+    menu_group "$(tr_text "Данные Telegram" "Telegram details")" "$CLR_ACCENT"
     menu_option "1" "$(tr_text "Изменить токен бота" "Edit bot token")"
     menu_option "2" "$(tr_text "Изменить chat_id" "Edit chat_id")"
     menu_option "3" "$(tr_text "Изменить topic/thread_id (необязательно)" "Edit topic/thread_id (optional)")"
-    menu_option "4" "$(tr_text "Отправить тестовое сообщение" "Send test message")"
+    menu_group "$(tr_text "Проверка" "Check")" "$CLR_WARN"
+    menu_option "4" "$(tr_text "Проверить отправку в Telegram" "Check Telegram delivery")"
+    menu_group "$(tr_text "Отключение" "Disable")" "$CLR_DANGER"
     menu_option "5" "$(tr_text "Отключить Telegram-отправку" "Disable Telegram delivery")"
+    menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "6" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice
@@ -797,26 +804,35 @@ menu_flow_backup_scope_settings() {
     paint "$CLR_MUTED" "$(tr_text "Текущий состав:" "Current scope:") ${include_state} (${BACKUP_INCLUDE:-all})"
     print_separator
     if [[ "$scope" == "panel" ]]; then
+      menu_group "$(tr_text "Готовые варианты" "Presets")" "$CLR_OK"
       menu_option "1" "$(tr_text "Полная панель: DB + Redis + .env + compose + Caddy + subscription" "Full panel: DB + Redis + .env + compose + Caddy + subscription")"
       menu_option "2" "$(tr_text "Только DB + Redis панели" "Panel DB + Redis only")"
       menu_option "3" "$(tr_text "Только конфиги панели" "Panel configs only")"
+      menu_group "$(tr_text "Расширенное" "Advanced")" "$CLR_ACCENT"
       menu_option "4" "$(tr_text "Свой список компонентов панели" "Custom panel component list")"
+      menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
       menu_option "5" "$(tr_text "Назад" "Back")"
       print_separator
       read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
     elif [[ "$scope" == "bedolaga" ]]; then
+      menu_group "$(tr_text "Готовые варианты" "Presets")" "$CLR_OK"
       menu_option "1" "$(tr_text "Полный Bedolaga: DB + Redis + бот + кабинет" "Full Bedolaga: DB + Redis + bot + cabinet")"
       menu_option "2" "$(tr_text "Файлы бота + кабинета без DB/Redis" "Bot + cabinet files without DB/Redis")"
       menu_option "3" "$(tr_text "Только конфиги Bedolaga" "Bedolaga configs only")"
+      menu_group "$(tr_text "Расширенное" "Advanced")" "$CLR_ACCENT"
       menu_option "4" "$(tr_text "Свой список компонентов Bedolaga" "Custom Bedolaga component list")"
+      menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
       menu_option "5" "$(tr_text "Назад" "Back")"
       print_separator
       read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
     else
+      menu_group "$(tr_text "Готовые варианты" "Presets")" "$CLR_OK"
       menu_option "1" "$(tr_text "Только панель Remnawave" "Remnawave panel only")"
       menu_option "2" "$(tr_text "Только Bedolaga" "Bedolaga only")"
       menu_option "3" "$(tr_text "Панель + Bedolaga" "Panel + Bedolaga")"
+      menu_group "$(tr_text "Расширенное" "Advanced")" "$CLR_ACCENT"
       menu_option "4" "$(tr_text "Свой список компонентов" "Custom component list")"
+      menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
       menu_option "5" "$(tr_text "Назад" "Back")"
       print_separator
       read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
@@ -906,11 +922,15 @@ menu_section_setup() {
     paint "$CLR_MUTED" "  Telegram: ${tg_state}"
     paint "$CLR_MUTED" "  $(tr_text "Шифрование резервной копии:" "Backup encryption:") ${enc_state}"
     paint "$CLR_MUTED" "  $(tr_text "Состав резервной копии:" "Backup scope:") ${include_state}"
-    menu_option "1" "$(tr_text "Telegram: токен, chat_id, тест отправки" "Telegram: token, chat_id, test send")"
+    print_separator
+    menu_group "$(tr_text "Основные настройки" "Core settings")" "$CLR_ACCENT"
+    menu_option "1" "$(tr_text "Telegram: токен, chat_id, проверка отправки" "Telegram: token, chat_id, delivery check")"
     menu_option "2" "$(tr_text "Состав backup" "Backup scope")"
     menu_option "3" "$(tr_text "Шифрование" "Encryption")"
+    menu_group "$(tr_text "Мастер и файлы" "Wizard and files")" "$CLR_OK"
     menu_option "4" "$(tr_text "Быстрая настройка мастером" "Quick setup wizard")"
     menu_option "5" "$(tr_text "Установка/обновление файлов backup" "Install/update backup files")"
+    menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "6" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice

@@ -158,11 +158,16 @@ menu_section_reshala_integration() {
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Отдельная страница для внешнего проекта Reshala. Дает доступ ко всему его меню без копирования кода в наш репозиторий." "Separate page for the external Reshala project. Gives access to its full menu without copying its code into this repo.")"
     print_separator
+    menu_group "$(tr_text "Информация" "Info")" "$CLR_WARN"
     menu_option "1" "$(tr_text "Карта функций Reshala" "Reshala feature map")"
+    menu_group "$(tr_text "Управление" "Management")" "$CLR_OK"
     menu_option "2" "$(tr_text "Установить/обновить Reshala" "Install/update Reshala")"
     menu_option "3" "$(tr_text "Открыть меню Reshala" "Open Reshala menu")"
+    menu_group "$(tr_text "Статус" "Status")" "$CLR_ACCENT"
     menu_option "4" "$(tr_text "Проверить статус установки" "Check install status")"
+    menu_group "$(tr_text "Удаление" "Removal")" "$CLR_DANGER"
     menu_option "5" "$(tr_text "Показать команды удаления" "Show removal commands")"
+    menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "6" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-6]: " "Choice [1-6]: ")" choice

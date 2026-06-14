@@ -47,6 +47,23 @@ menu_option_color() {
   esac
 }
 
+menu_group() {
+  local title="$1"
+  local color="${2:-$CLR_MUTED}"
+
+  if [[ "${MENU_OPTIONS_STARTED:-0}" == "1" ]]; then
+    echo
+  fi
+  MENU_OPTIONS_STARTED=0
+  MENU_SEPARATOR_PRINTED=1
+
+  if [[ "$COLOR" == "1" ]]; then
+    printf "  %b╭─%b %b%s%b\n" "$CLR_TITLE" "$CLR_RESET" "$color" "$title" "$CLR_RESET"
+  else
+    printf "  -- %s --\n" "$title"
+  fi
+}
+
 menu_option() {
   local key="$1"
   local label="$2"

@@ -217,9 +217,13 @@ menu_section_bedolaga_local_backup_restore() {
     draw_subheader "$(tr_text "Bedolaga: локальный backup/restore" "Bedolaga: local backup/restore")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Этот раздел для работы на текущем VPS: создать архив и восстановить его здесь же." "This section is for the current VPS: create an archive and restore it on the same server.")"
+    menu_group "$(tr_text "Backup" "Backup")" "$CLR_OK"
     menu_option "1" "$(tr_text "Создать полный backup Bedolaga" "Create full Bedolaga backup")"
+    menu_group "$(tr_text "Восстановление" "Restore")" "$CLR_WARN"
     menu_option "2" "$(tr_text "Восстановить полный Bedolaga из локального архива" "Restore full Bedolaga from local archive")"
+    menu_group "$(tr_text "Дополнительно" "Advanced")" "$CLR_ACCENT"
     menu_option "3" "$(tr_text "Дополнительные локальные режимы" "Advanced local modes")"
+    menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "4" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-4]: " "Choice [1-4]: ")" choice
@@ -236,10 +240,13 @@ menu_section_bedolaga_local_backup_restore() {
       3)
         draw_subheader "$(tr_text "Дополнительные локальные режимы" "Advanced local modes")"
         show_back_hint
+        menu_group "$(tr_text "Backup" "Backup")" "$CLR_OK"
         menu_option "1" "$(tr_text "Создать backup: бот + кабинет" "Create backup: bot + cabinet")"
         menu_option "2" "$(tr_text "Создать backup: только бот" "Create backup: bot only")"
         menu_option "3" "$(tr_text "Создать backup: только кабинет" "Create backup: cabinet only")"
+        menu_group "$(tr_text "Восстановление" "Restore")" "$CLR_WARN"
         menu_option "4" "$(tr_text "Восстановление: выбрать состав" "Restore: choose scope")"
+        menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
         menu_option "5" "$(tr_text "Назад" "Back")"
         print_separator
         read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
@@ -1085,14 +1092,18 @@ menu_section_remnawave_install_update() {
     draw_subheader "$(tr_text "Remnawave: установка и обновление" "Remnawave: install and update")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Операции установки и обновления панели, подписок и Caddy." "Install/update operations for panel, subscription and Caddy.")"
+    menu_group "$(tr_text "Установка" "Install")" "$CLR_OK"
     menu_option "1" "$(tr_text "Быстрая установка панели (панель + Caddy)" "Quick panel install (panel + Caddy)")"
     menu_option "2" "$(tr_text "Установить панель Remnawave" "Install Remnawave panel")"
     menu_option "3" "$(tr_text "Установить страницу подписок" "Install subscription page")"
+    menu_group "$(tr_text "Обновление" "Update")" "$CLR_WARN"
     menu_option "4" "$(tr_text "Быстрое обновление панели (панель + Caddy)" "Quick panel update (panel + Caddy)")"
     menu_option "5" "$(tr_text "Обновить панель Remnawave" "Update Remnawave panel")"
     menu_option "6" "$(tr_text "Обновить страницу подписок" "Update subscription page")"
+    menu_group "Caddy" "$CLR_ACCENT"
     menu_option "7" "$(tr_text "Установить Caddy для панели" "Install panel Caddy")"
     menu_option "8" "$(tr_text "Обновить Caddy для панели" "Update panel Caddy")"
+    menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "9" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-9]: " "Choice [1-9]: ")" choice
@@ -1161,13 +1172,18 @@ menu_section_remnawave_backup_restore() {
     paint "$CLR_MUTED" "  Telegram: ${tg_state}"
     paint "$CLR_MUTED" "  $(tr_text "Шифрование:" "Encryption:") ${enc_state}"
     print_separator
+    menu_group "$(tr_text "Backup" "Backup")" "$CLR_OK"
     menu_option "1" "$(tr_text "Создать backup панели сейчас" "Create panel backup now")"
+    menu_group "$(tr_text "Настройки" "Settings")" "$CLR_ACCENT"
     menu_option "2" "$(tr_text "Автобэкап: включить, время, выключить" "Auto-backup: enable, time, disable")"
-    menu_option "3" "$(tr_text "Telegram: токен, chat_id, тест отправки" "Telegram: token, chat_id, test send")"
+    menu_option "3" "$(tr_text "Telegram: токен, chat_id, проверка отправки" "Telegram: token, chat_id, delivery check")"
     menu_option "4" "$(tr_text "Шифрование архива" "Archive encryption")"
+    menu_group "$(tr_text "Восстановление и проверка" "Restore and checks")" "$CLR_WARN"
     menu_option "5" "$(tr_text "Восстановить панель из backup" "Restore panel from backup")"
     menu_option "6" "$(tr_text "Doctor: проверить backup панели" "Doctor: check panel backup")"
+    menu_group "$(tr_text "Дополнительно" "Advanced")" "$CLR_ACCENT"
     menu_option "7" "$(tr_text "Доп. настройки backup" "More backup settings")"
+    menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "8" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-8]: " "Choice [1-8]: ")" choice
@@ -1195,8 +1211,10 @@ menu_section_remnawave_components() {
   while true; do
     draw_subheader "$(tr_text "Раздел: Компоненты Remnawave" "Section: Remnawave components")"
     show_back_hint
+    menu_group "$(tr_text "Разделы" "Sections")" "$CLR_ACCENT"
     menu_option "1" "$(tr_text "Установка и обновление" "Install and update")"
     menu_option "2" "$(tr_text "Backup и восстановление" "Backup and restore")"
+    menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "3" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
@@ -1218,8 +1236,11 @@ menu_section_bedolaga_install_update_official() {
     draw_subheader "$(tr_text "Bedolaga: официальный стек" "Bedolaga: official stack")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Установка и обновление официального стека Bedolaga (бот + кабинет)." "Install and update for the official Bedolaga stack (bot + cabinet).")"
+    menu_group "$(tr_text "Установка" "Install")" "$CLR_OK"
     menu_option "1" "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")"
+    menu_group "$(tr_text "Обновление" "Update")" "$CLR_WARN"
     menu_option "2" "$(tr_text "Обновить Bedolaga (бот + кабинет)" "Update Bedolaga (bot + cabinet)")"
+    menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "3" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
@@ -1245,8 +1266,11 @@ menu_section_bedolaga_install_update_fork() {
     draw_subheader "$(tr_text "Bedolaga: fork PEDZEO" "Bedolaga: PEDZEO fork")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Автоустановка и безопасное автообновление форка PEDZEO." "Auto-install and safe auto-update for PEDZEO fork.")"
+    menu_group "$(tr_text "Установка" "Install")" "$CLR_OK"
     menu_option "1" "$(tr_text "Автоустановка форка PEDZEO (бот + кабинет + Caddy)" "Auto-install PEDZEO fork (bot + cabinet + Caddy)")"
+    menu_group "$(tr_text "Обновление" "Update")" "$CLR_WARN"
     menu_option "2" "$(tr_text "Автообновление форка PEDZEO (safe)" "Auto-update PEDZEO fork (safe)")"
+    menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "3" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
@@ -1272,8 +1296,10 @@ menu_section_bedolaga_install_update() {
     draw_subheader "$(tr_text "Bedolaga: установка и обновление" "Bedolaga: install and update")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Выберите ветку: официальный стек Bedolaga или fork PEDZEO." "Choose line: official Bedolaga stack or PEDZEO fork.")"
+    menu_group "$(tr_text "Ветка установки" "Install line")" "$CLR_ACCENT"
     menu_option "1" "$(tr_text "Официальный Bedolaga" "Official Bedolaga")"
     menu_option "2" "$(tr_text "Fork PEDZEO" "PEDZEO fork")"
+    menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "3" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
@@ -1295,10 +1321,14 @@ menu_section_bedolaga_backup_restore() {
     draw_subheader "$(tr_text "Bedolaga: backup и восстановление" "Bedolaga: backup and restore")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Локальные backup/restore и отдельный поток миграции на новый VPS." "Local backup/restore and a separate migration flow to a new VPS.")"
+    menu_group "$(tr_text "Backup и восстановление" "Backup and restore")" "$CLR_OK"
     menu_option "1" "$(tr_text "Локальный backup/restore" "Local backup/restore")"
+    menu_group "$(tr_text "Миграция" "Migration")" "$CLR_WARN"
     menu_option "2" "$(tr_text "Миграция на новый VPS" "Migration to a new VPS")"
+    menu_group "$(tr_text "Настройки" "Settings")" "$CLR_ACCENT"
     menu_option "3" "$(tr_text "Настройки backup Bedolaga" "Bedolaga backup settings")"
     menu_option "4" "$(tr_text "Таймер и периодичность Bedolaga" "Bedolaga timer and schedule")"
+    menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "5" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
@@ -1321,8 +1351,10 @@ menu_section_bedolaga_components() {
   while true; do
     draw_subheader "$(tr_text "Раздел: Бот и кабинет Bedolaga" "Section: Bedolaga bot and cabinet")"
     show_back_hint
+    menu_group "$(tr_text "Разделы" "Sections")" "$CLR_ACCENT"
     menu_option "1" "$(tr_text "Установка и обновление" "Install and update")"
     menu_option "2" "$(tr_text "Backup и восстановление" "Backup and restore")"
+    menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "3" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")" choice
@@ -1344,13 +1376,17 @@ menu_section_remnanode_components() {
     draw_subheader "$(tr_text "Раздел: Компоненты RemnaNode" "Section: RemnaNode components")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Базовые и сетевые инструменты для RemnaNode." "Basic and network tools for RemnaNode.")"
+    menu_group "$(tr_text "Быстрый старт" "Quick start")" "$CLR_OK"
     menu_option "1" "$(tr_text "Полная настройка (нода + Caddy + BBR + WARP)" "Full setup (node + Caddy + BBR + WARP)")"
+    menu_group "$(tr_text "Нода" "Node")" "$CLR_ACCENT"
     menu_option "2" "$(tr_text "Установить ноду RemnaNode" "Install RemnaNode")"
     menu_option "3" "$(tr_text "Обновить ноду RemnaNode" "Update RemnaNode")"
+    menu_group "$(tr_text "Сеть" "Network")" "$CLR_WARN"
     menu_option "4" "$(tr_text "Настроить Caddy self-steal" "Configure Caddy self-steal")"
     menu_option "5" "$(tr_text "Включить BBR" "Enable BBR")"
     menu_option "6" "$(tr_text "Настроить WARP Native (wgcf)" "Configure WARP Native (wgcf)")"
     menu_option "7" "$(tr_text "Включить/выключить IPv6" "Toggle IPv6")"
+    menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "8" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-8]: " "Choice [1-8]: ")" choice
@@ -1578,10 +1614,13 @@ menu_section_timer_scope() {
     paint "$CLR_MUTED" "  $(tr_text "Расписание:" "Schedule:") $(format_schedule_label "$current_schedule")"
     paint "$CLR_MUTED" "  $(tr_text "Следующий запуск:" "Next run:") ${next_run}"
     print_separator
+    menu_group "$(tr_text "Автобэкап" "Auto-backup")" "$CLR_OK"
     menu_option "1" "$(tr_text "Включить автобэкап по этому расписанию" "Enable auto-backup with this schedule")"
     menu_option "2" "$(tr_text "Изменить время/периодичность" "Change time/frequency")"
     menu_option "3" "$(tr_text "Выключить автобэкап" "Disable auto-backup")"
+    menu_group "$(tr_text "Ручной запуск" "Manual run")" "$CLR_ACCENT"
     menu_option "4" "$(tr_text "Запустить backup сейчас" "Run backup now")"
+    menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "5" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
@@ -1629,10 +1668,13 @@ menu_section_status() {
     draw_subheader "$(tr_text "Раздел: Статус и диагностика" "Section: Status and diagnostics")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Проверка состояния скриптов, таймера и последних архивов." "Check scripts, timer and latest backup details.")"
+    menu_group "$(tr_text "Диагностика" "Diagnostics")" "$CLR_WARN"
     menu_option "1" "$(tr_text "Показать полный статус" "Show full status")"
     menu_option "2" "$(tr_text "Doctor: быстрая проверка настроек" "Doctor: quick configuration check")"
+    menu_group "$(tr_text "Диск" "Disk")" "$CLR_ACCENT"
     menu_option "3" "$(tr_text "Анализ использования диска" "Analyze disk usage")"
     menu_option "4" "$(tr_text "Безопасная очистка диска" "Safe disk cleanup")"
+    menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "5" "$(tr_text "Назад" "Back")"
     print_separator
     read -r -p "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")" choice
