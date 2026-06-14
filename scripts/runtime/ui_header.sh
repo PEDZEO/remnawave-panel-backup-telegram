@@ -43,6 +43,8 @@ draw_header_full() {
   local sub_state=""
   local bot_state=""
   local cabinet_state=""
+  local bot_profile=""
+  local cabinet_profile=""
   local ram_label=""
   local disk_label=""
   local ram_percent=""
@@ -51,6 +53,8 @@ draw_header_full() {
   local disk_color=""
   local panel_color=""
   local sub_color=""
+  local bot_color=""
+  local cabinet_color=""
   local panel_version=""
   local sub_version=""
   local bot_version=""
@@ -99,6 +103,12 @@ draw_header_full() {
   sub_state="$(container_state remnawave-subscription-page)"
   bot_state="$(container_state remnawave_bot)"
   cabinet_state="$(container_state cabinet_frontend)"
+  bot_color="$(state_color "$bot_state")"
+  cabinet_color="$(state_color "$cabinet_state")"
+  bot_profile="$(dashboard_bedolaga_repo_profile "$(detect_bedolaga_bot_dir || true)" "bot")"
+  cabinet_profile="$(dashboard_bedolaga_repo_profile "$(detect_bedolaga_cabinet_dir || true)" "cabinet")"
+  bot_state="$(dashboard_status_with_profile "$bot_state" "$bot_profile")"
+  cabinet_state="$(dashboard_status_with_profile "$cabinet_state" "$cabinet_profile")"
   panel_version="$(container_version_label remnawave)"
   sub_version="$(container_version_label remnawave-subscription-page)"
   bot_version="$(container_version_label remnawave_bot)"
@@ -255,9 +265,9 @@ draw_header_full() {
   fi
   if [[ "$show_bedolaga_header" == "1" ]]; then
     print_separator
-    paint_labeled_value "$(tr_text "Бот (bedolaga):" "Bot (bedolaga):")" "$bot_state" "$(state_color "$bot_state")"
+    paint_labeled_value "$(tr_text "Бот (bedolaga):" "Bot (bedolaga):")" "$bot_state" "$bot_color"
     paint_labeled_value "$(tr_text "Версия бота:" "Bot version:")" "$bot_version" "$CLR_ACCENT"
-    paint_labeled_value "$(tr_text "Кабинет (bedolaga):" "Cabinet (bedolaga):")" "$cabinet_state" "$(state_color "$cabinet_state")"
+    paint_labeled_value "$(tr_text "Кабинет (bedolaga):" "Cabinet (bedolaga):")" "$cabinet_state" "$cabinet_color"
     paint_labeled_value "$(tr_text "Версия кабинета:" "Cabinet version:")" "$cabinet_version" "$CLR_ACCENT"
   fi
   paint "$CLR_TITLE" "============================================================"
@@ -316,6 +326,54 @@ dashboard_section() {
 
 dashboard_gap() {
   paint "$CLR_TITLE" "║"
+}
+
+dashboard_bedolaga_repo_profile() {
+  local repo_dir="$1"
+  local component="$2"
+  local origin=""
+  local normalized=""
+
+  [[ -n "$repo_dir" && -d "${repo_dir}/.git" ]] || return 0
+  command -v git >/dev/null 2>&1 || return 0
+  origin="$(git -C "$repo_dir" remote get-url origin 2>/dev/null || true)"
+  [[ -n "$origin" ]] || return 0
+  normalized="${origin,,}"
+
+  case "${component}:${normalized}" in
+    bot:*github.com/pedzeo/remnawave-bedolaga-telegram-bot*|bot:*github.com:pedzeo/remnawave-bedolaga-telegram-bot*|cabinet:*github.com/pedzeo/cabinet-frontend*|cabinet:*github.com:pedzeo/cabinet-frontend*)
+      printf '%s' "fork"
+      return 0
+      ;;
+    bot:*github.com/bedolaga-dev/remnawave-bedolaga-telegram-bot*|bot:*github.com:bedolaga-dev/remnawave-bedolaga-telegram-bot*|cabinet:*github.com/bedolaga-dev/bedolaga-cabinet*|cabinet:*github.com:bedolaga-dev/bedolaga-cabinet*)
+      printf '%s' "official"
+      return 0
+      ;;
+  esac
+
+  printf '%s' "custom"
+}
+
+dashboard_bedolaga_profile_label() {
+  case "${1:-}" in
+    fork) tr_text "fork PEDZEO" "PEDZEO fork" ;;
+    official) tr_text "official" "official" ;;
+    custom) tr_text "custom repo" "custom repo" ;;
+    *) return 0 ;;
+  esac
+}
+
+dashboard_status_with_profile() {
+  local status="$1"
+  local profile="$2"
+  local profile_label=""
+
+  profile_label="$(dashboard_bedolaga_profile_label "$profile")"
+  if [[ -n "$profile_label" ]]; then
+    printf '%s (%s)' "$status" "$profile_label"
+  else
+    printf '%s' "$status"
+  fi
 }
 
 dashboard_bar() {
@@ -747,6 +805,10 @@ draw_header() {
   local sub_version_label=""
   local bot_status=""
   local cabinet_status=""
+  local bot_profile=""
+  local cabinet_profile=""
+  local bot_status_color=""
+  local cabinet_status_color=""
   local caddy_status=""
   local caddy_version=""
   local caddy_version_label=""
@@ -837,10 +899,16 @@ draw_header() {
   if docker inspect remnawave_bot >/dev/null 2>&1; then
     has_bot=1
     bot_status="$(container_state remnawave_bot)"
+    bot_status_color="$(state_color "$bot_status")"
+    bot_profile="$(dashboard_bedolaga_repo_profile "$(detect_bedolaga_bot_dir || true)" "bot")"
+    bot_status="$(dashboard_status_with_profile "$bot_status" "$bot_profile")"
   fi
   if docker inspect cabinet_frontend >/dev/null 2>&1; then
     has_cabinet=1
     cabinet_status="$(container_state cabinet_frontend)"
+    cabinet_status_color="$(state_color "$cabinet_status")"
+    cabinet_profile="$(dashboard_bedolaga_repo_profile "$(detect_bedolaga_cabinet_dir || true)" "cabinet")"
+    cabinet_status="$(dashboard_status_with_profile "$cabinet_status" "$cabinet_profile")"
   fi
   if docker inspect remnawave-caddy >/dev/null 2>&1; then
     has_caddy=1
@@ -961,11 +1029,11 @@ draw_header() {
     status_rows=$((status_rows + 1))
   fi
   if (( has_bot == 1 )); then
-    dashboard_line "Bedolaga Bot" "$bot_status" "$(state_color "$bot_status")" "$CLR_OK"
+    dashboard_line "Bedolaga Bot" "$bot_status" "$bot_status_color" "$CLR_OK"
     status_rows=$((status_rows + 1))
   fi
   if (( has_cabinet == 1 )); then
-    dashboard_line "Bedolaga Cabinet" "$cabinet_status" "$(state_color "$cabinet_status")" "$CLR_OK"
+    dashboard_line "Bedolaga Cabinet" "$cabinet_status" "$cabinet_status_color" "$CLR_OK"
     status_rows=$((status_rows + 1))
   fi
   if (( has_caddy == 1 )); then
