@@ -149,8 +149,8 @@ run_quick_backup_menu() {
       break
     fi
     case "$choice" in
-      1) run_backup_scope_selector "global"; break ;;
-      2) run_backup_scope_selector "bedolaga"; break ;;
+      1) if run_backup_scope_selector "global"; then break; fi ;;
+      2) if run_backup_scope_selector "bedolaga"; then break; fi ;;
       3) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac

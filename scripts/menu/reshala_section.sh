@@ -113,7 +113,7 @@ run_reshala_menu() {
   if ! cmd_path="$(reshala_command_path)"; then
     paint "$CLR_WARN" "$(tr_text "Reshala не найдена." "Reshala was not found.")"
     if ask_yes_no "$(tr_text "Установить Reshala сейчас?" "Install Reshala now?")" "y"; then
-      run_reshala_install_update
+      run_reshala_install_update || true
       cmd_path="$(reshala_command_path || true)"
     else
       answer_rc=$?
@@ -177,8 +177,8 @@ menu_section_reshala_integration() {
     fi
     case "$choice" in
       1) show_reshala_feature_map ;;
-      2) run_reshala_install_update ;;
-      3) run_reshala_menu ;;
+      2) run_reshala_install_update || true ;;
+      3) run_reshala_menu || true ;;
       4) show_reshala_install_status ;;
       5) show_reshala_uninstall_help ;;
       6) break ;;
