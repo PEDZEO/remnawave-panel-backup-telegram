@@ -1865,13 +1865,13 @@ interactive_menu() {
     menu_card_option "4" "$(tr_text "Статус и сервер" "Status and server")" "$(tr_text "Полный статус, doctor, проверка IP/сайтов/скорости, диск и очистка." "Full status, doctor, IP/site/speed checks, disk and cleanup.")" "$CLR_MUTED"
     menu_card_option "5" "Reshala toolbox" "$(tr_text "Отдельная страница внешнего набора функций Reshala." "Separate page for the external Reshala feature set.")" "$CLR_TITLE"
     menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
-    menu_option "0" "$(tr_text "Выход" "Exit")" "$CLR_DANGER"
+    menu_option "b" "$(tr_text "Назад / выход" "Back / exit")" "$CLR_DANGER"
     if [[ -n "$(ui_last_action_label)" ]]; then
       print_separator
       paint "$CLR_MUTED" "  $(tr_text "Последнее действие" "Last action"): $(ui_last_action_label)"
     fi
     menu_quick_hint "$(tr_text "Быстро: s = статус, d = doctor, c = сервер/сеть, n = backup сейчас." "Quick: s = status, d = doctor, c = server/network, n = backup now.")"
-    read_menu_choice action "$(tr_text "Выбор [1-5, s/d/c/n, 0 выход]: " "Choice [1-5, s/d/c/n, 0 exit]: ")"
+    read_menu_choice action "$(tr_text "Выбор [1-5, s/d/c/n, b выход]: " "Choice [1-5, s/d/c/n, b exit]: ")"
     if is_back_command "$action"; then
       echo "$(tr_text "Выход." "Cancelled.")"
       break

@@ -1086,6 +1086,6 @@ draw_header() {
   dashboard_section "WIDGETS" "$CLR_ACCENT"
   dashboard_line "USD/RUB" "$usd_rub_label" "$usd_rub_color" "$CLR_ACCENT"
   paint "$CLR_TITLE" "╚════════════════════════════════════════════════════════════"
-  paint "$CLR_MUTED" "  $(tr_text "Навигация: цифра = открыть, b/back = назад, 0 = выход." "Navigation: number = open, b/back = back, 0 = exit.")"
+  paint "$CLR_MUTED" "  $(tr_text "Навигация: цифра = открыть, b/back = назад или выход." "Navigation: number = open, b/back = back or exit.")"
   echo
 }
