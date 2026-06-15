@@ -47,23 +47,7 @@
 bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
 ```
 
-Быстрая проверка без изменений в системе:
-
-```bash
-MODE=doctor bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
-```
-
-Показать статус:
-
-```bash
-MODE=status bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
-```
-
-Запустить backup вручную:
-
-```bash
-MODE=backup bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
-```
+Все основные действия запускаются из меню: статус, doctor, ручной backup, restore, таймеры, Telegram, установка и обновление компонентов.
 
 ## Как выглядит логика меню
 
@@ -122,12 +106,7 @@ Remnawave Panel Backup Manager
 | `bedolaga-fork-db` | DB fork-версии Bedolaga |
 | `bedolaga-official-db` | DB official-версии Bedolaga |
 
-Пример запуска конкретного состава:
-
-```bash
-BACKUP_INCLUDE='all,bedolaga' MODE=backup \
-bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
-```
+Состав backup выбирается в меню. Для обычного использования ручные команды не нужны.
 
 ## Telegram
 
@@ -142,14 +121,7 @@ Telegram можно включить как дополнительную дос�
 - проверка отправки без выхода из меню;
 - разбиение больших архивов на части.
 
-Минимальный пример:
-
-```bash
-TELEGRAM_BOT_TOKEN='123456789:AA...' \
-TELEGRAM_ADMIN_ID='-1001234567890' \
-MODE=install \
-bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
-```
+Настройка Telegram находится в меню backup. Если токен или chat_id введены неверно, их можно исправить там же без выхода из скрипта.
 
 ## Расписание
 
@@ -163,43 +135,11 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backu
 - каждый час;
 - свой `OnCalendar`.
 
-Пример неинтерактивной настройки:
-
-```bash
-BACKUP_ON_CALENDAR_PANEL='*-*-* 03:40:00 UTC' \
-BACKUP_ON_CALENDAR_BEDOLAGA='*-*-* 00/6:00:00 UTC' \
-MODE=install \
-bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
-```
+Расписание настраивается в меню отдельно для панели и Bedolaga.
 
 ## Restore и миграция
 
-Восстановление можно запустить из меню, из локального файла или по прямой ссылке.
-
-Локальный архив:
-
-```bash
-MODE=restore \
-BACKUP_FILE='/var/backups/panel/pb-0614-180600.tar.gz' \
-bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
-```
-
-Архив по URL:
-
-```bash
-MODE=restore \
-BACKUP_URL='https://example.com/pb-0614-180600.tar.gz' \
-bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
-```
-
-Восстановить только часть:
-
-```bash
-MODE=restore \
-BACKUP_FILE='/var/backups/panel/pb-0614-180600.tar.gz' \
-RESTORE_ONLY='db,env,caddy' \
-bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
-```
+Восстановление запускается из меню. Можно выбрать локальный архив, указать URL и восстановить только нужные компоненты.
 
 Перед restore скрипт делает pre-restore snapshot важных файлов в:
 
@@ -330,7 +270,7 @@ USD/RUB          : загружено
 - Архивы с `.env` содержат токены, ключи и пароли. Не публикуйте их.
 - Для Telegram используйте отдельного бота и закрытый чат/канал.
 - Для переносов храните копию архива локально, даже если Telegram включен.
-- Для важных restore сначала проверьте `MODE=doctor` и статус контейнеров.
+- Для важных restore сначала откройте в меню раздел статуса, запустите Doctor и проверьте контейнеры.
 - Если пароль, токен или backup-архив попал в публичное место, считайте секрет скомпрометированным и замените его.
 
 ## Структура проекта
@@ -344,32 +284,6 @@ scripts/install/pipeline.sh        настройка env и systemd timers
 scripts/menu/*.sh                  интерактивные разделы меню
 scripts/runtime/*.sh               операции, UI, Bedolaga, RemnaNode
 systemd/*.service / *.timer        unit-файлы для автобэкапа
-```
-
-## Команды для обслуживания
-
-Проверить конфигурацию:
-
-```bash
-MODE=doctor bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
-```
-
-Показать статус:
-
-```bash
-MODE=status bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
-```
-
-Открыть меню на русском:
-
-```bash
-UI_LANG=ru bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
-```
-
-Запустить backup Remnawave + Bedolaga:
-
-```bash
-BACKUP_INCLUDE='all,bedolaga' MODE=backup bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backup-telegram/main/install.sh)
 ```
 
 ## Связь
