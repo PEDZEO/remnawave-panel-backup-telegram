@@ -29,6 +29,9 @@ draw_subheader() {
   fi
   paint "$CLR_TITLE" "╚${line}"
   echo
+  if declare -F ui_draw_screen_context >/dev/null 2>&1; then
+    ui_draw_screen_context
+  fi
 }
 
 draw_header_full() {

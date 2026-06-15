@@ -4,25 +4,49 @@
 run_component_flow_action() {
   local action_title="$1"
   local flow_func="$2"
+  shift 2
   local flow_rc=0
 
-  if "$flow_func"; then
-    paint "$CLR_OK" "$(tr_text "Операция завершена:" "Operation completed:") ${action_title}"
-    wait_for_enter
-    return 0
-  else
-    flow_rc=$?
+  if [[ "$#" -eq 0 ]]; then
+    set -- \
+      "$(tr_text "Будет запущен мастер выбранного действия: он покажет вопросы и предложит текущие значения по умолчанию." "The selected action wizard will run: it shows prompts and offers current values as defaults.")" \
+      "$(tr_text ".env, домены, токены и Caddyfile не меняются без отдельного вопроса внутри мастера." ".env, domains, tokens and Caddyfile are not changed without a separate prompt inside the wizard.")" \
+      "$(tr_text "Если что-то упадет, останется выбор: повторить действие или вернуться в меню." "If something fails, you can retry the action or return to the menu.")"
   fi
 
-  if [[ "$flow_rc" -eq 2 ]]; then
-    paint "$CLR_WARN" "$(tr_text "Операция пропущена:" "Operation skipped:") ${action_title}"
-    wait_for_enter
-    return 0
+  if [[ "$#" -gt 0 ]]; then
+    if ! confirm_action_preview "$action_title" "$@"; then
+      paint "$CLR_WARN" "$(tr_text "Операция отменена." "Operation cancelled.")"
+      ui_record_action "$action_title" "$(tr_text "отменено" "cancelled")"
+      wait_for_enter
+      return 0
+    fi
   fi
 
-  paint "$CLR_DANGER" "$(tr_text "Операция завершилась с ошибкой:" "Operation failed:") ${action_title}"
-  wait_for_enter
-  return 0
+  while true; do
+    if "$flow_func"; then
+      paint "$CLR_OK" "$(tr_text "Операция завершена:" "Operation completed:") ${action_title}"
+      ui_record_action "$action_title" "$(tr_text "успешно" "success")"
+      wait_for_enter
+      return 0
+    else
+      flow_rc=$?
+    fi
+
+    if [[ "$flow_rc" -eq 2 ]]; then
+      paint "$CLR_WARN" "$(tr_text "Операция пропущена:" "Operation skipped:") ${action_title}"
+      ui_record_action "$action_title" "$(tr_text "пропущено" "skipped")"
+      wait_for_enter
+      return 0
+    fi
+
+    if show_operation_failure_menu "$action_title" "$flow_rc"; then
+      ui_record_action "$action_title" "$(tr_text "ошибка, повтор" "failed, retry")"
+      continue
+    fi
+    ui_record_action "$action_title" "$(tr_text "ошибка" "failed")"
+    return 0
+  done
 }
 
 run_backup_with_scope() {
@@ -34,9 +58,11 @@ run_backup_with_scope() {
   draw_subheader "${action_title}"
   if run_backup_now; then
     paint "$CLR_OK" "$(tr_text "Резервная копия создана успешно." "Backup completed successfully.")"
+    ui_record_action "$action_title" "$(tr_text "backup готов" "backup done")"
     show_operation_result_summary "${action_title}" "1"
   else
     paint "$CLR_DANGER" "$(tr_text "Ошибка создания резервной копии. Проверьте лог выше." "Backup failed. Check the log above.")"
+    ui_record_action "$action_title" "$(tr_text "backup ошибка" "backup failed")"
     show_operation_result_summary "${action_title}" "0"
   fi
 
@@ -101,6 +127,33 @@ run_backup_scope_selector() {
         *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
       esac
     fi
+  done
+}
+
+run_quick_backup_menu() {
+  local choice=""
+
+  while true; do
+    ui_set_breadcrumb "$(tr_text "Главная / Быстрый backup" "Home / Quick backup")"
+    draw_subheader "$(tr_text "Быстрый backup" "Quick backup")"
+    show_back_hint
+    paint "$CLR_MUTED" "$(tr_text "Выберите профиль backup без поиска по разделам." "Choose a backup profile without navigating through sections.")"
+    menu_group "$(tr_text "Профиль" "Profile")" "$CLR_OK"
+    menu_option "1" "$(tr_text "Панель Remnawave" "Remnawave panel")"
+    menu_option "2" "Bedolaga"
+    menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
+    menu_option "3" "$(tr_text "Назад" "Back")"
+    print_separator
+    read_menu_choice choice "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")"
+    if is_back_command "$choice"; then
+      break
+    fi
+    case "$choice" in
+      1) run_backup_scope_selector "global"; break ;;
+      2) run_backup_scope_selector "bedolaga"; break ;;
+      3) break ;;
+      *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
+    esac
   done
 }
 
@@ -1146,6 +1199,7 @@ run_restore_wizard_flow() {
 menu_section_remnawave_install_update() {
   local choice=""
   while true; do
+    ui_set_breadcrumb "$(tr_text "Главная / Remnawave / Установка" "Home / Remnawave / Install")"
     draw_subheader "$(tr_text "Remnawave: установка и обновление" "Remnawave: install and update")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Операции установки и обновления панели, подписок и Caddy." "Install/update operations for panel, subscription and Caddy.")"
@@ -1206,6 +1260,7 @@ menu_section_remnawave_backup_restore() {
   local tg_state=""
   local enc_state=""
   while true; do
+    ui_set_breadcrumb "$(tr_text "Главная / Remnawave / Backup" "Home / Remnawave / Backup")"
     load_existing_env_defaults
     timer_state="$(systemctl_active_state panel-backup-panel.timer)"
     timer_enabled="$(systemctl_enabled_state panel-backup-panel.timer)"
@@ -1266,6 +1321,7 @@ menu_section_remnawave_backup_restore() {
 menu_section_remnawave_components() {
   local choice=""
   while true; do
+    ui_set_breadcrumb "$(tr_text "Главная / Remnawave" "Home / Remnawave")"
     draw_subheader "$(tr_text "Раздел: Компоненты Remnawave" "Section: Remnawave components")"
     show_back_hint
     menu_group "$(tr_text "Разделы" "Sections")" "$CLR_ACCENT"
@@ -1290,6 +1346,7 @@ menu_section_remnawave_components() {
 menu_section_bedolaga_install_update_official() {
   local choice=""
   while true; do
+    ui_set_breadcrumb "$(tr_text "Главная / Bedolaga / Установка / Official" "Home / Bedolaga / Install / Official")"
     draw_subheader "$(tr_text "Bedolaga: официальный стек" "Bedolaga: official stack")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Установка и раздельное обновление официального стека Bedolaga." "Install and separate update for the official Bedolaga stack.")"
@@ -1331,6 +1388,7 @@ menu_section_bedolaga_install_update_official() {
 menu_section_bedolaga_install_update_fork() {
   local choice=""
   while true; do
+    ui_set_breadcrumb "$(tr_text "Главная / Bedolaga / Установка / Fork PEDZEO" "Home / Bedolaga / Install / PEDZEO fork")"
     draw_subheader "$(tr_text "Bedolaga: fork PEDZEO" "Bedolaga: PEDZEO fork")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Автоустановка и раздельное безопасное обновление форка PEDZEO." "Auto-install and separate safe update for PEDZEO fork.")"
@@ -1372,6 +1430,7 @@ menu_section_bedolaga_install_update_fork() {
 menu_section_bedolaga_install_update() {
   local choice=""
   while true; do
+    ui_set_breadcrumb "$(tr_text "Главная / Bedolaga / Установка" "Home / Bedolaga / Install")"
     draw_subheader "$(tr_text "Bedolaga: установка и обновление" "Bedolaga: install and update")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Выберите ветку: официальный стек Bedolaga или fork PEDZEO." "Choose line: official Bedolaga stack or PEDZEO fork.")"
@@ -1397,6 +1456,7 @@ menu_section_bedolaga_install_update() {
 menu_section_bedolaga_backup_restore() {
   local choice=""
   while true; do
+    ui_set_breadcrumb "$(tr_text "Главная / Bedolaga / Backup" "Home / Bedolaga / Backup")"
     draw_subheader "$(tr_text "Bedolaga: backup и восстановление" "Bedolaga: backup and restore")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Локальные backup/restore и отдельный поток миграции на новый VPS." "Local backup/restore and a separate migration flow to a new VPS.")"
@@ -1428,6 +1488,7 @@ menu_section_bedolaga_backup_restore() {
 menu_section_bedolaga_components() {
   local choice=""
   while true; do
+    ui_set_breadcrumb "$(tr_text "Главная / Bedolaga" "Home / Bedolaga")"
     draw_subheader "$(tr_text "Раздел: Бот и кабинет Bedolaga" "Section: Bedolaga bot and cabinet")"
     show_back_hint
     menu_group "$(tr_text "Разделы" "Sections")" "$CLR_ACCENT"
@@ -1452,6 +1513,7 @@ menu_section_bedolaga_components() {
 menu_section_remnanode_components() {
   local choice=""
   while true; do
+    ui_set_breadcrumb "$(tr_text "Главная / RemnaNode" "Home / RemnaNode")"
     draw_subheader "$(tr_text "Раздел: Компоненты RemnaNode" "Section: RemnaNode components")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Базовые и сетевые инструменты для RemnaNode." "Basic and network tools for RemnaNode.")"
@@ -1680,6 +1742,11 @@ menu_section_timer_scope() {
   timer_label="$(timer_label_for_scope "$scope")"
 
   while true; do
+    if [[ "$scope" == "bedolaga" ]]; then
+      ui_set_breadcrumb "$(tr_text "Главная / Bedolaga / Backup / Таймер" "Home / Bedolaga / Backup / Timer")"
+    else
+      ui_set_breadcrumb "$(tr_text "Главная / Remnawave / Backup / Таймер" "Home / Remnawave / Backup / Timer")"
+    fi
     load_existing_env_defaults
     current_schedule="$(timer_schedule_for_scope "$scope")"
     timer_state="$(systemctl_active_state "$timer_unit")"
@@ -1744,6 +1811,7 @@ menu_section_timer_scope() {
 menu_section_status() {
   local choice=""
   while true; do
+    ui_set_breadcrumb "$(tr_text "Главная / Статус" "Home / Status")"
     draw_subheader "$(tr_text "Раздел: Статус и диагностика" "Section: Status and diagnostics")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Проверка состояния скриптов, таймера и последних архивов." "Check scripts, timer and latest backup details.")"
@@ -1788,28 +1856,51 @@ interactive_menu() {
   choose_ui_lang
 
   while true; do
+    ui_clear_breadcrumb
     draw_header "$(tr_text "Panel Backup Manager" "Panel Backup Manager")"
-    paint "$CLR_ACCENT" "  $(tr_text "Основные разделы" "Main sections")"
-    print_separator
-    menu_option "1" "$(tr_text "Bedolaga: бот, кабинет, backup, миграция" "Bedolaga: bot, cabinet, backup, migration")" "$CLR_OK"
-    menu_option "2" "$(tr_text "Remnawave: панель, подписки, backup" "Remnawave: panel, subscription page, backup")" "$CLR_ACCENT"
-    menu_option "3" "$(tr_text "RemnaNode: нода, Caddy, BBR, WARP" "RemnaNode: node, Caddy, BBR, WARP")" "$CLR_WARN"
-    menu_option "4" "$(tr_text "Статус, сервер, диск, очистка" "Status, server, disk, cleanup")" "$CLR_MUTED"
-    menu_option "5" "$(tr_text "Reshala toolbox: внешний набор функций" "Reshala toolbox: external feature set")" "$CLR_TITLE"
+    menu_group "$(tr_text "Основные разделы" "Main sections")" "$CLR_ACCENT"
+    menu_card_option "1" "Bedolaga" "$(tr_text "Бот, кабинет, backup, восстановление и миграция на новый VPS." "Bot, cabinet, backup, restore and migration to a new VPS.")" "$CLR_OK"
+    menu_card_option "2" "Remnawave" "$(tr_text "Панель, страница подписок, Caddy, backup и restore панели." "Panel, subscription page, Caddy, backup and panel restore.")" "$CLR_ACCENT"
+    menu_card_option "3" "RemnaNode" "$(tr_text "Нода, Caddy self-steal, BBR, WARP и IPv6." "Node, Caddy self-steal, BBR, WARP and IPv6.")" "$CLR_WARN"
+    menu_card_option "4" "$(tr_text "Статус и сервер" "Status and server")" "$(tr_text "Полный статус, doctor, проверка IP/сайтов/скорости, диск и очистка." "Full status, doctor, IP/site/speed checks, disk and cleanup.")" "$CLR_MUTED"
+    menu_card_option "5" "Reshala toolbox" "$(tr_text "Отдельная страница внешнего набора функций Reshala." "Separate page for the external Reshala feature set.")" "$CLR_TITLE"
+    menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
     menu_option "0" "$(tr_text "Выход" "Exit")" "$CLR_DANGER"
-    print_separator
-    read_menu_choice action "$(tr_text "Выбор [1-5, 0 выход]: " "Choice [1-5, 0 exit]: ")"
+    if [[ -n "$(ui_last_action_label)" ]]; then
+      print_separator
+      paint "$CLR_MUTED" "  $(tr_text "Последнее действие" "Last action"): $(ui_last_action_label)"
+    fi
+    menu_quick_hint "$(tr_text "Быстро: s = статус, d = doctor, c = сервер/сеть, n = backup сейчас." "Quick: s = status, d = doctor, c = server/network, n = backup now.")"
+    read_menu_choice action "$(tr_text "Выбор [1-5, s/d/c/n, 0 выход]: " "Choice [1-5, s/d/c/n, 0 exit]: ")"
     if is_back_command "$action"; then
       echo "$(tr_text "Выход." "Cancelled.")"
       break
     fi
 
     case "$action" in
-      1) menu_section_bedolaga_components ;;
-      2) menu_section_remnawave_components ;;
-      3) menu_section_remnanode_components ;;
-      4) menu_section_status ;;
-      5) menu_section_reshala_integration ;;
+      1) ui_set_breadcrumb "$(tr_text "Главная / Bedolaga" "Home / Bedolaga")"; menu_section_bedolaga_components ;;
+      2) ui_set_breadcrumb "$(tr_text "Главная / Remnawave" "Home / Remnawave")"; menu_section_remnawave_components ;;
+      3) ui_set_breadcrumb "$(tr_text "Главная / RemnaNode" "Home / RemnaNode")"; menu_section_remnanode_components ;;
+      4) ui_set_breadcrumb "$(tr_text "Главная / Статус" "Home / Status")"; menu_section_status ;;
+      5) ui_set_breadcrumb "$(tr_text "Главная / Reshala" "Home / Reshala")"; menu_section_reshala_integration ;;
+      s|S|status|Status)
+        ui_set_breadcrumb "$(tr_text "Главная / Быстрый статус" "Home / Quick status")"
+        show_status
+        wait_for_enter
+        ;;
+      d|D|doctor|Doctor)
+        ui_set_breadcrumb "$(tr_text "Главная / Doctor" "Home / Doctor")"
+        run_doctor_checks || true
+        wait_for_enter
+        ;;
+      c|C|check|Check|server|Server)
+        ui_set_breadcrumb "$(tr_text "Главная / Проверка сервера" "Home / Server check")"
+        run_server_checks || true
+        wait_for_enter
+        ;;
+      n|N|now|Now|backup|Backup)
+        run_quick_backup_menu
+        ;;
       0)
         echo "$(tr_text "Выход." "Cancelled.")"
         break

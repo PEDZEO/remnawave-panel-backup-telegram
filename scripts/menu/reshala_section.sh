@@ -154,6 +154,7 @@ menu_section_reshala_integration() {
   local choice=""
 
   while true; do
+    ui_set_breadcrumb "$(tr_text "Главная / Reshala" "Home / Reshala")"
     draw_subheader "$(tr_text "Раздел: Reshala toolbox" "Section: Reshala toolbox")"
     show_back_hint
     paint "$CLR_MUTED" "$(tr_text "Отдельная страница для внешнего проекта Reshala. Дает доступ ко всему его меню без копирования кода в наш репозиторий." "Separate page for the external Reshala project. Gives access to its full menu without copying its code into this repo.")"

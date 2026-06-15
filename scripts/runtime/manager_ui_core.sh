@@ -61,6 +61,178 @@ menu_hint() {
   fi
 }
 
+ui_set_breadcrumb() {
+  UI_BREADCRUMB="$1"
+}
+
+ui_clear_breadcrumb() {
+  UI_BREADCRUMB=""
+}
+
+ui_record_action() {
+  PBM_LAST_ACTION_TITLE="$1"
+  PBM_LAST_ACTION_STATUS="$2"
+}
+
+ui_last_action_label() {
+  if [[ -n "${PBM_LAST_ACTION_TITLE:-}" && -n "${PBM_LAST_ACTION_STATUS:-}" ]]; then
+    printf '%s: %s' "$PBM_LAST_ACTION_STATUS" "$PBM_LAST_ACTION_TITLE"
+  fi
+  return 0
+}
+
+ui_env_value() {
+  local key="$1"
+  local value=""
+
+  if [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+    eval "value=\"\${${key}:-}\""
+  fi
+  if [[ -z "$value" && -f /etc/panel-backup.env ]]; then
+    value="$(grep -E "^${key}=" /etc/panel-backup.env 2>/dev/null | head -n1 | cut -d= -f2- | tr -d '"' || true)"
+  fi
+  printf '%s' "$value"
+}
+
+ui_context_summary() {
+  local token=""
+  local chat=""
+  local panel_timer_state=""
+  local panel_timer_enabled=""
+  local bedolaga_timer_state=""
+  local bedolaga_timer_enabled=""
+  local latest_backup=""
+  local -a parts=()
+
+  token="$(ui_env_value TELEGRAM_BOT_TOKEN)"
+  chat="$(ui_env_value TELEGRAM_ADMIN_ID)"
+  if [[ -n "$token" && -n "$chat" ]]; then
+    parts+=("Telegram: $(tr_text "настроен" "configured")")
+  fi
+
+  panel_timer_state="$(systemctl_active_state panel-backup-panel.timer)"
+  panel_timer_enabled="$(systemctl_enabled_state panel-backup-panel.timer)"
+  if [[ "$panel_timer_state" == "active" || "$panel_timer_enabled" == "enabled" ]]; then
+    parts+=("$(tr_text "Панель timer" "Panel timer"): ${panel_timer_state}/${panel_timer_enabled}")
+  fi
+
+  bedolaga_timer_state="$(systemctl_active_state panel-backup-bedolaga.timer)"
+  bedolaga_timer_enabled="$(systemctl_enabled_state panel-backup-bedolaga.timer)"
+  if [[ "$bedolaga_timer_state" == "active" || "$bedolaga_timer_enabled" == "enabled" ]]; then
+    parts+=("Bedolaga timer: ${bedolaga_timer_state}/${bedolaga_timer_enabled}")
+  fi
+
+  latest_backup="$(ls -1t /var/backups/panel/pb-*.tar.gz /var/backups/panel/pb-*.tar.gz.gpg /var/backups/panel/panel-backup-*.tar.gz /var/backups/panel/panel-backup-*.tar.gz.gpg 2>/dev/null | head -n1 || true)"
+  if [[ -n "$latest_backup" ]]; then
+    parts+=("Backup: $(short_backup_label "$(basename "$latest_backup")")")
+  fi
+
+  local joined=""
+  local part=""
+  for part in "${parts[@]}"; do
+    if [[ -n "$joined" ]]; then
+      joined+=" · "
+    fi
+    joined+="$part"
+  done
+  printf '%s' "$joined"
+}
+
+ui_draw_screen_context() {
+  local summary=""
+  local printed=0
+
+  if [[ -n "${UI_BREADCRUMB:-}" ]]; then
+    paint "$CLR_MUTED" "  ${UI_BREADCRUMB}"
+    printed=1
+  fi
+
+  summary="$(ui_context_summary || true)"
+  if [[ -n "$summary" ]]; then
+    paint "$CLR_MUTED" "  ${summary}"
+    printed=1
+  fi
+
+  if (( printed == 1 )); then
+    echo
+  fi
+}
+
+menu_card_option() {
+  local key="$1"
+  local title="$2"
+  local description="$3"
+  local color="${4:-$CLR_ACCENT}"
+
+  if [[ "${MENU_OPTIONS_STARTED:-0}" != "1" ]]; then
+    if [[ "${MENU_SEPARATOR_PRINTED:-0}" != "1" ]]; then
+      print_separator
+    fi
+    MENU_OPTIONS_STARTED=1
+  fi
+
+  if [[ "$COLOR" == "1" ]]; then
+    printf "  %b[%s]%b %b%s%b\n" "$color" "$key" "$CLR_RESET" "${CLR_WHITE:-$color}" "$title" "$CLR_RESET"
+    printf "      %b%s%b\n" "$CLR_MUTED" "$description" "$CLR_RESET"
+  else
+    printf "  [%s] %s\n" "$key" "$title"
+    printf "      %s\n" "$description"
+  fi
+}
+
+menu_quick_hint() {
+  local text="$1"
+
+  print_separator
+  paint "$CLR_MUTED" "  ${text}"
+}
+
+show_action_preview() {
+  local action_title="$1"
+  shift || true
+
+  paint "$CLR_TITLE" "$(tr_text "План действия" "Action plan")"
+  paint "$CLR_MUTED" "  ${action_title}"
+  while [[ "$#" -gt 0 ]]; do
+    paint "$CLR_MUTED" "  - $1"
+    shift
+  done
+}
+
+confirm_action_preview() {
+  local action_title="$1"
+  shift || true
+
+  draw_subheader "$action_title" "$(tr_text "Подтверждение запуска" "Launch confirmation")"
+  show_action_preview "$action_title" "$@"
+  print_separator
+  ask_yes_no "$(tr_text "Запустить это действие сейчас?" "Run this action now?")" "y"
+}
+
+show_operation_failure_menu() {
+  local action_title="$1"
+  local rc="${2:-1}"
+  local choice=""
+
+  MENU_OPTIONS_STARTED=0
+  MENU_SEPARATOR_PRINTED=0
+  print_separator
+  paint "$CLR_DANGER" "$(tr_text "Операция завершилась с ошибкой:" "Operation failed:") ${action_title} (rc=${rc})"
+  paint "$CLR_MUTED" "$(tr_text "Лог выше оставлен на экране. Можно повторить действие или вернуться в меню." "The log above is left on screen. You can retry or return to the menu.")"
+  menu_group "$(tr_text "Что сделать дальше" "Next action")" "$CLR_WARN"
+  menu_option "1" "$(tr_text "Повторить действие" "Retry action")" "$CLR_WARN"
+  menu_option "2" "$(tr_text "Вернуться в меню" "Return to menu")" "$CLR_MUTED"
+  print_separator
+  read_menu_choice choice "$(tr_text "Выбор [1-2]: " "Choice [1-2]: ")"
+  if is_back_command "$choice"; then
+    return 1
+  fi
+  case "$choice" in
+    1) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 prompt_line() {
   local text="$1"
 

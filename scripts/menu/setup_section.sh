@@ -417,6 +417,7 @@ menu_flow_encryption_settings() {
   local password_state=""
 
   while true; do
+    ui_set_breadcrumb "$(tr_text "Главная / Backup / Шифрование" "Home / Backup / Encryption")"
     load_existing_env_defaults
     if [[ "${BACKUP_ENCRYPT:-0}" == "1" ]]; then
       encrypt_state="$(tr_text "включено (GPG)" "enabled (GPG)")"
@@ -651,6 +652,11 @@ menu_flow_telegram_settings() {
   local title=""
 
   while true; do
+    case "$scope" in
+      panel) ui_set_breadcrumb "$(tr_text "Главная / Remnawave / Backup / Telegram" "Home / Remnawave / Backup / Telegram")" ;;
+      bedolaga) ui_set_breadcrumb "$(tr_text "Главная / Bedolaga / Backup / Telegram" "Home / Bedolaga / Backup / Telegram")" ;;
+      *) ui_set_breadcrumb "$(tr_text "Главная / Backup / Telegram" "Home / Backup / Telegram")" ;;
+    esac
     load_existing_env_defaults
     if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
       token_state="$(mask_secret "$TELEGRAM_BOT_TOKEN")"
@@ -784,6 +790,11 @@ menu_flow_backup_scope_settings() {
   local scope_hint=""
 
   while true; do
+    case "$scope" in
+      panel) ui_set_breadcrumb "$(tr_text "Главная / Remnawave / Backup / Состав" "Home / Remnawave / Backup / Scope")" ;;
+      bedolaga) ui_set_breadcrumb "$(tr_text "Главная / Bedolaga / Backup / Состав" "Home / Bedolaga / Backup / Scope")" ;;
+      *) ui_set_breadcrumb "$(tr_text "Главная / Backup / Состав" "Home / Backup / Scope")" ;;
+    esac
     load_existing_env_defaults
     include_state="$(format_backup_scope_label "${BACKUP_INCLUDE:-all}")"
     case "$scope" in
@@ -895,6 +906,11 @@ menu_section_setup() {
   local section_hint=""
   BACKUP_SETUP_SCOPE="$setup_scope"
   while true; do
+    case "$setup_scope" in
+      panel) ui_set_breadcrumb "$(tr_text "Главная / Remnawave / Backup / Настройки" "Home / Remnawave / Backup / Settings")" ;;
+      bedolaga) ui_set_breadcrumb "$(tr_text "Главная / Bedolaga / Backup / Настройки" "Home / Bedolaga / Backup / Settings")" ;;
+      *) ui_set_breadcrumb "$(tr_text "Главная / Backup / Настройки" "Home / Backup / Settings")" ;;
+    esac
     load_existing_env_defaults
     if [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_ADMIN_ID:-}" ]]; then
       tg_state="$(tr_text "настроен" "configured")"
