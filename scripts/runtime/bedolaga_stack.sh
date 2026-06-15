@@ -853,13 +853,53 @@ bedolaga_ensure_shared_network() {
 
 bedolaga_connect_container_to_network() {
   local container_name="$1"
+  shift || true
+  local alias_name=""
+  local -a connect_args=()
+
   if ! $SUDO docker ps -a --format '{{.Names}}' | grep -qx "$container_name"; then
     return 0
   fi
   if $SUDO docker inspect "$container_name" --format '{{json .NetworkSettings.Networks}}' | grep -q "\"${BEDOLAGA_SHARED_NETWORK}\""; then
     return 0
   fi
-  $SUDO docker network connect "$BEDOLAGA_SHARED_NETWORK" "$container_name" >/dev/null 2>&1 || true
+  for alias_name in "$@"; do
+    [[ -n "$alias_name" ]] || continue
+    connect_args+=(--alias "$alias_name")
+  done
+  if ! $SUDO docker network connect "${connect_args[@]}" "$BEDOLAGA_SHARED_NETWORK" "$container_name" >/dev/null 2>&1; then
+    paint "$CLR_WARN" "$(tr_text "Не удалось подключить контейнер к сети Bedolaga:" "Failed to connect container to Bedolaga network:") ${container_name}"
+    return 1
+  fi
+}
+
+bedolaga_current_caddy_container() {
+  local container=""
+
+  if [[ -n "${CADDY_CONTAINER_NAME:-}" ]] && $SUDO docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CADDY_CONTAINER_NAME"; then
+    printf '%s\n' "$CADDY_CONTAINER_NAME"
+    return 0
+  fi
+
+  for container in remnawave-caddy remnawave_caddy caddy; do
+    if $SUDO docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$container"; then
+      printf '%s\n' "$container"
+      return 0
+    fi
+  done
+
+  if [[ -n "${CADDY_CONTAINER_NAME:-}" ]] && $SUDO docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$CADDY_CONTAINER_NAME"; then
+    printf '%s\n' "$CADDY_CONTAINER_NAME"
+    return 0
+  fi
+
+  for container in remnawave-caddy remnawave_caddy caddy; do
+    if $SUDO docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$container"; then
+      printf '%s\n' "$container"
+      return 0
+    fi
+  done
+  return 1
 }
 
 bedolaga_collect_container_logs_if_needed() {
@@ -907,6 +947,7 @@ bedolaga_post_deploy_health_check() {
   local cabinet_port="${1:-3020}"
   local check_caddy="${2:-1}"
   local failed="0"
+  local caddy_container=""
 
   paint "$CLR_ACCENT" "$(tr_text "Проверяю состояние контейнеров Bedolaga..." "Checking Bedolaga container health...")"
   bedolaga_collect_container_logs_if_needed "remnawave_bot" "$cabinet_port" || failed="1"
@@ -914,7 +955,13 @@ bedolaga_post_deploy_health_check() {
   bedolaga_collect_container_logs_if_needed "remnawave_bot_redis" "$cabinet_port" || failed="1"
   bedolaga_collect_container_logs_if_needed "cabinet_frontend" "$cabinet_port" || failed="1"
   if [[ "$check_caddy" == "1" ]]; then
-    bedolaga_collect_container_logs_if_needed "remnawave-caddy" "$cabinet_port" || failed="1"
+    caddy_container="$(bedolaga_current_caddy_container || true)"
+    if [[ -n "$caddy_container" ]]; then
+      bedolaga_collect_container_logs_if_needed "$caddy_container" "$cabinet_port" || failed="1"
+    else
+      paint "$CLR_DANGER" "$(tr_text "Docker Caddy не найден для проверки здоровья." "Docker Caddy was not found for health check.")"
+      failed="1"
+    fi
   fi
 
   if [[ "$failed" == "1" ]]; then
@@ -1027,25 +1074,40 @@ bedolaga_compose_up_build() {
 }
 
 bedolaga_attach_stack_to_shared_network() {
+  local caddy_container=""
+
   bedolaga_ensure_shared_network || return 1
-  bedolaga_connect_container_to_network "remnawave_bot"
-  bedolaga_connect_container_to_network "remnawave_bot_db"
-  bedolaga_connect_container_to_network "remnawave_bot_redis"
-  bedolaga_connect_container_to_network "cabinet_frontend"
-  bedolaga_connect_container_to_network "remnawave-caddy"
+  bedolaga_connect_container_to_network "remnawave_bot" "remnawave_bot" "bot" || return 1
+  bedolaga_connect_container_to_network "remnawave_bot_db" "remnawave_bot_db" "db" "postgres" || return 1
+  bedolaga_connect_container_to_network "remnawave_bot_redis" "remnawave_bot_redis" "redis" || return 1
+  bedolaga_connect_container_to_network "cabinet_frontend" "cabinet_frontend" "cabinet-frontend" || return 1
+
+  caddy_container="$(bedolaga_current_caddy_container || true)"
+  if [[ -n "$caddy_container" ]]; then
+    bedolaga_connect_container_to_network "$caddy_container" "$caddy_container" "caddy" || return 1
+  fi
 }
 
 bedolaga_verify_caddy_upstream_dns() {
+  local quiet="${1:-0}"
+  local caddy_container=""
   local target=""
   local resolver_cmd=""
 
-  if ! $SUDO docker ps --format '{{.Names}}' | grep -qx "remnawave-caddy"; then
+  caddy_container="$(bedolaga_current_caddy_container || true)"
+  if [[ -z "$caddy_container" ]]; then
+    [[ "$quiet" == "1" ]] || paint "$CLR_WARN" "$(tr_text "Docker Caddy не найден для проверки DNS." "Docker Caddy was not found for DNS check.")"
+    return 1
+  fi
+  if ! $SUDO docker ps --format '{{.Names}}' | grep -qx "$caddy_container"; then
+    [[ "$quiet" == "1" ]] || paint "$CLR_WARN" "$(tr_text "Docker Caddy найден, но контейнер не запущен:" "Docker Caddy was found, but the container is not running:") ${caddy_container}"
     return 1
   fi
 
   for target in remnawave_bot cabinet_frontend; do
-    resolver_cmd="getent hosts ${target} >/dev/null 2>&1 || nslookup ${target} 127.0.0.11 >/dev/null 2>&1"
-    if ! $SUDO docker exec remnawave-caddy sh -lc "$resolver_cmd" >/dev/null 2>&1; then
+    resolver_cmd="getent hosts ${target} >/dev/null 2>&1 || nslookup ${target} 127.0.0.11 >/dev/null 2>&1 || ping -c 1 -W 1 ${target} >/dev/null 2>&1"
+    if ! $SUDO docker exec "$caddy_container" sh -lc "$resolver_cmd" >/dev/null 2>&1; then
+      [[ "$quiet" == "1" ]] || paint "$CLR_WARN" "$(tr_text "Caddy не видит контейнер Bedolaga по DNS:" "Caddy cannot resolve Bedolaga container DNS:") ${target} (${caddy_container})"
       return 1
     fi
   done
@@ -1053,14 +1115,19 @@ bedolaga_verify_caddy_upstream_dns() {
 }
 
 bedolaga_repair_shared_network_if_needed() {
+  local caddy_container=""
+
   bedolaga_attach_stack_to_shared_network || return 1
-  if bedolaga_verify_caddy_upstream_dns; then
+  if bedolaga_verify_caddy_upstream_dns "1"; then
     return 0
   fi
 
   paint "$CLR_WARN" "$(tr_text "Обнаружена проблема связи Caddy -> Bedolaga, выполняю автопочинку сети..." "Detected Caddy -> Bedolaga connectivity issue, running network auto-repair...")"
   bedolaga_attach_stack_to_shared_network || return 1
-  $SUDO docker restart remnawave-caddy >/dev/null 2>&1 || true
+  caddy_container="$(bedolaga_current_caddy_container || true)"
+  if [[ -n "$caddy_container" ]]; then
+    $SUDO docker restart "$caddy_container" >/dev/null 2>&1 || true
+  fi
   sleep 2
 
   if ! bedolaga_verify_caddy_upstream_dns; then
@@ -1106,6 +1173,7 @@ bedolaga_verify_cabinet_ws_route() {
   local attempts=6
   local i=1
   local check_result=0
+  local caddy_container=""
 
   while (( i <= attempts )); do
     bedolaga_check_cabinet_ws_route "$cabinet_domain"
@@ -1122,7 +1190,10 @@ bedolaga_verify_cabinet_ws_route() {
   done
 
   paint "$CLR_WARN" "$(tr_text "Похоже, /cabinet/ws попадает не в backend. Перезапускаю Caddy и проверяю снова..." "Looks like /cabinet/ws is not reaching backend. Restarting Caddy and checking again...")"
-  $SUDO docker restart remnawave-caddy >/dev/null 2>&1 || true
+  caddy_container="$(bedolaga_current_caddy_container || true)"
+  if [[ -n "$caddy_container" ]]; then
+    $SUDO docker restart "$caddy_container" >/dev/null 2>&1 || true
+  fi
   sleep 3
 
   bedolaga_check_cabinet_ws_route "$cabinet_domain"

@@ -108,6 +108,20 @@ bedolaga_detect_caddy_runtime() {
   CADDY_FILE_PATH=""
 
   for container in remnawave-caddy remnawave_caddy caddy; do
+    if $SUDO docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$container"; then
+      inspect_path="$($SUDO docker inspect "$container" \
+        --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{println .Source}}{{end}}{{end}}' \
+        2>/dev/null | head -n1 || true)"
+      if [[ -n "$inspect_path" && -f "$inspect_path" ]]; then
+        CADDY_MODE="container"
+        CADDY_CONTAINER_NAME="$container"
+        CADDY_FILE_PATH="$inspect_path"
+        return 0
+      fi
+    fi
+  done
+
+  for container in remnawave-caddy remnawave_caddy caddy; do
     if $SUDO docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$container"; then
       inspect_path="$($SUDO docker inspect "$container" \
         --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{println .Source}}{{end}}{{end}}' \
