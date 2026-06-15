@@ -1292,16 +1292,20 @@ menu_section_bedolaga_install_update_official() {
   while true; do
     draw_subheader "$(tr_text "Bedolaga: официальный стек" "Bedolaga: official stack")"
     show_back_hint
-    paint "$CLR_MUTED" "$(tr_text "Установка и обновление официального стека Bedolaga (бот + кабинет)." "Install and update for the official Bedolaga stack (bot + cabinet).")"
+    paint "$CLR_MUTED" "$(tr_text "Установка и раздельное обновление официального стека Bedolaga." "Install and separate update for the official Bedolaga stack.")"
     menu_group "$(tr_text "Установка" "Install")" "$CLR_OK"
     menu_option "1" "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")"
     menu_group "$(tr_text "Обновление" "Update")" "$CLR_WARN"
-    menu_option "2" "$(tr_text "Подтянуть обновления из git и перезапустить" "Pull updates from git and restart")"
-    menu_hint "$(tr_text "Бот + кабинет: git fetch/pull, docker compose up -d --build. .env и Caddyfile не трогаются." "Bot + cabinet: git fetch/pull, docker compose up -d --build. .env and Caddyfile are untouched.")"
+    menu_option "2" "$(tr_text "Обновить весь стек (бот + кабинет)" "Update full stack (bot + cabinet)")"
+    menu_hint "$(tr_text "Оба репозитория: git pull, пересборка бота и кабинета. .env и Caddyfile не трогаются." "Both repositories: git pull, bot and cabinet rebuild. .env and Caddyfile are untouched.")"
+    menu_option "3" "$(tr_text "Обновить только бот" "Update bot only")"
+    menu_hint "$(tr_text "Только репозиторий и контейнеры бота: bot + DB + Redis." "Only bot repository and containers: bot + DB + Redis.")"
+    menu_option "4" "$(tr_text "Обновить только кабинет" "Update cabinet only")"
+    menu_hint "$(tr_text "Только репозиторий и контейнер кабинета, без пересборки бота." "Only cabinet repository and container, without rebuilding the bot.")"
     menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
-    menu_option "3" "$(tr_text "Назад" "Back")"
+    menu_option "5" "$(tr_text "Назад" "Back")"
     print_separator
-    read_menu_choice choice "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")"
+    read_menu_choice choice "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")"
     if is_back_command "$choice"; then
       break
     fi
@@ -1310,9 +1314,15 @@ menu_section_bedolaga_install_update_official() {
         run_component_flow_action "$(tr_text "Установить Bedolaga (бот + кабинет + Caddy)" "Install Bedolaga (bot + cabinet + Caddy)")" run_bedolaga_stack_install_flow
         ;;
       2)
-        run_component_flow_action "$(tr_text "Подтянуть обновления Bedolaga из git и перезапустить" "Pull Bedolaga updates from git and restart")" run_bedolaga_stack_update_flow
+        run_component_flow_action "$(tr_text "Обновить весь стек Bedolaga" "Update full Bedolaga stack")" run_bedolaga_stack_update_flow
         ;;
-      3) break ;;
+      3)
+        run_component_flow_action "$(tr_text "Обновить только бот Bedolaga" "Update Bedolaga bot only")" run_bedolaga_bot_update_flow
+        ;;
+      4)
+        run_component_flow_action "$(tr_text "Обновить только кабинет Bedolaga" "Update Bedolaga cabinet only")" run_bedolaga_cabinet_update_flow
+        ;;
+      5) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done
@@ -1323,15 +1333,20 @@ menu_section_bedolaga_install_update_fork() {
   while true; do
     draw_subheader "$(tr_text "Bedolaga: fork PEDZEO" "Bedolaga: PEDZEO fork")"
     show_back_hint
-    paint "$CLR_MUTED" "$(tr_text "Автоустановка и безопасное автообновление форка PEDZEO." "Auto-install and safe auto-update for PEDZEO fork.")"
+    paint "$CLR_MUTED" "$(tr_text "Автоустановка и раздельное безопасное обновление форка PEDZEO." "Auto-install and separate safe update for PEDZEO fork.")"
     menu_group "$(tr_text "Установка" "Install")" "$CLR_OK"
     menu_option "1" "$(tr_text "Автоустановка форка PEDZEO (бот + кабинет + Caddy)" "Auto-install PEDZEO fork (bot + cabinet + Caddy)")"
     menu_group "$(tr_text "Обновление" "Update")" "$CLR_WARN"
-    menu_option "2" "$(tr_text "Автообновление форка PEDZEO (safe)" "Auto-update PEDZEO fork (safe)")"
+    menu_option "2" "$(tr_text "Обновить весь форк PEDZEO (safe)" "Update full PEDZEO fork (safe)")"
+    menu_hint "$(tr_text "Бот + кабинет: переключение на PEDZEO origin, git update, пересборка обоих." "Bot + cabinet: switch to PEDZEO origin, git update, rebuild both.")"
+    menu_option "3" "$(tr_text "Обновить только бот форка" "Update fork bot only")"
+    menu_hint "$(tr_text "Только bot-репозиторий PEDZEO и контейнеры бота." "Only PEDZEO bot repository and bot containers.")"
+    menu_option "4" "$(tr_text "Обновить только кабинет форка" "Update fork cabinet only")"
+    menu_hint "$(tr_text "Только cabinet-репозиторий PEDZEO и контейнер кабинета." "Only PEDZEO cabinet repository and cabinet container.")"
     menu_group "$(tr_text "Навигация" "Navigation")" "$CLR_MUTED"
-    menu_option "3" "$(tr_text "Назад" "Back")"
+    menu_option "5" "$(tr_text "Назад" "Back")"
     print_separator
-    read_menu_choice choice "$(tr_text "Выбор [1-3]: " "Choice [1-3]: ")"
+    read_menu_choice choice "$(tr_text "Выбор [1-5]: " "Choice [1-5]: ")"
     if is_back_command "$choice"; then
       break
     fi
@@ -1340,9 +1355,15 @@ menu_section_bedolaga_install_update_fork() {
         run_component_flow_action "$(tr_text "Автоустановка форка PEDZEO (бот + кабинет + Caddy)" "Auto-install PEDZEO fork (bot + cabinet + Caddy)")" run_bedolaga_stack_install_fork_flow
         ;;
       2)
-        run_component_flow_action "$(tr_text "Автообновление форка PEDZEO (safe)" "Auto-update PEDZEO fork (safe)")" run_bedolaga_stack_update_fork_flow
+        run_component_flow_action "$(tr_text "Обновить весь форк PEDZEO (safe)" "Update full PEDZEO fork (safe)")" run_bedolaga_stack_update_fork_flow
         ;;
-      3) break ;;
+      3)
+        run_component_flow_action "$(tr_text "Обновить только бот форка PEDZEO (safe)" "Update PEDZEO fork bot only (safe)")" run_bedolaga_bot_update_fork_flow
+        ;;
+      4)
+        run_component_flow_action "$(tr_text "Обновить только кабинет форка PEDZEO (safe)" "Update PEDZEO fork cabinet only (safe)")" run_bedolaga_cabinet_update_fork_flow
+        ;;
+      5) break ;;
       *) paint "$CLR_WARN" "$(tr_text "Некорректный выбор." "Invalid choice.")"; wait_for_enter ;;
     esac
   done

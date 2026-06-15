@@ -946,14 +946,39 @@ bedolaga_collect_container_logs_if_needed() {
 bedolaga_post_deploy_health_check() {
   local cabinet_port="${1:-3020}"
   local check_caddy="${2:-1}"
+  local component_scope="${3:-all}"
   local failed="0"
   local caddy_container=""
+  local check_bot="0"
+  local check_cabinet="0"
+
+  case "$component_scope" in
+    all)
+      check_bot="1"
+      check_cabinet="1"
+      ;;
+    bot)
+      check_bot="1"
+      ;;
+    cabinet)
+      check_cabinet="1"
+      ;;
+    *)
+      paint "$CLR_WARN" "$(tr_text "Неизвестный режим проверки Bedolaga, проверяю весь стек:" "Unknown Bedolaga health scope, checking full stack:") ${component_scope}"
+      check_bot="1"
+      check_cabinet="1"
+      ;;
+  esac
 
   paint "$CLR_ACCENT" "$(tr_text "Проверяю состояние контейнеров Bedolaga..." "Checking Bedolaga container health...")"
-  bedolaga_collect_container_logs_if_needed "remnawave_bot" "$cabinet_port" || failed="1"
-  bedolaga_collect_container_logs_if_needed "remnawave_bot_db" "$cabinet_port" || failed="1"
-  bedolaga_collect_container_logs_if_needed "remnawave_bot_redis" "$cabinet_port" || failed="1"
-  bedolaga_collect_container_logs_if_needed "cabinet_frontend" "$cabinet_port" || failed="1"
+  if [[ "$check_bot" == "1" ]]; then
+    bedolaga_collect_container_logs_if_needed "remnawave_bot" "$cabinet_port" || failed="1"
+    bedolaga_collect_container_logs_if_needed "remnawave_bot_db" "$cabinet_port" || failed="1"
+    bedolaga_collect_container_logs_if_needed "remnawave_bot_redis" "$cabinet_port" || failed="1"
+  fi
+  if [[ "$check_cabinet" == "1" ]]; then
+    bedolaga_collect_container_logs_if_needed "cabinet_frontend" "$cabinet_port" || failed="1"
+  fi
   if [[ "$check_caddy" == "1" ]]; then
     caddy_container="$(bedolaga_current_caddy_container || true)"
     if [[ -n "$caddy_container" ]]; then
@@ -1075,12 +1100,55 @@ bedolaga_compose_up_build() {
 
 bedolaga_attach_stack_to_shared_network() {
   local caddy_container=""
+  local target=""
+  local connect_all="0"
+  local connect_bot="0"
+  local connect_db="0"
+  local connect_redis="0"
+  local connect_cabinet="0"
+  local -a targets=("$@")
+
+  if [[ "${#targets[@]}" -eq 0 ]]; then
+    connect_all="1"
+  fi
+
+  if [[ "$connect_all" == "1" ]]; then
+    connect_bot="1"
+    connect_db="1"
+    connect_redis="1"
+    connect_cabinet="1"
+  else
+    for target in "${targets[@]}"; do
+      case "$target" in
+        remnawave_bot|bot)
+          connect_bot="1"
+          ;;
+        remnawave_bot_db|db|postgres)
+          connect_db="1"
+          ;;
+        remnawave_bot_redis|redis)
+          connect_redis="1"
+          ;;
+        cabinet_frontend|cabinet|cabinet-frontend)
+          connect_cabinet="1"
+          ;;
+      esac
+    done
+  fi
 
   bedolaga_ensure_shared_network || return 1
-  bedolaga_connect_container_to_network "remnawave_bot" "remnawave_bot" "bot" || return 1
-  bedolaga_connect_container_to_network "remnawave_bot_db" "remnawave_bot_db" "db" "postgres" || return 1
-  bedolaga_connect_container_to_network "remnawave_bot_redis" "remnawave_bot_redis" "redis" || return 1
-  bedolaga_connect_container_to_network "cabinet_frontend" "cabinet_frontend" "cabinet-frontend" || return 1
+  if [[ "$connect_bot" == "1" ]]; then
+    bedolaga_connect_container_to_network "remnawave_bot" "remnawave_bot" "bot" || return 1
+  fi
+  if [[ "$connect_db" == "1" ]]; then
+    bedolaga_connect_container_to_network "remnawave_bot_db" "remnawave_bot_db" "db" "postgres" || return 1
+  fi
+  if [[ "$connect_redis" == "1" ]]; then
+    bedolaga_connect_container_to_network "remnawave_bot_redis" "remnawave_bot_redis" "redis" || return 1
+  fi
+  if [[ "$connect_cabinet" == "1" ]]; then
+    bedolaga_connect_container_to_network "cabinet_frontend" "cabinet_frontend" "cabinet-frontend" || return 1
+  fi
 
   caddy_container="$(bedolaga_current_caddy_container || true)"
   if [[ -n "$caddy_container" ]]; then
@@ -1089,10 +1157,20 @@ bedolaga_attach_stack_to_shared_network() {
 }
 
 bedolaga_verify_caddy_upstream_dns() {
-  local quiet="${1:-0}"
+  local quiet="0"
   local caddy_container=""
   local target=""
   local resolver_cmd=""
+  local -a targets=()
+
+  if [[ "${1:-}" == "0" || "${1:-}" == "1" ]]; then
+    quiet="$1"
+    shift || true
+  fi
+  targets=("$@")
+  if [[ "${#targets[@]}" -eq 0 ]]; then
+    targets=(remnawave_bot cabinet_frontend)
+  fi
 
   caddy_container="$(bedolaga_current_caddy_container || true)"
   if [[ -z "$caddy_container" ]]; then
@@ -1104,7 +1182,7 @@ bedolaga_verify_caddy_upstream_dns() {
     return 1
   fi
 
-  for target in remnawave_bot cabinet_frontend; do
+  for target in "${targets[@]}"; do
     resolver_cmd="getent hosts ${target} >/dev/null 2>&1 || nslookup ${target} 127.0.0.11 >/dev/null 2>&1 || ping -c 1 -W 1 ${target} >/dev/null 2>&1"
     if ! $SUDO docker exec "$caddy_container" sh -lc "$resolver_cmd" >/dev/null 2>&1; then
       [[ "$quiet" == "1" ]] || paint "$CLR_WARN" "$(tr_text "Caddy не видит контейнер Bedolaga по DNS:" "Caddy cannot resolve Bedolaga container DNS:") ${target} (${caddy_container})"
@@ -1116,25 +1194,36 @@ bedolaga_verify_caddy_upstream_dns() {
 
 bedolaga_repair_shared_network_if_needed() {
   local caddy_container=""
+  local -a targets=("$@")
+  local target_list=""
+  local target=""
 
-  bedolaga_attach_stack_to_shared_network || return 1
-  if bedolaga_verify_caddy_upstream_dns "1"; then
+  bedolaga_attach_stack_to_shared_network "${targets[@]}" || return 1
+  if bedolaga_verify_caddy_upstream_dns "1" "${targets[@]}"; then
     return 0
   fi
 
   paint "$CLR_WARN" "$(tr_text "Обнаружена проблема связи Caddy -> Bedolaga, выполняю автопочинку сети..." "Detected Caddy -> Bedolaga connectivity issue, running network auto-repair...")"
-  bedolaga_attach_stack_to_shared_network || return 1
+  bedolaga_attach_stack_to_shared_network "${targets[@]}" || return 1
   caddy_container="$(bedolaga_current_caddy_container || true)"
   if [[ -n "$caddy_container" ]]; then
     $SUDO docker restart "$caddy_container" >/dev/null 2>&1 || true
   fi
   sleep 2
 
-  if ! bedolaga_verify_caddy_upstream_dns; then
+  if ! bedolaga_verify_caddy_upstream_dns "0" "${targets[@]}"; then
     paint "$CLR_DANGER" "$(tr_text "Не удалось восстановить DNS-маршрутизацию между Caddy и контейнерами Bedolaga." "Failed to restore DNS routing between Caddy and Bedolaga containers.")"
     return 1
   fi
-  paint "$CLR_OK" "$(tr_text "Сеть Bedolaga восстановлена: Caddy видит remnawave_bot и cabinet_frontend." "Bedolaga network repaired: Caddy resolves remnawave_bot and cabinet_frontend.")"
+  if [[ "${#targets[@]}" -eq 0 ]]; then
+    target_list="remnawave_bot, cabinet_frontend"
+  else
+    for target in "${targets[@]}"; do
+      [[ -n "$target_list" ]] && target_list+=", "
+      target_list+="$target"
+    done
+  fi
+  paint "$CLR_OK" "$(tr_text "Сеть Bedolaga восстановлена: Caddy видит" "Bedolaga network repaired: Caddy resolves") ${target_list}."
   return 0
 }
 
@@ -1528,13 +1617,41 @@ run_bedolaga_stack_update_with_repos() {
   local bot_repo="$1"
   local cabinet_repo="$2"
   local fork_mode="${3:-0}"
-  local flow_title="${4:-$(tr_text "Bedolaga: обновление (бот + кабинет)" "Bedolaga: update (bot + cabinet)")}"
+  local flow_title="${4:-}"
+  local update_scope="${5:-all}"
   local bot_dir=""
   local cabinet_dir=""
   local cabinet_port="3020"
   local bot_env_file=""
   local cabinet_env_file=""
   local check_caddy="0"
+  local update_bot="0"
+  local update_cabinet="0"
+  local scope_label=""
+  local -a caddy_targets=()
+
+  case "$update_scope" in
+    all)
+      update_bot="1"
+      update_cabinet="1"
+      scope_label="$(tr_text "бот + кабинет" "bot + cabinet")"
+      ;;
+    bot)
+      update_bot="1"
+      scope_label="$(tr_text "только бот" "bot only")"
+      ;;
+    cabinet)
+      update_cabinet="1"
+      scope_label="$(tr_text "только кабинет" "cabinet only")"
+      ;;
+    *)
+      paint "$CLR_DANGER" "$(tr_text "Неизвестный режим обновления Bedolaga:" "Unknown Bedolaga update scope:") ${update_scope}"
+      return 1
+      ;;
+  esac
+  if [[ -z "$flow_title" ]]; then
+    flow_title="$(tr_text "Bedolaga: обновление" "Bedolaga: update") (${scope_label})"
+  fi
 
   draw_subheader "${flow_title}"
 
@@ -1545,62 +1662,99 @@ run_bedolaga_stack_update_with_repos() {
     return 1
   fi
 
-  bot_dir="$(bedolaga_detect_bot_repo_dir || true)"
-  cabinet_dir="$(bedolaga_detect_cabinet_repo_dir || true)"
-  bot_env_file="${bot_dir}/.env"
-  cabinet_env_file="${cabinet_dir}/.env"
-  if [[ -z "$bot_dir" || ! -d "${bot_dir}/.git" ]]; then
+  if [[ "$update_bot" == "1" ]]; then
+    bot_dir="$(bedolaga_detect_bot_repo_dir || true)"
+  fi
+  if [[ "$update_cabinet" == "1" ]]; then
+    cabinet_dir="$(bedolaga_detect_cabinet_repo_dir || true)"
+  fi
+  if [[ "$update_bot" == "1" && ( -z "$bot_dir" || ! -d "${bot_dir}/.git" ) ]]; then
     paint "$CLR_DANGER" "$(tr_text "Не найден установленный репозиторий бота (ожидаемые пути: /root/remnawave-bedolaga-telegram-bot, /opt/remnawave-bedolaga-telegram-bot)" "Installed bot repository not found (expected paths: /root/remnawave-bedolaga-telegram-bot, /opt/remnawave-bedolaga-telegram-bot)")"
     return 1
   fi
-  if [[ -z "$cabinet_dir" || ! -d "${cabinet_dir}/.git" ]]; then
+  if [[ "$update_cabinet" == "1" && ( -z "$cabinet_dir" || ! -d "${cabinet_dir}/.git" ) ]]; then
     paint "$CLR_DANGER" "$(tr_text "Не найден установленный репозиторий кабинета (ожидаемые пути: /root/bedolaga-cabinet, /root/cabinet-frontend, /opt/bedolaga-cabinet, /opt/cabinet-frontend)" "Installed cabinet repository not found (expected paths: /root/bedolaga-cabinet, /root/cabinet-frontend, /opt/bedolaga-cabinet, /opt/cabinet-frontend)")"
     return 1
   fi
-  if [[ ! -f "$bot_env_file" ]]; then
+  if [[ "$update_bot" == "1" ]]; then
+    bot_env_file="${bot_dir}/.env"
+  fi
+  if [[ "$update_cabinet" == "1" ]]; then
+    cabinet_env_file="${cabinet_dir}/.env"
+  fi
+  if [[ "$update_bot" == "1" && ! -f "$bot_env_file" ]]; then
     paint "$CLR_DANGER" "$(tr_text "Не найден .env бота. Обычное обновление не может безопасно восстановить настройки." "Bot .env was not found. A normal update cannot safely restore settings.")"
     return 1
   fi
-  if [[ ! -f "$cabinet_env_file" ]]; then
+  if [[ "$update_cabinet" == "1" && ! -f "$cabinet_env_file" ]]; then
     paint "$CLR_DANGER" "$(tr_text "Не найден .env кабинета. Обычное обновление не может безопасно восстановить настройки." "Cabinet .env was not found. A normal update cannot safely restore settings.")"
     return 1
   fi
 
-  cabinet_port="$(bedolaga_read_env_value "$cabinet_env_file" "CABINET_PORT")"
-  cabinet_port="${cabinet_port:-3020}"
-  if ! validate_tcp_port_or_warn "CABINET_PORT" "$cabinet_port"; then
-    return 1
+  if [[ "$update_cabinet" == "1" && -f "$cabinet_env_file" ]]; then
+    cabinet_port="$(bedolaga_read_env_value "$cabinet_env_file" "CABINET_PORT")"
+    cabinet_port="${cabinet_port:-3020}"
+    if ! validate_tcp_port_or_warn "CABINET_PORT" "$cabinet_port"; then
+      return 1
+    fi
   fi
   paint "$CLR_MUTED" "$(tr_text "Обновление без перенастройки: домены, токены, .env и Caddyfile сохраняются как есть." "Update without reconfiguration: domains, tokens, .env and Caddyfile are preserved.")"
-  paint "$CLR_MUTED" "  bot: ${bot_dir}"
-  paint "$CLR_MUTED" "  cabinet: ${cabinet_dir}"
+  paint "$CLR_MUTED" "$(tr_text "Режим обновления:" "Update mode:") ${scope_label}"
+  if [[ "$update_bot" == "1" ]]; then
+    paint "$CLR_MUTED" "  bot: ${bot_dir}"
+  fi
+  if [[ "$update_cabinet" == "1" ]]; then
+    paint "$CLR_MUTED" "  cabinet: ${cabinet_dir}"
+  fi
 
   if [[ "$fork_mode" == "1" ]]; then
     paint "$CLR_MUTED" "$(tr_text "Режим форка: переключаю репозитории на PEDZEO и обновляю по дефолтной ветке origin." "Fork mode: switching repositories to PEDZEO and updating via origin default branch.")"
-    bedolaga_update_repo_from_remote_default_branch "$bot_repo" "$bot_dir" || return 1
-    bedolaga_update_repo_from_remote_default_branch "$cabinet_repo" "$cabinet_dir" || return 1
+    if [[ "$update_bot" == "1" ]]; then
+      bedolaga_update_repo_from_remote_default_branch "$bot_repo" "$bot_dir" || return 1
+    fi
+    if [[ "$update_cabinet" == "1" ]]; then
+      bedolaga_update_repo_from_remote_default_branch "$cabinet_repo" "$cabinet_dir" || return 1
+    fi
   else
-    bedolaga_clone_or_update_repo "$bot_repo" "$bot_dir" || return 1
-    bedolaga_clone_or_update_repo "$cabinet_repo" "$cabinet_dir" || return 1
+    if [[ "$update_bot" == "1" ]]; then
+      bedolaga_clone_or_update_repo "$bot_repo" "$bot_dir" || return 1
+    fi
+    if [[ "$update_cabinet" == "1" ]]; then
+      bedolaga_clone_or_update_repo "$cabinet_repo" "$cabinet_dir" || return 1
+    fi
   fi
-  bedolaga_write_bot_compose_override "$bot_dir"
-  bedolaga_write_cabinet_compose_override "$cabinet_dir"
+  if [[ "$update_bot" == "1" ]]; then
+    bedolaga_write_bot_compose_override "$bot_dir"
+  fi
+  if [[ "$update_cabinet" == "1" ]]; then
+    bedolaga_write_cabinet_compose_override "$cabinet_dir"
+  fi
 
   bedolaga_ensure_shared_network || return 1
-  bedolaga_compose_up_build "$bot_dir" "bot" || return 1
-  bedolaga_compose_up_build "$cabinet_dir" "cabinet" || return 1
+  if [[ "$update_bot" == "1" ]]; then
+    bedolaga_compose_up_build "$bot_dir" "bot" || return 1
+    caddy_targets+=(remnawave_bot)
+  fi
+  if [[ "$update_cabinet" == "1" ]]; then
+    bedolaga_compose_up_build "$cabinet_dir" "cabinet" || return 1
+    caddy_targets+=(cabinet_frontend)
+  fi
 
   if bedolaga_detect_caddy_runtime >/dev/null 2>&1 && [[ "${CADDY_MODE:-}" == "container" ]]; then
     check_caddy="1"
-    bedolaga_repair_shared_network_if_needed || return 1
+    bedolaga_repair_shared_network_if_needed "${caddy_targets[@]}" || return 1
   else
     paint "$CLR_MUTED" "$(tr_text "Docker Caddy не найден: Caddyfile не трогаю, проверку Caddy пропускаю." "Docker Caddy not found: leaving Caddyfile untouched and skipping Caddy check.")"
   fi
-  if ! bedolaga_post_deploy_health_check "$cabinet_port" "$check_caddy"; then
+  if ! bedolaga_post_deploy_health_check "$cabinet_port" "$check_caddy" "$update_scope"; then
     return 1
   fi
 
-  paint "$CLR_OK" "$(tr_text "Bedolaga stack обновлен." "Bedolaga stack updated.")"
+  case "$update_scope" in
+    bot) paint "$CLR_OK" "$(tr_text "Бот Bedolaga обновлен." "Bedolaga bot updated.")" ;;
+    cabinet) paint "$CLR_OK" "$(tr_text "Кабинет Bedolaga обновлен." "Bedolaga cabinet updated.")" ;;
+    *) paint "$CLR_OK" "$(tr_text "Bedolaga stack обновлен." "Bedolaga stack updated.")" ;;
+  esac
   return 0
 }
 
@@ -1609,10 +1763,31 @@ run_bedolaga_stack_update_flow() {
     "$BEDOLAGA_BOT_REPO_DEFAULT" \
     "$BEDOLAGA_CABINET_REPO_DEFAULT" \
     "0" \
-    "$(tr_text "Bedolaga: обновление из git и перезапуск" "Bedolaga: git update and restart")"
+    "$(tr_text "Bedolaga: обновить весь стек из git" "Bedolaga: update full stack from git")" \
+    "all"
 }
 
-run_bedolaga_stack_update_fork_flow() {
+run_bedolaga_bot_update_flow() {
+  run_bedolaga_stack_update_with_repos \
+    "$BEDOLAGA_BOT_REPO_DEFAULT" \
+    "$BEDOLAGA_CABINET_REPO_DEFAULT" \
+    "0" \
+    "$(tr_text "Bedolaga: обновить только бот из git" "Bedolaga: update bot only from git")" \
+    "bot"
+}
+
+run_bedolaga_cabinet_update_flow() {
+  run_bedolaga_stack_update_with_repos \
+    "$BEDOLAGA_BOT_REPO_DEFAULT" \
+    "$BEDOLAGA_CABINET_REPO_DEFAULT" \
+    "0" \
+    "$(tr_text "Bedolaga: обновить только кабинет из git" "Bedolaga: update cabinet only from git")" \
+    "cabinet"
+}
+
+bedolaga_resolve_fork_repo_pair() {
+  local __bot_repo_var="$1"
+  local __cabinet_repo_var="$2"
   local bot_repo="$BEDOLAGA_BOT_REPO_FORK_DEFAULT"
   local cabinet_repo="$BEDOLAGA_CABINET_REPO_FORK_DEFAULT"
 
@@ -1626,9 +1801,39 @@ run_bedolaga_stack_update_fork_flow() {
 
   BEDOLAGA_BOT_REPO_LAST_CUSTOM="$bot_repo"
   BEDOLAGA_CABINET_REPO_LAST_CUSTOM="$cabinet_repo"
+  printf -v "$__bot_repo_var" '%s' "$bot_repo"
+  printf -v "$__cabinet_repo_var" '%s' "$cabinet_repo"
+}
+
+run_bedolaga_stack_update_fork_scope_flow() {
+  local update_scope="$1"
+  local flow_title="$2"
+  local bot_repo=""
+  local cabinet_repo=""
+
+  bedolaga_resolve_fork_repo_pair bot_repo cabinet_repo
   run_bedolaga_stack_update_with_repos \
     "$bot_repo" \
     "$cabinet_repo" \
     "1" \
-    "$(tr_text "Bedolaga: автообновление форка PEDZEO (безопасный режим)" "Bedolaga: PEDZEO fork auto-update (safe mode)")"
+    "$flow_title" \
+    "$update_scope"
+}
+
+run_bedolaga_stack_update_fork_flow() {
+  run_bedolaga_stack_update_fork_scope_flow \
+    "all" \
+    "$(tr_text "Bedolaga: автообновление всего форка PEDZEO (safe)" "Bedolaga: update full PEDZEO fork (safe)")"
+}
+
+run_bedolaga_bot_update_fork_flow() {
+  run_bedolaga_stack_update_fork_scope_flow \
+    "bot" \
+    "$(tr_text "Bedolaga: обновить только бот форка PEDZEO (safe)" "Bedolaga: update PEDZEO fork bot only (safe)")"
+}
+
+run_bedolaga_cabinet_update_fork_flow() {
+  run_bedolaga_stack_update_fork_scope_flow \
+    "cabinet" \
+    "$(tr_text "Bedolaga: обновить только кабинет форка PEDZEO (safe)" "Bedolaga: update PEDZEO fork cabinet only (safe)")"
 }
