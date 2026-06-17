@@ -20,6 +20,8 @@ draw_subheader() {
 
   MENU_OPTIONS_STARTED=0
   MENU_SEPARATOR_PRINTED=0
+  MENU_HAS_BACK_OPTION=0
+  MENU_BACK_ORIGINAL_KEY=""
   clear
   line="$(printf '═%.0s' $(seq 1 "$width"))"
   paint "$CLR_TITLE" "╔${line}"
@@ -94,6 +96,8 @@ draw_header_full() {
 
   MENU_OPTIONS_STARTED=0
   MENU_SEPARATOR_PRINTED=0
+  MENU_HAS_BACK_OPTION=0
+  MENU_BACK_ORIGINAL_KEY=""
   clear
   timer_panel_state="$(systemctl_active_state panel-backup-panel.timer)"
   timer_bedolaga_state="$(systemctl_active_state panel-backup-bedolaga.timer)"
@@ -865,6 +869,8 @@ draw_header() {
 
   MENU_OPTIONS_STARTED=0
   MENU_SEPARATOR_PRINTED=0
+  MENU_HAS_BACK_OPTION=0
+  MENU_BACK_ORIGINAL_KEY=""
   clear
 
   os_kernel="$(dashboard_os_kernel)"

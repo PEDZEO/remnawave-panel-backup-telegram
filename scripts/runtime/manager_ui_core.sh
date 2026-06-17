@@ -13,6 +13,11 @@ menu_option_color() {
   printf '%s' "${CLR_WHITE:-$CLR_MUTED}"
 }
 
+menu_is_back_label() {
+  local label="${1:-}"
+  [[ "$label" == "Назад" || "$label" == "Back" ]]
+}
+
 menu_group() {
   local title="$1"
   local color="${2:-$CLR_MUTED}"
@@ -34,8 +39,15 @@ menu_option() {
   local key="$1"
   local label="$2"
   local color="${3:-}"
+  local display_key="$key"
 
   [[ -n "$color" ]] || color="$(menu_option_color "$key" "$label")"
+  if menu_is_back_label "$label"; then
+    MENU_HAS_BACK_OPTION=1
+    MENU_BACK_ORIGINAL_KEY="$key"
+    display_key="b"
+    [[ -n "${3:-}" ]] || color="$CLR_MUTED"
+  fi
 
   if [[ "${MENU_OPTIONS_STARTED:-0}" != "1" ]]; then
     if [[ "${MENU_SEPARATOR_PRINTED:-0}" != "1" ]]; then
@@ -45,9 +57,9 @@ menu_option() {
   fi
 
   if [[ "$COLOR" == "1" ]]; then
-    printf "   %b[%s] %b%b\n" "$color" "$key" "$label" "$CLR_RESET"
+    printf "   %b[%s] %b%b\n" "$color" "$display_key" "$label" "$CLR_RESET"
   else
-    printf "   [%s] %s\n" "$key" "$label"
+    printf "   [%s] %s\n" "$display_key" "$label"
   fi
 }
 
@@ -216,6 +228,8 @@ show_operation_failure_menu() {
 
   MENU_OPTIONS_STARTED=0
   MENU_SEPARATOR_PRINTED=0
+  MENU_HAS_BACK_OPTION=0
+  MENU_BACK_ORIGINAL_KEY=""
   print_separator
   paint "$CLR_DANGER" "$(tr_text "Операция завершилась с ошибкой:" "Operation failed:") ${action_title} (rc=${rc})"
   paint "$CLR_MUTED" "$(tr_text "Лог выше оставлен на экране. Можно повторить действие или вернуться в меню." "The log above is left on screen. You can retry or return to the menu.")"
@@ -281,6 +295,28 @@ read_prompt_raw() {
 read_menu_choice() {
   local __var="$1"
   local prompt="$2"
+  local back_key="${MENU_BACK_ORIGINAL_KEY:-}"
+  local back_hint=""
+  local upper=0
+  local new_range=""
+
+  if [[ "${MENU_HAS_BACK_OPTION:-0}" == "1" && "$back_key" =~ ^[0-9]+$ ]]; then
+    back_hint="$(tr_text "b назад" "b back")"
+    if [[ "$prompt" =~ ^(.*)\[1-([0-9]+)\](.*)$ && "${BASH_REMATCH[2]}" == "$back_key" ]]; then
+      upper=$((back_key - 1))
+      if (( upper > 1 )); then
+        new_range="1-${upper}, ${back_hint}"
+      elif (( upper == 1 )); then
+        new_range="1, ${back_hint}"
+      else
+        new_range="${back_hint}"
+      fi
+      prompt="${BASH_REMATCH[1]}[${new_range}]${BASH_REMATCH[3]}"
+    elif [[ "$prompt" != *"b"* && "$prompt" != *"back"* && "$prompt" != *"назад"* ]]; then
+      prompt="${prompt% }"
+      prompt="${prompt} (${back_hint})"
+    fi
+  fi
 
   prompt="${prompt% }"
   prompt="${prompt%:}"
