@@ -30,6 +30,11 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PEDZEO/remnawave-panel-backu
 - One-VPS Bedolaga stack install/update: `remnawave-bedolaga-telegram-bot`, `bedolaga-cabinet`, and Caddy integration.
   Install paths: `/root/remnawave-bedolaga-telegram-bot`, `/root/bedolaga-cabinet`, and `/root/caddy` for containerized Caddy setups.
 - Composite flows: full install/update for Remnawave and full setup for RemnaNode.
+- Dedicated integration page for the external [Reshala-Remnawave-Bedolaga](https://github.com/DonMatteoVPN/Reshala-Remnawave-Bedolaga) toolbox.
+
+## Reshala toolbox
+
+The manager includes a separate page for [Reshala-Remnawave-Bedolaga](https://github.com/DonMatteoVPN/Reshala-Remnawave-Bedolaga). It can show the feature map, install/update the external toolbox, and open the Reshala menu. Reshala code is not vendored into this repository; it remains an external project with its own files and settings.
 
 ## Bedolaga components
 
