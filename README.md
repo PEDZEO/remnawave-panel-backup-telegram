@@ -159,10 +159,13 @@ Telegram можно включить как дополнительную дос�
 
 Скрипт умеет работать с двумя ветками Bedolaga:
 
+- официальная организация: **[BEDOLAGA-DEV](https://github.com/BEDOLAGA-DEV)**;
+- fork PEDZEO: **[PEDZEO](https://github.com/PEDZEO)**.
+
 | Ветка | Бот | Кабинет |
 | --- | --- | --- |
-| Official | `BEDOLAGA-DEV/remnawave-bedolaga-telegram-bot` | `BEDOLAGA-DEV/bedolaga-cabinet` |
-| Fork PEDZEO | `PEDZEO/remnawave-bedolaga-telegram-bot` | `PEDZEO/cabinet-frontend` |
+| Official | [BEDOLAGA-DEV/remnawave-bedolaga-telegram-bot](https://github.com/BEDOLAGA-DEV/remnawave-bedolaga-telegram-bot) | [BEDOLAGA-DEV/bedolaga-cabinet](https://github.com/BEDOLAGA-DEV/bedolaga-cabinet) |
+| Fork PEDZEO | [PEDZEO/remnawave-bedolaga-telegram-bot](https://github.com/PEDZEO/remnawave-bedolaga-telegram-bot) | [PEDZEO/cabinet-frontend](https://github.com/PEDZEO/cabinet-frontend) |
 
 Дефолтные пути установки:
 

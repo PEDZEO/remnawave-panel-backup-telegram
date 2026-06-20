@@ -38,8 +38,12 @@ The manager includes a separate page for [Reshala-Remnawave-Bedolaga](https://gi
 
 ## Bedolaga components
 
-- Bot: https://github.com/BEDOLAGA-DEV/remnawave-bedolaga-telegram-bot
-- Cabinet: https://github.com/BEDOLAGA-DEV/bedolaga-cabinet
+- Official organization: [BEDOLAGA-DEV](https://github.com/BEDOLAGA-DEV)
+- PEDZEO fork: [PEDZEO](https://github.com/PEDZEO)
+- Official bot: [BEDOLAGA-DEV/remnawave-bedolaga-telegram-bot](https://github.com/BEDOLAGA-DEV/remnawave-bedolaga-telegram-bot)
+- Official cabinet: [BEDOLAGA-DEV/bedolaga-cabinet](https://github.com/BEDOLAGA-DEV/bedolaga-cabinet)
+- Fork bot: [PEDZEO/remnawave-bedolaga-telegram-bot](https://github.com/PEDZEO/remnawave-bedolaga-telegram-bot)
+- Fork cabinet: [PEDZEO/cabinet-frontend](https://github.com/PEDZEO/cabinet-frontend)
 
 ## Contact
 
