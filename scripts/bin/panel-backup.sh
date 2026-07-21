@@ -1054,7 +1054,7 @@ send_telegram_file() {
       -F "chat_id=${chat_id}" \
       "${thread_args[@]}" \
       -F "parse_mode=HTML" \
-      -F "caption=${caption_html}" \
+      --form-string "caption=${caption_html}" \
       -F "document=@${file_path}")"; then
       curl_rc=0
       break
@@ -1094,7 +1094,7 @@ send_telegram_file() {
       -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
       -F "chat_id=${chat_id}" \
       "${thread_args[@]}" \
-      -F "caption=${fallback_caption}" \
+      --form-string "caption=${fallback_caption}" \
       -F "document=@${file_path}")"; then
       curl_rc=0
       break
