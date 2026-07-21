@@ -1026,6 +1026,8 @@ send_telegram_file() {
   local fallback_caption=""
   local chat_id=""
   local response
+  local curl_attempt=0
+  local curl_rc=0
   local thread_id=""
   local thread_args=()
   local response_desc=""
@@ -1037,18 +1039,37 @@ send_telegram_file() {
   if [[ -n "$thread_id" ]]; then
     thread_args+=(-F "message_thread_id=${thread_id}")
   fi
+  if [[ ! -f "$file_path" || ! -r "$file_path" ]]; then
+    log "$(t "Не удалось открыть файл для отправки в Telegram" "Unable to open file for Telegram upload"): ${file_path}"
+    return 1
+  fi
   caption_html="$caption"
   if (( ${#caption_html} > 900 )); then
     caption_html="${caption_html:0:897}..."
   fi
 
-  response="$(curl -sS --max-time 300 \
-    -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
-    -F "chat_id=${chat_id}" \
-    "${thread_args[@]}" \
-    -F "parse_mode=HTML" \
-    -F "caption=${caption_html}" \
-    -F "document=@${file_path}")" || return 1
+  for curl_attempt in 1 2; do
+    if response="$(curl -sS --max-time 300 \
+      -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
+      -F "chat_id=${chat_id}" \
+      "${thread_args[@]}" \
+      -F "parse_mode=HTML" \
+      -F "caption=${caption_html}" \
+      -F "document=@${file_path}")"; then
+      curl_rc=0
+      break
+    else
+      curl_rc=$?
+    fi
+    if (( curl_attempt == 1 )); then
+      log "$(t "Сбой загрузки файла в Telegram (curl ${curl_rc}), повторяю через 1 секунду" "Telegram file upload failed (curl ${curl_rc}), retrying in 1 second")"
+      sleep 1
+    fi
+  done
+  if (( curl_rc != 0 )); then
+    TELEGRAM_SEND_ERROR_DESC="curl ${curl_rc}"
+    return 1
+  fi
 
   if echo "$response" | grep -q '"ok":true'; then
     return 0
@@ -1067,12 +1088,28 @@ send_telegram_file() {
   if (( ${#fallback_caption} > 900 )); then
     fallback_caption="${fallback_caption:0:897}..."
   fi
-  response="$(curl -sS --max-time 300 \
-    -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
-    -F "chat_id=${chat_id}" \
-    "${thread_args[@]}" \
-    -F "caption=${fallback_caption}" \
-    -F "document=@${file_path}")" || return 1
+  curl_rc=0
+  for curl_attempt in 1 2; do
+    if response="$(curl -sS --max-time 300 \
+      -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
+      -F "chat_id=${chat_id}" \
+      "${thread_args[@]}" \
+      -F "caption=${fallback_caption}" \
+      -F "document=@${file_path}")"; then
+      curl_rc=0
+      break
+    else
+      curl_rc=$?
+    fi
+    if (( curl_attempt == 1 )); then
+      log "$(t "Сбой повторной загрузки файла в Telegram (curl ${curl_rc}), пробую еще раз через 1 секунду" "Telegram fallback upload failed (curl ${curl_rc}), retrying in 1 second")"
+      sleep 1
+    fi
+  done
+  if (( curl_rc != 0 )); then
+    TELEGRAM_SEND_ERROR_DESC="curl ${curl_rc}"
+    return 1
+  fi
 
   if echo "$response" | grep -q '"ok":true'; then
     return 0
