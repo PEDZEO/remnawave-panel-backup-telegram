@@ -730,6 +730,177 @@ copy_optional_backup_entry() {
   copy_backup_entry "$source_path" "$target_path" "$label"
 }
 
+simple_env_value() {
+  local env_file="$1"
+  local key="$2"
+  local value=""
+
+  [[ -f "$env_file" ]] || return 0
+  value="$(grep -E "^${key}=" "$env_file" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
+  value="${value%$'\r'}"
+  value="${value#\"}"
+  value="${value%\"}"
+  value="${value#\'}"
+  value="${value%\'}"
+  printf '%s' "$value"
+}
+
+redis_url_password() {
+  local url="$1"
+  local auth=""
+
+  [[ "$url" == *"://"* && "$url" == *"@"* ]] || return 0
+  auth="${url#*://}"
+  auth="${auth%%@*}"
+  [[ "$auth" == *":"* ]] || return 0
+  printf '%s' "${auth#*:}"
+}
+
+redis_container_cli() {
+  local container_name="$1"
+
+  docker exec "$container_name" sh -lc '
+    if command -v valkey-cli >/dev/null 2>&1; then
+      command -v valkey-cli
+    elif command -v redis-cli >/dev/null 2>&1; then
+      command -v redis-cli
+    fi
+  ' 2>/dev/null | head -n1 | tr -d '\r' || true
+}
+
+redis_container_password() {
+  local container_name="$1"
+  local env_file="$2"
+  local value=""
+  local url=""
+
+  value="$(docker inspect "$container_name" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
+    | awk -F= '$1=="REDIS_PASSWORD" || $1=="VALKEY_PASSWORD" {print substr($0,index($0,"=")+1); exit}' || true)"
+  if [[ -z "$value" ]]; then
+    url="$(docker inspect "$container_name" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
+      | awk -F= '$1=="REDIS_URL" || $1=="REDIS_URI" || $1=="VALKEY_URL" {print substr($0,index($0,"=")+1); exit}' || true)"
+    value="$(redis_url_password "$url")"
+  fi
+  if [[ -z "$value" && -n "$env_file" ]]; then
+    value="$(simple_env_value "$env_file" "REDIS_PASSWORD")"
+  fi
+  if [[ -z "$value" && -n "$env_file" ]]; then
+    value="$(simple_env_value "$env_file" "VALKEY_PASSWORD")"
+  fi
+  if [[ -z "$value" && -n "$env_file" ]]; then
+    url="$(simple_env_value "$env_file" "REDIS_URL")"
+    [[ -n "$url" ]] || url="$(simple_env_value "$env_file" "REDIS_URI")"
+    [[ -n "$url" ]] || url="$(simple_env_value "$env_file" "VALKEY_URL")"
+    value="$(redis_url_password "$url")"
+  fi
+  printf '%s' "$value"
+}
+
+redis_exec_cli() {
+  local container_name="$1"
+  local cli="$2"
+  local password="$3"
+  shift 3
+  local exec_args=()
+
+  if [[ -n "$password" ]]; then
+    exec_args=(-e "REDISCLI_AUTH=${password}" -e "VALKEYCLI_AUTH=${password}")
+  fi
+  docker exec "${exec_args[@]}" "$container_name" "$cli" "$@"
+}
+
+redis_config_value() {
+  local container_name="$1"
+  local cli="$2"
+  local password="$3"
+  local key="$4"
+  local value=""
+
+  value="$(redis_exec_cli "$container_name" "$cli" "$password" --raw CONFIG GET "$key" 2>/dev/null | tail -n1 | tr -d '\r' || true)"
+  printf '%s' "$value"
+}
+
+redis_wait_for_bgsave() {
+  local container_name="$1"
+  local cli="$2"
+  local password="$3"
+  local state=""
+  local i=0
+
+  for ((i = 0; i < 30; i++)); do
+    state="$(redis_exec_cli "$container_name" "$cli" "$password" --raw INFO Persistence 2>/dev/null \
+      | awk -F: '/^rdb_bgsave_in_progress:/ {gsub(/\r/, "", $2); print $2; exit}' || true)"
+    [[ "$state" != "1" ]] && return 0
+    sleep 1
+  done
+}
+
+copy_redis_dump_from_container() {
+  local container_name="$1"
+  local target_path="$2"
+  shift 2
+  local source_path=""
+
+  for source_path in "$@"; do
+    [[ -n "$source_path" ]] || continue
+    if docker cp "${container_name}:${source_path}" "$target_path" 2>/dev/null && [[ -s "$target_path" ]]; then
+      return 0
+    fi
+    rm -f "$target_path"
+  done
+  return 1
+}
+
+backup_redis_dump() {
+  local container_name="$1"
+  local target_path="$2"
+  local label="$3"
+  local env_file="${4:-}"
+  local cli=""
+  local password=""
+  local redis_dir=""
+  local redis_dbfilename=""
+  local remote_tmp=""
+  local tried_paths=()
+
+  mkdir -p "$(dirname "$target_path")"
+  cli="$(redis_container_cli "$container_name")"
+  password="$(redis_container_password "$container_name" "$env_file")"
+  remote_tmp="/tmp/panel-backup-${TIMESTAMP_SHORT}-$$.rdb"
+
+  if [[ -n "$cli" ]]; then
+    if redis_exec_cli "$container_name" "$cli" "$password" --rdb "$remote_tmp" >/dev/null 2>&1; then
+      if copy_redis_dump_from_container "$container_name" "$target_path" "$remote_tmp"; then
+        docker exec "$container_name" rm -f "$remote_tmp" >/dev/null 2>&1 || true
+        return 0
+      fi
+    fi
+    docker exec "$container_name" rm -f "$remote_tmp" >/dev/null 2>&1 || true
+
+    if ! redis_exec_cli "$container_name" "$cli" "$password" save >/dev/null 2>&1; then
+      if redis_exec_cli "$container_name" "$cli" "$password" bgsave >/dev/null 2>&1; then
+        redis_wait_for_bgsave "$container_name" "$cli" "$password"
+      fi
+    fi
+
+    redis_dir="$(redis_config_value "$container_name" "$cli" "$password" "dir")"
+    redis_dbfilename="$(redis_config_value "$container_name" "$cli" "$password" "dbfilename")"
+  fi
+
+  [[ -n "$redis_dir" ]] || redis_dir="/data"
+  [[ -n "$redis_dbfilename" ]] || redis_dbfilename="dump.rdb"
+  tried_paths+=("${redis_dir%/}/${redis_dbfilename}")
+  tried_paths+=("/data/dump.rdb" "/data/redis/dump.rdb" "/var/lib/redis/dump.rdb")
+
+  if copy_redis_dump_from_container "$container_name" "$target_path" "${tried_paths[@]}"; then
+    return 0
+  fi
+
+  log "$(t "Диагностика Redis dump" "Redis dump diagnostics") (${label}):"
+  docker exec "$container_name" sh -lc 'ls -lah /data /data/redis /var/lib/redis /tmp 2>/dev/null || true' 2>/dev/null | tail -n 40 || true
+  fail "$(t "не удалось получить Redis dump" "failed to get Redis dump"): ${label} (${container_name}). $(t "Пробовал live export и пути" "Tried live export and paths"): ${tried_paths[*]}"
+}
+
 backup_bedolaga_logs() {
   local source_dir="$1"
   local target_dir="$2"
@@ -1292,11 +1463,7 @@ fi
 
 if (( WANT_REDIS == 1 )); then
   log "Сохраняю Redis dump"
-  if ! docker exec remnawave-redis sh -lc 'valkey-cli save >/dev/null 2>&1 || redis-cli save >/dev/null 2>&1'; then
-    log "$(t "Предупреждение: команда сохранения Redis вернула ошибку, пробую забрать существующий dump.rdb" "Warning: Redis save command failed, trying to copy existing dump.rdb")"
-  fi
-  docker cp remnawave-redis:/data/dump.rdb "$WORKDIR/payload/remnawave-redis.rdb" 2>/dev/null \
-    || fail "$(t "не удалось получить Redis dump" "failed to get Redis dump")"
+  backup_redis_dump "remnawave-redis" "$WORKDIR/payload/remnawave-redis.rdb" "Remnawave Redis" "${REMNAWAVE_DIR}/.env"
   [[ -f "$WORKDIR/payload/remnawave-redis.rdb" ]] \
     || fail "$(t "Redis dump не найден после копирования" "Redis dump not found after copy")"
   BACKUP_ITEMS+=("- Redis dump: включено ($(du -h "$WORKDIR/payload/remnawave-redis.rdb" | awk '{print $1}'))")
@@ -1325,12 +1492,8 @@ fi
 
 if (( WANT_BEDOLAGA_REDIS == 1 )); then
   log "Сохраняю Redis dump Bedolaga"
-  if ! docker exec "$BEDOLAGA_REDIS_CONTAINER" sh -lc 'redis-cli save >/dev/null 2>&1'; then
-    log "$(t "Предупреждение: команда сохранения Redis Bedolaga вернула ошибку, пробую забрать существующий dump.rdb" "Warning: Bedolaga Redis save command failed, trying to copy existing dump.rdb")"
-  fi
   mkdir -p "$WORKDIR/payload/bedolaga/redis/${BEDOLAGA_DB_DUMP_PROFILE}"
-  docker cp "${BEDOLAGA_REDIS_CONTAINER}:/data/dump.rdb" "$WORKDIR/payload/bedolaga/redis/${BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb" 2>/dev/null \
-    || fail "$(t "не удалось получить Redis dump Bedolaga" "failed to get Bedolaga Redis dump")"
+  backup_redis_dump "$BEDOLAGA_REDIS_CONTAINER" "$WORKDIR/payload/bedolaga/redis/${BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb" "Bedolaga Redis" "${BEDOLAGA_BOT_DIR}/.env"
   [[ -f "$WORKDIR/payload/bedolaga/redis/${BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb" ]] \
     || fail "$(t "Redis dump Bedolaga не найден после копирования" "Bedolaga Redis dump not found after copy")"
   ln -sf "bedolaga/redis/${BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb" "$WORKDIR/payload/bedolaga-bot-redis.rdb"
