@@ -179,6 +179,26 @@ redis_container_cli() {
   ' 2>/dev/null | head -n1 | tr -d '\r' || true
 }
 
+redis_container_socket() {
+  local container_name="$1"
+
+  docker exec "$container_name" sh -lc '
+    for socket_path in \
+      /var/run/valkey/valkey.sock \
+      /run/valkey/valkey.sock \
+      /var/run/redis/redis.sock \
+      /run/redis/redis.sock \
+      /tmp/valkey.sock \
+      /tmp/redis.sock; do
+      if [ -S "$socket_path" ]; then
+        printf "%s\n" "$socket_path"
+        exit 0
+      fi
+    done
+    find /var/run /run /tmp -maxdepth 3 -type s \( -name "*valkey*.sock" -o -name "*redis*.sock" \) 2>/dev/null | head -n1
+  ' 2>/dev/null | head -n1 | tr -d '\r' || true
+}
+
 redis_container_password() {
   local container_name="$1"
   local env_file="$2"
@@ -213,11 +233,17 @@ redis_exec_cli() {
   local password="$3"
   shift 3
   local exec_args=()
+  local socket_path=""
 
   if [[ -n "$password" ]]; then
     exec_args=(-e "REDISCLI_AUTH=${password}" -e "VALKEYCLI_AUTH=${password}")
   fi
-  docker exec "${exec_args[@]}" "$container_name" "$cli" "$@"
+  socket_path="$(redis_container_socket "$container_name")"
+  if [[ -n "$socket_path" ]]; then
+    docker exec "${exec_args[@]}" "$container_name" "$cli" -s "$socket_path" "$@"
+  else
+    docker exec "${exec_args[@]}" "$container_name" "$cli" "$@"
+  fi
 }
 
 redis_config_value() {
@@ -861,9 +887,11 @@ tar -xzf "$ARCHIVE_TO_EXTRACT" -C "$EXTRACT_DIR"
 
 DB_DUMP="$EXTRACT_DIR/remnawave-db.dump"
 REDIS_DUMP="$EXTRACT_DIR/remnawave-redis.rdb"
+REDIS_EMPTY_MARKER="$EXTRACT_DIR/remnawave-redis.rdb.empty"
 SRC_REMNAWAVE="$EXTRACT_DIR/remnawave"
 BEDOLAGA_DB_DUMP="$EXTRACT_DIR/bedolaga-bot-db.dump"
 BEDOLAGA_REDIS_DUMP="$EXTRACT_DIR/bedolaga-bot-redis.rdb"
+BEDOLAGA_REDIS_EMPTY_MARKER="$EXTRACT_DIR/bedolaga-bot-redis.rdb.empty"
 SRC_BEDOLAGA_BOT="$EXTRACT_DIR/bedolaga/bot"
 SRC_BEDOLAGA_CABINET="$EXTRACT_DIR/bedolaga/cabinet"
 BACKUP_INFO_PATH="$EXTRACT_DIR/backup-info.txt"
@@ -887,6 +915,9 @@ if [[ -f "$EXTRACT_DIR/bedolaga/db/${BACKUP_BEDOLAGA_DB_DUMP_PROFILE}/postgres.d
 fi
 if [[ -f "$EXTRACT_DIR/bedolaga/redis/${BACKUP_BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb" ]]; then
   BEDOLAGA_REDIS_DUMP="$EXTRACT_DIR/bedolaga/redis/${BACKUP_BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb"
+fi
+if [[ -f "$EXTRACT_DIR/bedolaga/redis/${BACKUP_BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb.empty" ]]; then
+  BEDOLAGA_REDIS_EMPTY_MARKER="$EXTRACT_DIR/bedolaga/redis/${BACKUP_BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb.empty"
 fi
 
 need_remnawave_dir=0
@@ -1083,9 +1114,15 @@ if component_selected db; then
 fi
 
 if component_selected redis; then
-  [[ -f "$REDIS_DUMP" ]] || { echo "Missing remnawave-redis.rdb in archive" >&2; exit 1; }
-  log "Restore Redis dump"
-  restore_redis_dump "$REDIS_DUMP" remnawave-redis "remnawave-redis" "${REMNAWAVE_DIR}/.env"
+  if [[ -f "$REDIS_DUMP" ]]; then
+    log "Restore Redis dump"
+    restore_redis_dump "$REDIS_DUMP" remnawave-redis "remnawave-redis" "${REMNAWAVE_DIR}/.env"
+  elif [[ -f "$REDIS_EMPTY_MARKER" ]]; then
+    log "Redis archive marker says source Redis was empty, skipping Redis restore"
+  else
+    echo "Missing remnawave-redis.rdb in archive" >&2
+    exit 1
+  fi
 fi
 
 if component_selected bedolaga-bot; then
@@ -1138,9 +1175,15 @@ if component_selected bedolaga-db; then
 fi
 
 if component_selected bedolaga-redis; then
-  [[ -f "$BEDOLAGA_REDIS_DUMP" ]] || { echo "Missing bedolaga-bot-redis.rdb in archive" >&2; exit 1; }
-  log "Restore Bedolaga Redis dump (${BACKUP_BEDOLAGA_DB_DUMP_PROFILE:-unknown}) -> container=${BEDOLAGA_REDIS_CONTAINER}"
-  restore_redis_dump "$BEDOLAGA_REDIS_DUMP" "$BEDOLAGA_REDIS_CONTAINER" "$BEDOLAGA_REDIS_CONTAINER" "${BEDOLAGA_BOT_DIR}/.env"
+  if [[ -f "$BEDOLAGA_REDIS_DUMP" ]]; then
+    log "Restore Bedolaga Redis dump (${BACKUP_BEDOLAGA_DB_DUMP_PROFILE:-unknown}) -> container=${BEDOLAGA_REDIS_CONTAINER}"
+    restore_redis_dump "$BEDOLAGA_REDIS_DUMP" "$BEDOLAGA_REDIS_CONTAINER" "$BEDOLAGA_REDIS_CONTAINER" "${BEDOLAGA_BOT_DIR}/.env"
+  elif [[ -f "$BEDOLAGA_REDIS_EMPTY_MARKER" ]]; then
+    log "Bedolaga Redis archive marker says source Redis was empty, skipping Redis restore"
+  else
+    echo "Missing bedolaga-bot-redis.rdb in archive" >&2
+    exit 1
+  fi
 fi
 
 if (( NO_RESTART == 0 )); then

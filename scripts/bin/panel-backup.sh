@@ -768,6 +768,26 @@ redis_container_cli() {
   ' 2>/dev/null | head -n1 | tr -d '\r' || true
 }
 
+redis_container_socket() {
+  local container_name="$1"
+
+  docker exec "$container_name" sh -lc '
+    for socket_path in \
+      /var/run/valkey/valkey.sock \
+      /run/valkey/valkey.sock \
+      /var/run/redis/redis.sock \
+      /run/redis/redis.sock \
+      /tmp/valkey.sock \
+      /tmp/redis.sock; do
+      if [ -S "$socket_path" ]; then
+        printf "%s\n" "$socket_path"
+        exit 0
+      fi
+    done
+    find /var/run /run /tmp -maxdepth 3 -type s \( -name "*valkey*.sock" -o -name "*redis*.sock" \) 2>/dev/null | head -n1
+  ' 2>/dev/null | head -n1 | tr -d '\r' || true
+}
+
 redis_container_password() {
   local container_name="$1"
   local env_file="$2"
@@ -802,11 +822,17 @@ redis_exec_cli() {
   local password="$3"
   shift 3
   local exec_args=()
+  local socket_path=""
 
   if [[ -n "$password" ]]; then
     exec_args=(-e "REDISCLI_AUTH=${password}" -e "VALKEYCLI_AUTH=${password}")
   fi
-  docker exec "${exec_args[@]}" "$container_name" "$cli" "$@"
+  socket_path="$(redis_container_socket "$container_name")"
+  if [[ -n "$socket_path" ]]; then
+    docker exec "${exec_args[@]}" "$container_name" "$cli" -s "$socket_path" "$@"
+  else
+    docker exec "${exec_args[@]}" "$container_name" "$cli" "$@"
+  fi
 }
 
 redis_config_value() {
@@ -817,6 +843,17 @@ redis_config_value() {
   local value=""
 
   value="$(redis_exec_cli "$container_name" "$cli" "$password" --raw CONFIG GET "$key" 2>/dev/null | tail -n1 | tr -d '\r' || true)"
+  printf '%s' "$value"
+}
+
+redis_cli_value() {
+  local container_name="$1"
+  local cli="$2"
+  local password="$3"
+  shift 3
+  local value=""
+
+  value="$(redis_exec_cli "$container_name" "$cli" "$password" --raw "$@" 2>/dev/null | tail -n1 | tr -d '\r' || true)"
   printf '%s' "$value"
 }
 
@@ -862,13 +899,27 @@ backup_redis_dump() {
   local redis_dbfilename=""
   local remote_tmp=""
   local tried_paths=()
+  local ping=""
+  local dbsize=""
+  local socket_path=""
 
   mkdir -p "$(dirname "$target_path")"
   cli="$(redis_container_cli "$container_name")"
   password="$(redis_container_password "$container_name" "$env_file")"
+  socket_path="$(redis_container_socket "$container_name")"
   remote_tmp="/tmp/panel-backup-${TIMESTAMP_SHORT}-$$.rdb"
 
   if [[ -n "$cli" ]]; then
+    ping="$(redis_cli_value "$container_name" "$cli" "$password" ping)"
+    if [[ "$ping" != "PONG" ]]; then
+      log "$(t "Диагностика Redis dump" "Redis dump diagnostics") (${label}):"
+      log "  CLI: ${cli}"
+      log "  Socket: ${socket_path:-not found}"
+      docker exec "$container_name" sh -lc 'ps -o pid,args 2>/dev/null | grep -E "[v]alkey|[r]edis" || true; ls -lah /var/run/valkey /run/valkey /var/run/redis /run/redis 2>/dev/null || true; ss -ltnp 2>/dev/null | grep 6379 || true; netstat -ltnp 2>/dev/null | grep 6379 || true' 2>/dev/null | tail -n 30 || true
+      fail "$(t "Redis CLI не отвечает PONG" "Redis CLI did not return PONG"): ${label} (${container_name})"
+    fi
+    dbsize="$(redis_cli_value "$container_name" "$cli" "$password" dbsize)"
+
     if redis_exec_cli "$container_name" "$cli" "$password" --rdb "$remote_tmp" >/dev/null 2>&1; then
       if copy_redis_dump_from_container "$container_name" "$target_path" "$remote_tmp"; then
         docker exec "$container_name" rm -f "$remote_tmp" >/dev/null 2>&1 || true
@@ -896,8 +947,17 @@ backup_redis_dump() {
     return 0
   fi
 
+  if [[ "$dbsize" == "0" ]]; then
+    printf 'redis_empty=1\ncontainer=%s\nlabel=%s\ntime_utc=%s\n' "$container_name" "$label" "$TIMESTAMP_UTC_HUMAN" > "${target_path}.empty"
+    log "$(t "Redis пустой, dump.rdb не создан. Добавляю маркер пустого Redis и продолжаю backup." "Redis is empty, dump.rdb was not created. Adding empty Redis marker and continuing backup.")"
+    return 0
+  fi
+
   log "$(t "Диагностика Redis dump" "Redis dump diagnostics") (${label}):"
-  docker exec "$container_name" sh -lc 'ls -lah /data /data/redis /var/lib/redis /tmp 2>/dev/null || true' 2>/dev/null | tail -n 40 || true
+  log "  CLI: ${cli:-not found}"
+  log "  Socket: ${socket_path:-not found}"
+  [[ -n "$dbsize" ]] && log "  DBSIZE: ${dbsize}"
+  docker exec "$container_name" sh -lc 'ls -lah /data /data/redis /var/lib/redis /tmp /var/run/valkey /run/valkey /var/run/redis /run/redis 2>/dev/null || true' 2>/dev/null | tail -n 60 || true
   fail "$(t "не удалось получить Redis dump" "failed to get Redis dump"): ${label} (${container_name}). $(t "Пробовал live export и пути" "Tried live export and paths"): ${tried_paths[*]}"
 }
 
@@ -1464,9 +1524,13 @@ fi
 if (( WANT_REDIS == 1 )); then
   log "Сохраняю Redis dump"
   backup_redis_dump "remnawave-redis" "$WORKDIR/payload/remnawave-redis.rdb" "Remnawave Redis" "${REMNAWAVE_DIR}/.env"
-  [[ -f "$WORKDIR/payload/remnawave-redis.rdb" ]] \
-    || fail "$(t "Redis dump не найден после копирования" "Redis dump not found after copy")"
-  BACKUP_ITEMS+=("- Redis dump: включено ($(du -h "$WORKDIR/payload/remnawave-redis.rdb" | awk '{print $1}'))")
+  if [[ -f "$WORKDIR/payload/remnawave-redis.rdb" ]]; then
+    BACKUP_ITEMS+=("- Redis dump: включено ($(du -h "$WORKDIR/payload/remnawave-redis.rdb" | awk '{print $1}'))")
+  elif [[ -f "$WORKDIR/payload/remnawave-redis.rdb.empty" ]]; then
+    BACKUP_ITEMS+=("- Redis dump: $(t "пустой Redis, добавлен маркер" "empty Redis, marker included")")
+  else
+    fail "$(t "Redis dump не найден после копирования" "Redis dump not found after copy")"
+  fi
 fi
 
 if (( WANT_COMPOSE == 1 || WANT_ENV == 1 || WANT_CADDY == 1 || WANT_SUBSCRIPTION == 1 )); then
@@ -1494,10 +1558,15 @@ if (( WANT_BEDOLAGA_REDIS == 1 )); then
   log "Сохраняю Redis dump Bedolaga"
   mkdir -p "$WORKDIR/payload/bedolaga/redis/${BEDOLAGA_DB_DUMP_PROFILE}"
   backup_redis_dump "$BEDOLAGA_REDIS_CONTAINER" "$WORKDIR/payload/bedolaga/redis/${BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb" "Bedolaga Redis" "${BEDOLAGA_BOT_DIR}/.env"
-  [[ -f "$WORKDIR/payload/bedolaga/redis/${BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb" ]] \
-    || fail "$(t "Redis dump Bedolaga не найден после копирования" "Bedolaga Redis dump not found after copy")"
-  ln -sf "bedolaga/redis/${BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb" "$WORKDIR/payload/bedolaga-bot-redis.rdb"
-  BACKUP_ITEMS+=("- Bedolaga Redis dump (${BEDOLAGA_DB_DUMP_PROFILE}): включено ($(du -h "$WORKDIR/payload/bedolaga/redis/${BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb" | awk '{print $1}'))")
+  if [[ -f "$WORKDIR/payload/bedolaga/redis/${BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb" ]]; then
+    ln -sf "bedolaga/redis/${BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb" "$WORKDIR/payload/bedolaga-bot-redis.rdb"
+    BACKUP_ITEMS+=("- Bedolaga Redis dump (${BEDOLAGA_DB_DUMP_PROFILE}): включено ($(du -h "$WORKDIR/payload/bedolaga/redis/${BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb" | awk '{print $1}'))")
+  elif [[ -f "$WORKDIR/payload/bedolaga/redis/${BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb.empty" ]]; then
+    ln -sf "bedolaga/redis/${BEDOLAGA_DB_DUMP_PROFILE}/dump.rdb.empty" "$WORKDIR/payload/bedolaga-bot-redis.rdb.empty"
+    BACKUP_ITEMS+=("- Bedolaga Redis dump (${BEDOLAGA_DB_DUMP_PROFILE}): $(t "пустой Redis, добавлен маркер" "empty Redis, marker included")")
+  else
+    fail "$(t "Redis dump Bedolaga не найден после копирования" "Bedolaga Redis dump not found after copy")"
+  fi
 fi
 
 if (( WANT_BEDOLAGA_BOT == 1 )); then
